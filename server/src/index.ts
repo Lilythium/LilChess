@@ -1,19 +1,21 @@
 import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import { openDb, closeDb } from "./db/connection.js";
-import { authRoutes } from "./auth/routes.js"; // Import the routes we just made
+import { authRoutes } from "./auth/routes.js";
+import { gameRoutes } from "./game/routes.js";
+
 
 const DATA_DIR = process.env.DATA_DIR ?? "./data";
 openDb(`${DATA_DIR}/lilchess.db`);
 
+
 const app = Fastify({ logger: true });
 
 
-// The cookie plugin must be registered before the routes that use it
 app.register(cookie);
 
-
 app.register(authRoutes);
+app.register(gameRoutes);
 
 app.get("/api/health", async () => ({ ok: true }));
 
