@@ -32,5 +32,9 @@
   "bugs": {
     "url": "https://github.com/Lilythium/LilChess/issues"
   },
-  "homepage": "https://github.com/Lilythium/LilChess#readme"
+  "homepage": "https://github.com/Lilythium/LilChess#readme",
+  "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/rate-limit": "^11.2.0"
+  }
 }
