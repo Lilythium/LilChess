@@ -3,7 +3,7 @@ import { requireAuth } from "../auth/routes.js";
 import { createChallenge, acceptChallengeTx } from "./queries.js";
 import { getDb } from "../db/connection.js";
 import { getMyGames, getUserProfileWithH2H } from "./queries.js";
-import { submitMoveTx, resignTx, offerDrawTx, acceptDrawTx } from "./moveTx.js";
+import { submitMoveTx, resignTx, offerDrawTx, acceptDrawTx, declineDrawTx, abortGameTx} from "./moveTx.js";
 
 export async function gameRoutes(app: FastifyInstance) {
   
@@ -97,6 +97,18 @@ export async function gameRoutes(app: FastifyInstance) {
   app.post("/api/games/:id/draw/accept", { preHandler: requireAuth }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try { acceptDrawTx(id, req.user!.id); return { ok: true }; }
+    catch (err: any) { return reply.code(400).send({ error: err.message }); }
+  });
+  
+  app.post("/api/games/:id/draw/decline", { preHandler: requireAuth }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try { declineDrawTx(id, req.user!.id); return { ok: true }; }
+    catch (err: any) { return reply.code(400).send({ error: err.message }); }
+  });
+
+  app.post("/api/games/:id/abort", { preHandler: requireAuth }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try { abortGameTx(id, req.user!.id); return { ok: true }; }
     catch (err: any) { return reply.code(400).send({ error: err.message }); }
   });
 }

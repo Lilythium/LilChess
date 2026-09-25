@@ -25,6 +25,7 @@ export const submitMoveTx = (gameId: string, userId: number, submittedPly: numbe
     const gameState = {
       status: game.status,
       turn,
+	  initialFen: game.initial_fen,
       deadlineAt: game.deadline_at,
       whiteMs: game.white_ms,
       blackMs: game.black_ms,
@@ -107,6 +108,31 @@ export const acceptDrawTx = (gameId: string, userId: number) => {
 
     db.prepare(`UPDATE games SET status = 'finished', result = '1/2-1/2', termination = 'draw_accepted', ended_at = ? WHERE id = ?`)
       .run(Date.now(), gameId);
+  });
+  return tx();
+};
+
+export const declineDrawTx = (gameId: string, userId: number) => {
+  const db = getDb();
+  const tx = db.transaction(() => {
+    const game = db.prepare(`SELECT draw_offered_by FROM games WHERE id = ? AND status = 'started'`).get(gameId) as any;
+    if (!game || !game.draw_offered_by) throw new Error("No active draw offer");
+    if (game.draw_offered_by === userId) throw new Error("Cannot decline your own draw offer");
+
+    db.prepare(`UPDATE games SET draw_offered_by = NULL WHERE id = ?`).run(gameId);
+  });
+  return tx();
+};
+
+export const abortGameTx = (gameId: string, userId: number) => {
+  const db = getDb();
+  const tx = db.transaction(() => {
+    const game = db.prepare(`SELECT * FROM games WHERE id = ? AND status = 'started'`).get(gameId) as any;
+    if (!game) throw new Error("Active game not found");
+    if (game.ply >= 2) throw new Error("Cannot abort after move 2");
+    if (game.white_id !== userId && game.black_id !== userId) throw new Error("Not a participant");
+
+    db.prepare(`UPDATE games SET status = 'aborted', ended_at = ? WHERE id = ?`).run(Date.now(), gameId);
   });
   return tx();
 };
