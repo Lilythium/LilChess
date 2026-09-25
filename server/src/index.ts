@@ -9,3 +9,12 @@ app.listen({ port, host: "0.0.0.0" }).catch((err) => {
   app.log.error(err);
   process.exit(1);
 });
+
+import { openDb, closeDb } from "./db/connection.js";
+
+const DATA_DIR = process.env.DATA_DIR ?? "./data"; // already gitignored at repo root
+openDb(`${DATA_DIR}/lilchess.db`);
+
+app.addHook("onClose", async () => {
+  closeDb();
+});

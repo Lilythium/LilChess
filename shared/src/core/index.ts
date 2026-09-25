@@ -4,3 +4,4 @@ export { resign, offerDraw, acceptDraw, abort, claimTimeout } from "./actions.js
 export { replay, positionKey } from "./replay.js";
 export { startingDeadline, advanceClock } from "./clock.js";
 export { createGame } from "./createGame.js";
+export { sanForNextMove } from "./notation.js";
