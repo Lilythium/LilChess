@@ -86,3 +86,62 @@ export function acceptChallengeTx(challengeId: string, acceptingUserId: number) 
   // Execute the transaction
   return transaction.immediate();
 }
+
+// Fetch games for a specific user, categorized by turn
+export function getMyGames(userId: number) {
+  const games = getDb().prepare(`
+    SELECT * FROM games 
+    WHERE (white_id = ? OR black_id = ?) 
+    ORDER BY deadline_at ASC, created_at DESC
+  `).all(userId, userId) as any[];
+
+  const myTurn: any[] = [];
+  const theirTurn: any[] = [];
+  const finished: any[] = [];
+
+  for (const game of games) {
+    if (game.status === 'finished' || game.status === 'aborted') {
+      finished.push(game);
+      continue;
+    }
+
+    // Determine whose turn it is based on the ply (even = white, odd = black)
+    const isWhiteToMove = game.ply % 2 === 0;
+    const isMyTurn = (isWhiteToMove && game.white_id === userId) || (!isWhiteToMove && game.black_id === userId);
+
+    if (isMyTurn) myTurn.push(game);
+    else theirTurn.push(game);
+  }
+
+  return { myTurn, theirTurn, finished };
+}
+
+// Fetch user profile and Head-to-Head stats
+export function getUserProfileWithH2H(targetUsername: string, viewerId: number) {
+  const db = getDb();
+  
+  const targetUser = db.prepare(`SELECT id, username, created_at FROM users WHERE username = ?`).get(targetUsername) as any;
+  if (!targetUser) return null;
+
+  // If viewing someone else, calculate H2H stats
+  let h2h = null;
+  if (targetUser.id !== viewerId) {
+    const stats = db.prepare(`
+      SELECT 
+        SUM(CASE WHEN (result = '1-0' AND white_id = :me) OR (result = '0-1' AND black_id = :me) THEN 1 ELSE 0 END) as wins,
+        SUM(CASE WHEN result = '1/2-1/2' THEN 1 ELSE 0 END) as draws,
+        SUM(CASE WHEN (result = '1-0' AND white_id = :them) OR (result = '0-1' AND black_id = :them) THEN 1 ELSE 0 END) as losses
+      FROM games
+      WHERE status = 'finished'
+        AND ((white_id = :me AND black_id = :them) OR (white_id = :them AND black_id = :me))
+    `).get({ me: viewerId, them: targetUser.id }) as any;
+
+    h2h = {
+      wins: stats.wins || 0,
+      draws: stats.draws || 0,
+      losses: stats.losses || 0
+    };
+  }
+
+  return { profile: targetUser, h2h };
+}
