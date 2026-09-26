@@ -35,6 +35,13 @@ export function acceptDraw(game: GameState, by: Color): ActionResult {
   };
 }
 
+export function declineDraw(game: GameState, by: Color): ActionResult {
+  if (game.status !== "started") return { ok: false, error: "game_not_active" };
+  if (game.drawOfferedBy === undefined) return { ok: false, error: "no_draw_to_decline" };
+  if (game.drawOfferedBy === by) return { ok: false, error: "cannot_decline_own_offer" };
+  return { ok: true, state: { ...game, drawOfferedBy: undefined } };
+}
+
 // Either side may abort — no `by` needed since the outcome (a void
 // game, no result) is the same regardless of who requests it.
 export function abort(game: GameState): ActionResult {

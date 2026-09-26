@@ -1,5 +1,18 @@
 import { applyMove, sanForNextMove, type GameState } from "@lilchess/shared";
 import { getDb } from "../connection.js";
+import {
+  applyMove,
+  sanForNextMove,
+  resign,
+  offerDraw,
+  acceptDraw,
+  declineDraw,
+  abort,
+  type GameState,
+  type Color,
+  type ActionResult,
+} from "@lilchess/shared";
+import { getDb } from "../connection.js";
 import { gameStateToRow, rowToGameState } from "../mappers.js";
 
 export function insertGame(id: string, whiteId: number, blackId: number, game: GameState): void {
@@ -85,4 +98,79 @@ export function headToHead(meId: number, themId: number) {
         AND ((white_id = :me AND black_id = :them) OR (white_id = :them AND black_id = :me))`,
     )
     .get({ me: meId, them: themId });
+}
+
+type NotFound = { ok: false; error: "not_found" };
+type NotAParticipant = { ok: false; error: "not_a_participant" };
+
+function getParticipants(id: string): { whiteId: number; blackId: number; ply: number } | undefined {
+  const row = getDb()
+    .prepare(`SELECT white_id, black_id, ply FROM games WHERE id = ?`)
+    .get(id) as { white_id: number; black_id: number; ply: number } | undefined;
+  if (!row) return undefined;
+  return { whiteId: row.white_id, blackId: row.black_id, ply: row.ply };
+}
+
+function colorOf(userId: number, p: { whiteId: number; blackId: number }): Color | undefined {
+  if (p.whiteId === userId) return "white";
+  if (p.blackId === userId) return "black";
+  return undefined;
+}
+
+// Ply-idempotent, turn-checked move submission. This is the function the
+// route calls — it wraps applyMoveAndPersist with the guards that used
+// to live (incorrectly) in moveTx.ts.
+export function submitMove(
+  gameId: string,
+  userId: number,
+  submittedPly: number,
+  uci: string,
+): ActionResult | NotFound | { ok: false; error: "ply_mismatch" | "not_your_turn" } {
+  const p = getParticipants(gameId);
+  if (!p) return { ok: false, error: "not_found" };
+  if (p.ply !== submittedPly) return { ok: false, error: "ply_mismatch" };
+
+  const turn: Color = p.ply % 2 === 0 ? "white" : "black";
+  const expectedUserId = turn === "white" ? p.whiteId : p.blackId;
+  if (expectedUserId !== userId) return { ok: false, error: "not_your_turn" };
+
+  return applyMoveAndPersist(gameId, uci, Date.now());
+}
+
+function actAndPersist(
+  gameId: string,
+  userId: number,
+  action: (game: GameState, color: Color) => ActionResult,
+): ActionResult | NotFound | NotAParticipant {
+  const p = getParticipants(gameId);
+  if (!p) return { ok: false, error: "not_found" };
+  const color = colorOf(userId, p);
+  if (!color) return { ok: false, error: "not_a_participant" };
+
+  const game = getGame(gameId);
+  if (!game) return { ok: false, error: "not_found" };
+
+  const result = action(game, color);
+  if (result.ok) updateGameState(gameId, result.state);
+  return result;
+}
+
+export function resignAndPersist(gameId: string, userId: number) {
+  return actAndPersist(gameId, userId, resign);
+}
+
+export function offerDrawAndPersist(gameId: string, userId: number) {
+  return actAndPersist(gameId, userId, offerDraw);
+}
+
+export function acceptDrawAndPersist(gameId: string, userId: number) {
+  return actAndPersist(gameId, userId, acceptDraw);
+}
+
+export function declineDrawAndPersist(gameId: string, userId: number) {
+  return actAndPersist(gameId, userId, declineDraw);
+}
+
+export function abortAndPersist(gameId: string, userId: number) {
+  return actAndPersist(gameId, userId, (game) => abort(game));
 }
