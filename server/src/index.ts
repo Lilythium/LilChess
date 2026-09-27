@@ -3,7 +3,7 @@ import cookie from "@fastify/cookie";
 import { openDb, closeDb } from "./db/connection.js";
 import { authRoutes } from "./auth/routes.js";
 import { gameRoutes } from "./game/routes.js";
-
+import { attachWebSocketServer } from "./ws/server.js";
 
 const DATA_DIR = process.env.DATA_DIR ?? "./data";
 openDb(`${DATA_DIR}/lilchess.db`);
@@ -13,11 +13,12 @@ const app = Fastify({ logger: true });
 
 
 app.register(cookie);
-
 app.register(authRoutes);
 app.register(gameRoutes);
 
 app.get("/api/health", async () => ({ ok: true }));
+
+attachWebSocketServer(app);
 
 app.addHook("onClose", async () => {
   closeDb();

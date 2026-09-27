@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { hashPassword, verifyPassword, generateSessionToken, hashSessionToken } from "./crypto.js";
 import { createUser, getUserByUsername, createSession, getSessionUser, deleteSession, User } from "./queries.js";
 
-const SESSION_COOKIE = "sessionId";
+export const SESSION_COOKIE = "sessionId";
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Augment FastifyRequest so TS knows req.user exists
