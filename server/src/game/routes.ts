@@ -1,7 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { requireAuth } from "../auth/routes.js";
 import { createChallenge, acceptChallengeTx, getMyGames, getUserProfileWithH2H } from "./queries.js";
-import { getDb } from "../db/connection.js";
 import {
   submitMove,
   resignAndPersist,
@@ -9,6 +8,7 @@ import {
   acceptDrawAndPersist,
   declineDrawAndPersist,
   abortAndPersist,
+  getGame,
 } from "../db/repositories/games.js";
 
 export async function gameRoutes(app: FastifyInstance) {
@@ -17,7 +17,6 @@ export async function gameRoutes(app: FastifyInstance) {
   app.post("/api/challenges", { preHandler: requireAuth }, async (req, reply) => {
     const { mode, toUser, initialMs, incrementMs, daysPerMove, colorPref } = req.body as any;
     
-    // Basic validation
     if (!["live", "correspondence"].includes(mode)) {
       return reply.code(400).send({ error: "Invalid mode" });
     }
@@ -50,13 +49,11 @@ export async function gameRoutes(app: FastifyInstance) {
   // Fetch a game
   app.get("/api/games/:id", { preHandler: requireAuth }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    
-    const game = getDb().prepare(`SELECT * FROM games WHERE id = ?`).get(id);
+
+    const game = getGame(id);
     if (!game) return reply.code(404).send({ error: "Game not found" });
 
-    const moves = getDb().prepare(`SELECT ply, uci, san FROM moves WHERE game_id = ? ORDER BY ply ASC`).all(id);
-    
-    return { ok: true, game, moves };
+    return { ok: true, game };
   });
   
   // Get "My Games" dashboard

@@ -14,10 +14,6 @@ export function applyMove(
     return { ok: false, error: "game_not_active" };
   }
 
-  // The mover's flag already fell before this move arrived — the game
-  // ends on time, and the attempted move is never applied. Works for
-  // both live (deadlineAt = turn start + remaining) and correspondence
-  // (deadlineAt = turn start + daysPerMove) with the same check.
   if (now >= game.deadlineAt) {
     return {
       ok: true,

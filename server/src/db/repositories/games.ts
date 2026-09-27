@@ -1,4 +1,3 @@
-import { applyMove, sanForNextMove, type GameState } from "@lilchess/shared";
 import { getDb } from "../connection.js";
 import {
   applyMove,
@@ -12,7 +11,6 @@ import {
   type Color,
   type ActionResult,
 } from "@lilchess/shared";
-import { getDb } from "../connection.js";
 import { gameStateToRow, rowToGameState } from "../mappers.js";
 
 export function insertGame(id: string, whiteId: number, blackId: number, game: GameState): void {
@@ -61,28 +59,34 @@ function updateGameState(id: string, game: GameState): void {
     .run({ id, ...row, endedAt });
 }
 
-function appendMove(gameId: string, ply: number, uci: string, san: string): void {
-  getDb()
-    .prepare(`INSERT INTO moves (game_id, ply, uci, san) VALUES (?, ?, ?, ?)`)
-    .run(gameId, ply, uci, san);
-}
-
-export function applyMoveAndPersist(id: string, uci: string, now: number) {
+function applyMoveCore(id: string, uci: string, now: number) {
   const before = getGame(id);
-  if (!before) return { ok: false as const, error: "not_found" };
-
+  if (!before) return { ok: false as const, error: "not_found" as const };
   const san = sanForNextMove(before, uci);
   const result = applyMove(before, uci, now);
   if (!result.ok) return result;
-
-  const movePlayed = result.state.moves.length > before.moves.length;
-  const tx = getDb().transaction(() => {
-    if (movePlayed && san) appendMove(id, result.state.ply, uci, san);
-    updateGameState(id, result.state);
-  });
-  tx();
-
+  if (result.state.moves.length > before.moves.length && san) {
+    appendMove(id, result.state.ply, uci, san);
+  }
+  updateGameState(id, result.state);
   return result;
+}
+
+export function applyMoveAndPersist(id: string, uci: string, now: number) {
+  return getDb().transaction(() => applyMoveCore(id, uci, now)).immediate();
+}
+
+export function submitMove(gameId: string, userId: number, submittedPly: number, uci: string) {
+  return getDb().transaction(() => {
+    const p = getParticipants(gameId);
+    if (!p) return { ok: false as const, error: "not_found" as const };
+    if (p.ply !== submittedPly) return { ok: false as const, error: "ply_mismatch" as const };
+    const turn: Color = p.ply % 2 === 0 ? "white" : "black";
+    if ((turn === "white" ? p.whiteId : p.blackId) !== userId) {
+      return { ok: false as const, error: "not_your_turn" as const };
+    }
+    return applyMoveCore(gameId, uci, Date.now());
+  }).immediate();
 }
 
 // Straight from the roadmap sketch, just bound as named params.
@@ -115,44 +119,6 @@ function colorOf(userId: number, p: { whiteId: number; blackId: number }): Color
   if (p.whiteId === userId) return "white";
   if (p.blackId === userId) return "black";
   return undefined;
-}
-
-// Ply-idempotent, turn-checked move submission. This is the function the
-// route calls — it wraps applyMoveAndPersist with the guards that used
-// to live (incorrectly) in moveTx.ts.
-export function submitMove(
-  gameId: string,
-  userId: number,
-  submittedPly: number,
-  uci: string,
-): ActionResult | NotFound | { ok: false; error: "ply_mismatch" | "not_your_turn" } {
-  const p = getParticipants(gameId);
-  if (!p) return { ok: false, error: "not_found" };
-  if (p.ply !== submittedPly) return { ok: false, error: "ply_mismatch" };
-
-  const turn: Color = p.ply % 2 === 0 ? "white" : "black";
-  const expectedUserId = turn === "white" ? p.whiteId : p.blackId;
-  if (expectedUserId !== userId) return { ok: false, error: "not_your_turn" };
-
-  return applyMoveAndPersist(gameId, uci, Date.now());
-}
-
-function actAndPersist(
-  gameId: string,
-  userId: number,
-  action: (game: GameState, color: Color) => ActionResult,
-): ActionResult | NotFound | NotAParticipant {
-  const p = getParticipants(gameId);
-  if (!p) return { ok: false, error: "not_found" };
-  const color = colorOf(userId, p);
-  if (!color) return { ok: false, error: "not_a_participant" };
-
-  const game = getGame(gameId);
-  if (!game) return { ok: false, error: "not_found" };
-
-  const result = action(game, color);
-  if (result.ok) updateGameState(gameId, result.state);
-  return result;
 }
 
 export function resignAndPersist(gameId: string, userId: number) {
