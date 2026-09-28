@@ -4,10 +4,11 @@ import { openDb, closeDb } from "./db/connection.js";
 import { authRoutes } from "./auth/routes.js";
 import { gameRoutes } from "./game/routes.js";
 import { attachWebSocketServer } from "./ws/server.js";
+import { startTimeoutScheduler, stopTimeoutScheduler } from "./game/timeoutScheduler.js";
 
 const DATA_DIR = process.env.DATA_DIR ?? "./data";
 openDb(`${DATA_DIR}/lilchess.db`);
-
+startTimeoutScheduler(); 
 
 const app = Fastify({ logger: true });
 
@@ -21,6 +22,7 @@ app.get("/api/health", async () => ({ ok: true }));
 attachWebSocketServer(app);
 
 app.addHook("onClose", async () => {
+  stopTimeoutScheduler();
   closeDb();
 });
 

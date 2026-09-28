@@ -9,6 +9,7 @@ import {
   declineDrawAndPersist,
   abortAndPersist,
   getGame,
+  getMoveSans,
 } from "../db/repositories/games.js";
 
 export async function gameRoutes(app: FastifyInstance) {
@@ -48,13 +49,13 @@ export async function gameRoutes(app: FastifyInstance) {
 
   // Fetch a game
   app.get("/api/games/:id", { preHandler: requireAuth }, async (req, reply) => {
-    const { id } = req.params as { id: string };
+  const { id } = req.params as { id: string };
 
-    const game = getGame(id);
-    if (!game) return reply.code(404).send({ error: "Game not found" });
+  const game = getGame(id);
+  if (!game) return reply.code(404).send({ error: "Game not found" });
 
-    return { ok: true, game };
-  });
+  return { ok: true, game, sans: getMoveSans(id) };
+});
   
   // Get "My Games" dashboard
   app.get("/api/games/my-games", { preHandler: requireAuth }, async (req) => {

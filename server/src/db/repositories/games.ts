@@ -7,12 +7,14 @@ import {
   acceptDraw,
   declineDraw,
   abort,
+  claimTimeout,
   type GameState,
   type Color,
   type ActionResult,
 } from "@lilchess/shared";
 import { gameStateToRow, rowToGameState } from "../mappers.js";
 import { broadcastGameEvent } from "../../ws/hub.js";
+import { sendWebhook } from "../../notifications/webhook.js";
 
 export function insertGame(id: string, whiteId: number, blackId: number, game: GameState): void {
   const row = gameStateToRow(game);
@@ -45,6 +47,13 @@ export function getGame(id: string): GameState | undefined {
   return rowToGameState(row, moves.map((m) => m.uci));
 }
 
+export function getMoveSans(gameId: string): string[] {
+  return getDb()
+    .prepare(`SELECT san FROM moves WHERE game_id = ? ORDER BY ply ASC`)
+    .all(gameId)
+    .map((r: any) => r.san);
+}
+
 function updateGameState(id: string, game: GameState): void {
   const row = gameStateToRow(game);
   const endedAt = game.status === "started" ? null : Date.now();
@@ -66,7 +75,6 @@ function appendMove(gameId: string, ply: number, uci: string, san: string): void
     .run(gameId, ply, uci, san);
 }
 
-// Straight from the roadmap sketch, just bound as named params.
 export function headToHead(meId: number, themId: number) {
   return getDb()
     .prepare(
@@ -79,6 +87,20 @@ export function headToHead(meId: number, themId: number) {
         AND ((white_id = :me AND black_id = :them) OR (white_id = :them AND black_id = :me))`,
     )
     .get({ me: meId, them: themId });
+}
+
+export function getExpiredStartedGameIds(now: number): string[] {
+  return (getDb()
+    .prepare(`SELECT id FROM games WHERE status = 'started' AND deadline_at <= ? ORDER BY deadline_at ASC`)
+    .all(now) as { id: string }[])
+    .map((r) => r.id);
+}
+
+export function getEarliestActiveDeadline(): number | undefined {
+  const row = getDb()
+    .prepare(`SELECT MIN(deadline_at) AS deadline FROM games WHERE status = 'started'`)
+    .get() as { deadline: number | null };
+  return row.deadline ?? undefined;
 }
 
 type NotFound = { ok: false; error: "not_found" };
@@ -143,6 +165,12 @@ function broadcastMoveOutcome(
       result: state.result,
       termination: state.termination,
     });
+  }
+  if (movePlayed && san && state.clock.mode === "correspondence") {
+    void sendWebhook(`Move played in game ${gameId}: ${san}. Now ${state.turn} to move.`);
+  }
+  if (state.status === "finished" && state.clock.mode === "correspondence") {
+    void sendWebhook(`Game ${gameId} ended: ${state.result ?? "—"} (${state.termination}).`);
   }
 }
 
@@ -250,4 +278,25 @@ export function abortAndPersist(gameId: string, userId: number) {
     });
   }
   return r;
+}
+
+export function claimTimeoutAndPersist(gameId: string, now: number) {
+  const outcome = getDb().transaction(() => {
+    const game = getGame(gameId);
+    if (!game) return { ok: false as const, error: "not_found" as const };
+    const result = claimTimeout(game, now);
+    if (result.ok) updateGameState(gameId, result.state);
+    return result;
+  }).immediate();
+
+  if (outcome.ok) {
+    broadcastGameEvent(gameId, {
+      type: "game_over",
+      gameId,
+      status: "finished",
+      result: outcome.state.result,
+      termination: outcome.state.termination,
+    });
+  }
+  return outcome;
 }
