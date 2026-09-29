@@ -8,6 +8,7 @@ export interface GameRow {
   mode: "live" | "correspondence"; initial_ms: number | null; increment_ms: number | null;
   days_per_move: number | null; status: string; result: string | null; termination: string | null;
   ply: number; deadline_at: number; ended_at: number | null;
+  fen: string; last_move: string | null;
 }
 export interface MyGames { myTurn: GameRow[]; theirTurn: GameRow[]; finished: GameRow[] }
 

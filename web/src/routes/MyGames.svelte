@@ -3,6 +3,7 @@
   import { api } from "../lib/api";
   import { auth } from "../lib/auth.svelte";
   import { formatDuration, timeControl } from "../lib/format";
+  import GameCard from "../lib/components/GameCard.svelte";
   import type { GameRow, MyGames } from "../lib/types";
 
   let data = $state<MyGames | null>(null);
@@ -26,13 +27,20 @@
   });
 
   const opponent = (g: GameRow) => (g.white_id === auth.user?.id ? g.black_name : g.white_name);
+  const orientation = (g: GameRow): "white" | "black" => (g.black_id === auth.user?.id ? "black" : "white");
 
   function outcome(g: GameRow): string {
     if (g.status === "aborted") return "Aborted";
     if (g.result === "1/2-1/2") return "Draw";
     const iAmWhite = g.white_id === auth.user?.id;
-    const whiteWon = g.result === "1-0";
-    return whiteWon === iAmWhite ? "Won" : "Lost";
+    return (g.result === "1-0") === iAmWhite ? "Won" : "Lost";
+  }
+
+  function subtitle(g: GameRow, kind: "active" | "finished"): string {
+    const tc = timeControl(g);
+    if (kind === "finished") return `${tc} · ${outcome(g)}`;
+    if (g.mode === "correspondence") return `${tc} · ${formatDuration(g.deadline_at - now)} left`;
+    return tc;
   }
 </script>
 
@@ -42,23 +50,18 @@
     {#if games.length === 0}
       <p class="muted">No games.</p>
     {:else}
-      <table>
-        <tbody>
-          {#each games as g (g.id)}
-            <tr>
-              <td><a href={"#/game/" + g.id}>{opponent(g)}</a></td>
-              <td>{timeControl(g)}</td>
-              <td class="muted">
-                {#if kind === "finished"}
-                  {outcome(g)}
-                {:else if g.mode === "correspondence"}
-                  {formatDuration(g.deadline_at - now)} left
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+      <div class="cards">
+        {#each games as g (g.id)}
+          <GameCard
+            href={"#/game/" + g.id}
+            fen={g.fen}
+            lastMove={g.last_move}
+            orientation={orientation(g)}
+            title={opponent(g)}
+            subtitle={subtitle(g, kind)}
+          />
+        {/each}
+      </div>
     {/if}
   </div>
 {/snippet}

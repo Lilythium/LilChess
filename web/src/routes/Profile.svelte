@@ -3,12 +3,14 @@
   import { api } from "../lib/api";
   import { timeControl } from "../lib/format";
   import type { GameRow } from "../lib/types";
+  import GameCard from "../lib/components/GameCard.svelte";
 
   type ProfileGame = Pick<
     GameRow,
     | "id" | "mode" | "initial_ms" | "increment_ms" | "days_per_move"
     | "result" | "termination" | "ended_at"
     | "white_id" | "black_id" | "white_name" | "black_name"
+    | "fen" | "last_move"
   >;
   interface ProfileResponse {
     ok: true;

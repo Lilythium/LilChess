@@ -23,4 +23,5 @@ input, select { background: var(--bg); color: var(--text-hi); border: 1px solid 
 .muted { color: var(--muted); }  .error { color: var(--red); }
 .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 table { width: 100%; border-collapse: collapse; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; }
 td, th { text-align: left; padding: .5rem .25rem; border-bottom: 1px solid var(--border); }

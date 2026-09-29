@@ -1,9 +1,40 @@
 import { getDb } from "../db/connection.js";
 import { randomBytes } from "node:crypto";
+import { fenAfterMoves, START_FEN } from "@lilchess/shared";
 
 // Helper to generate short random IDs like "aB9x2p"
 function generateId(bytes = 4) {
   return randomBytes(bytes).toString("hex");
+}
+
+function attachPositions<T extends { id: string }>(
+  rows: T[],
+): (T & { fen: string; last_move: string | null })[] {
+  if (rows.length === 0) return [];
+  const db = getDb();
+  const ids = rows.map((r) => r.id);
+  const marks = ids.map(() => "?").join(",");
+
+  const initialFens = new Map(
+    (db.prepare(`SELECT id, initial_fen FROM games WHERE id IN (${marks})`).all(...ids) as
+      { id: string; initial_fen: string }[]).map((r) => [r.id, r.initial_fen]),
+  );
+
+  const movesByGame = new Map<string, string[]>();
+  const moveRows = db
+    .prepare(`SELECT game_id, uci FROM moves WHERE game_id IN (${marks}) ORDER BY game_id, ply`)
+    .all(...ids) as { game_id: string; uci: string }[];
+  for (const m of moveRows) {
+    const list = movesByGame.get(m.game_id) ?? [];
+    list.push(m.uci);
+    movesByGame.set(m.game_id, list);
+  }
+
+  return rows.map((r) => {
+    const moves = movesByGame.get(r.id) ?? [];
+    const fen = fenAfterMoves(initialFens.get(r.id) ?? START_FEN, moves) ?? START_FEN;
+    return { ...r, fen, last_move: moves.at(-1) ?? null };
+  });
 }
 
 export function createChallenge(data: {
@@ -117,7 +148,11 @@ export function getMyGames(userId: number) {
   }
 
   finished.sort((a, b) => (b.ended_at ?? 0) - (a.ended_at ?? 0));
-  return { myTurn, theirTurn, finished: finished.slice(0, 50) };
+  return {
+    myTurn: attachPositions(myTurn),
+    theirTurn: attachPositions(theirTurn),
+    finished: attachPositions(finished.slice(0, 50)),
+  };
 }
 
 // Fetch user profile and Head-to-Head stats
@@ -158,7 +193,7 @@ export function getUserProfileWithH2H(targetUsername: string, viewerId: number) 
     ORDER BY g.ended_at DESC LIMIT 20
   `).all(targetUser.id, targetUser.id);
 
-  return { profile: targetUser, h2h, games };
+  return { profile: targetUser, h2h, games: attachPositions(games) };
 }
 
 export function getGamePlayers(gameId: string) {

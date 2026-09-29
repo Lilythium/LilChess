@@ -147,7 +147,7 @@
   </div>
 
   <div class="stack">
-    {@render list("Open seeks", challenges.open, "Accept", accept, true)}
+    {@render list("Open Challenges", challenges.open, "Accept", accept, true)}
     {#if challenges.forMe.length > 0}
       {@render list("Challenges for you", challenges.forMe, "Accept", accept, true)}
     {/if}

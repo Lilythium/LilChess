@@ -10,9 +10,7 @@
     try {
       const g = await api<MyGames>("/api/games/my-games");
       yourTurn = g.myTurn.length;
-    } catch {
-      // transient; try again next tick
-    }
+    } catch { }
   }
 
   onMount(() => {
@@ -33,7 +31,7 @@
   <nav>
     <a href="#/">Lobby</a>
     <a href="#/games">My games{#if yourTurn > 0} <span class="badge">{yourTurn}</span>{/if}</a>
-    <a href={profileHref}>{auth.user?.username}</a>
+    <!--<a href={profileHref}>{auth.user?.username}</a> COMMENTING FOR NOW, profile page and my games serve basically the same purpose-->
     <button onclick={() => logout()}>Log out</button>
   </nav>
 </header>
