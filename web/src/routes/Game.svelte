@@ -95,7 +95,9 @@
   .bar a { color: var(--text-hi); }
   .result { color: var(--text-hi); font-weight: 500; }
   @media (max-width: 800px) {
-    .game { grid-template-columns: 1fr; }
-    .board-col { width: 100%; }
+    .game { grid-template-columns: 1fr; gap: 0.5rem; }
+    /* Board never taller than the space left after header, bars, and buttons. */
+    .board-col { width: min(100%, calc(100dvh - 300px)); margin: 0 auto; }
+    .bar { padding: 0.25rem 0; }
   }
 </style>

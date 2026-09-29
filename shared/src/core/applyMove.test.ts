@@ -75,6 +75,7 @@ describe("applyMove — clocks", () => {
     expect(res.state.result).toBe("0-1");
     expect(res.state.termination).toBe("timeout");
     expect(res.state.moves).toEqual([]); // the late move was never recorded
+    expect(res.state.whiteMs).toBe(0);
   });
 });
 
@@ -86,6 +87,7 @@ describe("claimTimeout", () => {
     if (!res.ok) return;
     expect(res.state.result).toBe("0-1"); // white was to move and flagged
     expect(res.state.termination).toBe("timeout");
+    expect(res.state.whiteMs).toBe(0);
   });
 
   it("refuses to claim before the deadline", () => {

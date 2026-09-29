@@ -15,16 +15,19 @@ export function applyMove(
   }
 
   if (now >= game.deadlineAt) {
-    return {
-      ok: true,
-      state: {
-        ...game,
-        status: "finished",
-        result: game.turn === "white" ? "0-1" : "1-0",
-        termination: "timeout",
-      },
-    };
-  }
+  const loser = game.turn;
+  return {
+    ok: true,
+    state: {
+      ...game,
+      status: "finished",
+      result: loser === "white" ? "0-1" : "1-0",
+      termination: "timeout",
+      whiteMs: loser === "white" ? 0 : game.whiteMs,
+      blackMs: loser === "black" ? 0 : game.blackMs,
+    },
+  };
+}
 
   const move = parseUci(uci);
   if (!move) {

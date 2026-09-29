@@ -53,13 +53,16 @@ export function abort(game: GameState): ActionResult {
 export function claimTimeout(game: GameState, now: number): ActionResult {
   if (game.status !== "started") return { ok: false, error: "game_not_active" };
   if (now < game.deadlineAt) return { ok: false, error: "not_yet_expired" };
+  const loser = game.turn;
   return {
     ok: true,
     state: {
       ...game,
       status: "finished",
-      result: game.turn === "white" ? "0-1" : "1-0",
+      result: loser === "white" ? "0-1" : "1-0",
       termination: "timeout",
+      whiteMs: loser === "white" ? 0 : game.whiteMs,
+      blackMs: loser === "black" ? 0 : game.blackMs,
     },
   };
 }

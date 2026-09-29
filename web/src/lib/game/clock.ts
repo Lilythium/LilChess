@@ -3,6 +3,7 @@ import type { Color, GameState } from "@lilchess/shared";
 // The stored ms of the side to move is stale (as of turnStartedAt),
 // so derive it from the deadline. The waiting side's stored value is exact.
 export function remainingMs(g: GameState, side: Color, serverNow: number): number {
+  if (g.termination === "timeout" && g.turn === side) return 0; // the flagged side
   if (g.status === "started" && g.clock.mode === "live" && g.turn === side)
     return Math.max(0, g.deadlineAt - serverNow);
   return side === "white" ? g.whiteMs : g.blackMs;
