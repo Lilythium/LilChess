@@ -90,9 +90,12 @@ export function acceptChallengeTx(challengeId: string, acceptingUserId: number) 
 // Fetch games for a specific user, categorized by turn
 export function getMyGames(userId: number) {
   const games = getDb().prepare(`
-    SELECT * FROM games 
-    WHERE (white_id = ? OR black_id = ?) 
-    ORDER BY deadline_at ASC, created_at DESC
+    SELECT g.*, wu.username AS white_name, bu.username AS black_name
+    FROM games g
+    JOIN users wu ON wu.id = g.white_id
+    JOIN users bu ON bu.id = g.black_id
+    WHERE g.white_id = ? OR g.black_id = ?
+    ORDER BY g.deadline_at ASC, g.created_at DESC
   `).all(userId, userId) as any[];
 
   const myTurn: any[] = [];
@@ -113,7 +116,8 @@ export function getMyGames(userId: number) {
     else theirTurn.push(game);
   }
 
-  return { myTurn, theirTurn, finished };
+  finished.sort((a, b) => (b.ended_at ?? 0) - (a.ended_at ?? 0));
+  return { myTurn, theirTurn, finished: finished.slice(0, 50) };
 }
 
 // Fetch user profile and Head-to-Head stats
@@ -143,5 +147,48 @@ export function getUserProfileWithH2H(targetUsername: string, viewerId: number) 
     };
   }
 
-  return { profile: targetUser, h2h };
+  const games = db.prepare(`
+    SELECT g.id, g.mode, g.initial_ms, g.increment_ms, g.days_per_move,
+          g.result, g.termination, g.ended_at,
+          g.white_id, g.black_id, wu.username AS white_name, bu.username AS black_name
+    FROM games g
+    JOIN users wu ON wu.id = g.white_id
+    JOIN users bu ON bu.id = g.black_id
+    WHERE g.status = 'finished' AND (g.white_id = ? OR g.black_id = ?)
+    ORDER BY g.ended_at DESC LIMIT 20
+  `).all(targetUser.id, targetUser.id);
+
+  return { profile: targetUser, h2h, games };
+}
+
+export function getGamePlayers(gameId: string) {
+  return getDb().prepare(`
+    SELECT g.white_id AS whiteId, wu.username AS whiteName,
+           g.black_id AS blackId, bu.username AS blackName
+    FROM games g
+    JOIN users wu ON wu.id = g.white_id
+    JOIN users bu ON bu.id = g.black_id
+    WHERE g.id = ?
+  `).get(gameId) as
+    | { whiteId: number; whiteName: string; blackId: number; blackName: string }
+    | undefined;
+}
+
+export function listChallenges(userId: number) {
+  const rows = getDb().prepare(`
+    SELECT c.*, u.username AS from_name
+    FROM challenges c JOIN users u ON u.id = c.from_user
+    WHERE c.expires_at > ? AND (c.from_user = ? OR c.to_user IS NULL OR c.to_user = ?)
+    ORDER BY c.created_at DESC
+  `).all(Date.now(), userId, userId) as any[];
+  return {
+    mine: rows.filter((r) => r.from_user === userId),
+    forMe: rows.filter((r) => r.to_user === userId),
+    open: rows.filter((r) => r.from_user !== userId && r.to_user === null),
+  };
+}
+
+export function cancelChallenge(id: string, userId: number): boolean {
+  return getDb().prepare(`DELETE FROM challenges WHERE id = ? AND from_user = ?`)
+    .run(id, userId).changes > 0;
 }

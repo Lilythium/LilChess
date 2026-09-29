@@ -13,16 +13,12 @@ declare module "fastify" {
 }
 
 export async function authRoutes(app: FastifyInstance) {
-  
-  // Login with rate limiting (max 5 attempts per minute per IP)
-  app.register(import('@fastify/rate-limit'), {
-    max: 5,
-    timeWindow: '1 minute'
-  });
+  // Not global: only routes that opt in via `config.rateLimit` are limited.
+  await app.register(import("@fastify/rate-limit"), { global: false });
 
   app.post("/api/register", async (req, reply) => {
     const { username, password, inviteCode } = req.body as any;
-    
+
     if (!username || !password || password.length < 8) {
       return reply.code(400).send({ error: "Invalid username or password too short" });
     }
@@ -48,18 +44,23 @@ export async function authRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post("/api/login", async (req, reply) => {
-    const { username, password } = req.body as any;
-    const user = getUserByUsername(username);
+  // Login is rate limited (max 5 attempts per minute per IP)
+  app.post(
+    "/api/login",
+    { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } },
+    async (req, reply) => {
+      const { username, password } = req.body as any;
+      const user = getUserByUsername(username);
 
-    if (!user || !(await verifyPassword(password, user.password_hash))) {
-      return reply.code(401).send({ error: "Invalid credentials" });
-    }
+      if (!user || !(await verifyPassword(password, user.password_hash))) {
+        return reply.code(401).send({ error: "Invalid credentials" });
+      }
 
-    await establishSession(reply, user.id);
-    const { password_hash, ...safeUser } = user;
-    return { ok: true, user: safeUser };
-  });
+      await establishSession(reply, user.id);
+      const { password_hash, ...safeUser } = user;
+      return { ok: true, user: safeUser };
+    },
+  );
 
   app.post("/api/logout", async (req, reply) => {
     const token = req.cookies[SESSION_COOKIE];
@@ -81,15 +82,15 @@ async function establishSession(reply: FastifyReply, userId: number) {
   const token = generateSessionToken();
   const tokenHash = hashSessionToken(token);
   const expiresAt = Date.now() + THIRTY_DAYS_MS;
-  
+
   createSession(tokenHash, userId, expiresAt);
-  
+
   reply.setCookie(SESSION_COOKIE, token, {
     path: "/",
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    maxAge: THIRTY_DAYS_MS / 1000 // maxAge is in seconds
+    maxAge: THIRTY_DAYS_MS / 1000, // maxAge is in seconds
   });
 }
 

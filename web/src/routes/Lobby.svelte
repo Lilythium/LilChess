@@ -1,0 +1,164 @@
+<script lang="ts">
+  import { onMount } from "svelte";
+  import { api } from "../lib/api";
+  import { navigate } from "../lib/router.svelte";
+  import { timeControl } from "../lib/format";
+  import type { ChallengeRow, Challenges, MyGames } from "../lib/types";
+
+  const PRESETS: [number, number][] = [[1, 0], [3, 2], [5, 3], [10, 0], [15, 10]];
+  const DAYS = [1, 2, 3, 7, 14];
+
+  let mode = $state<"live" | "correspondence">("live");
+  let preset = $state(2); // 5+3
+  let days = $state(3);
+  let color = $state<"random" | "white" | "black">("random");
+  let toUsername = $state("");
+  let error = $state<string | null>(null);
+  let busy = $state(false);
+  let challenges = $state<Challenges>({ mine: [], forMe: [], open: [] });
+
+  // Games that existed on first load; anything new means one of my seeks was accepted.
+  let known: Set<string> | null = null;
+
+  async function refresh() {
+    try {
+      const [c, g] = await Promise.all([
+        api<Challenges>("/api/challenges"),
+        api<MyGames>("/api/games/my-games"),
+      ]);
+      challenges = c;
+      const started = [...g.myTurn, ...g.theirTurn].map((r) => r.id);
+      if (known === null) {
+        known = new Set(started);
+      } else {
+        const seen = known;
+        const fresh = started.find((id) => !seen.has(id));
+        if (fresh) navigate(`/game/${fresh}`);
+      }
+    } catch {
+      // transient; next poll will retry
+    }
+  }
+
+  onMount(() => {
+    void refresh();
+    const t = setInterval(refresh, 3000);
+    return () => clearInterval(t);
+  });
+
+  async function create() {
+    busy = true;
+    error = null;
+    const [min, inc] = PRESETS[preset]!;
+    const clock =
+      mode === "live"
+        ? { mode, initialMs: min * 60_000, incrementMs: inc * 1000 }
+        : { mode, daysPerMove: days };
+    try {
+      await api("/api/challenges", {
+        body: {
+          ...clock,
+          colorPref: color === "random" ? undefined : color,
+          toUsername: toUsername.trim() || undefined,
+        },
+      });
+      toUsername = "";
+      await refresh();
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function accept(id: string) {
+    error = null;
+    try {
+      const r = await api<{ gameId: string }>(`/api/challenges/${id}/accept`, { method: "POST" });
+      navigate(`/game/${r.gameId}`);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      await refresh();
+    }
+  }
+
+  async function cancel(id: string) {
+    try {
+      await api(`/api/challenges/${id}`, { method: "DELETE" });
+    } finally {
+      await refresh();
+    }
+  }
+</script>
+
+{#snippet list(title: string, rows: ChallengeRow[], label: string, action: (id: string) => void, showFrom: boolean)}
+  <div class="panel">
+    <h2>{title}</h2>
+    {#if rows.length === 0}
+      <p class="muted">Nothing here.</p>
+    {:else}
+      <table>
+        <tbody>
+          {#each rows as c (c.id)}
+            <tr>
+              {#if showFrom}<td>{c.from_name}</td>{/if}
+              <td>{timeControl(c)}</td>
+              <td>{c.color_pref ? `you: ${c.color_pref === "white" ? "black" : "white"}` : ""}</td>
+              <td style="text-align:right"><button onclick={() => action(c.id)}>{label}</button></td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
+  </div>
+{/snippet}
+
+<div class="grid">
+  <div class="panel">
+    <h2>Create a game</h2>
+    <div class="stack">
+      <div class="row">
+        <button class:primary={mode === "live"} onclick={() => (mode = "live")}>Live</button>
+        <button class:primary={mode === "correspondence"} onclick={() => (mode = "correspondence")}>Correspondence</button>
+      </div>
+
+      {#if mode === "live"}
+        <div class="row">
+          {#each PRESETS as [m, i], idx (idx)}
+            <button class:primary={preset === idx} onclick={() => (preset = idx)}>{m}+{i}</button>
+          {/each}
+        </div>
+      {:else}
+        <select bind:value={days}>
+          {#each DAYS as d (d)}<option value={d}>{d} day{d === 1 ? "" : "s"} per move</option>{/each}
+        </select>
+      {/if}
+
+      <div class="row">
+        <button class:primary={color === "white"} onclick={() => (color = "white")}>White</button>
+        <button class:primary={color === "random"} onclick={() => (color = "random")}>Random</button>
+        <button class:primary={color === "black"} onclick={() => (color = "black")}>Black</button>
+      </div>
+
+      <input placeholder="Challenge a specific user (optional)" bind:value={toUsername} />
+      {#if error}<span class="error">{error}</span>{/if}
+      <button class="primary" disabled={busy} onclick={create}>Create</button>
+    </div>
+  </div>
+
+  <div class="stack">
+    {@render list("Open seeks", challenges.open, "Accept", accept, true)}
+    {#if challenges.forMe.length > 0}
+      {@render list("Challenges for you", challenges.forMe, "Accept", accept, true)}
+    {/if}
+    {#if challenges.mine.length > 0}
+      {@render list("Your challenges", challenges.mine, "Cancel", cancel, false)}
+    {/if}
+  </div>
+</div>
+
+<style>
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+  .stack { display: flex; flex-direction: column; gap: 0.75rem; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+</style>
