@@ -38,7 +38,6 @@
   .last { background: var(--panel-hi); color: var(--text-hi); }
 
   @media (max-width: 800px) {
-    .moves { display: flex; gap: 0.25rem; min-height: 0; max-height: none;
-             overflow-x: auto; overflow-y: hidden; white-space: nowrap; }
+    .moves { display: none; }
   }
 </style>

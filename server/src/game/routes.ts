@@ -18,6 +18,7 @@ import {
   abortAndPersist,
   getGame,
   getMoveSans, 
+  headToHead,
 } from "../db/repositories/games.js";
 import { getUserByUsername } from "../auth/queries.js";
 import { notifyDeadlineChanged } from "./deadlineBus.js";
@@ -78,18 +79,24 @@ export async function gameRoutes(app: FastifyInstance) {
 
   // Fetch a game
   app.get("/api/games/:id", { preHandler: requireAuth }, async (req, reply) => {
-    const { id } = req.params as { id: string };
+  const { id } = req.params as { id: string };
 
-    const game = getGame(id);
-    if (!game) return reply.code(404).send({ error: "Game not found" });
+  const game = getGame(id);
+  if (!game) return reply.code(404).send({ error: "Game not found" });
 
-    return {
-      ok: true,
-      game,
-      sans: getMoveSans(id),
-      players: getGamePlayers(id),
-      serverNow: Date.now(),
-    };
+  const players = getGamePlayers(id);
+  let h2h: { wins: number; draws: number; losses: number } | null = null;
+  if (players) {
+    const me = req.user!.id;
+    const them =
+      players.whiteId === me ? players.blackId : players.blackId === me ? players.whiteId : null;
+    if (them !== null) {
+      const r = headToHead(me, them) as any;
+      h2h = { wins: r?.wins ?? 0, draws: r?.draws ?? 0, losses: r?.losses ?? 0 };
+    }
+  }
+
+  return { ok: true, game, sans: getMoveSans(id), players, h2h, serverNow: Date.now() };
   });
 
   // Get "My Games" dashboard

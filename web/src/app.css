@@ -28,3 +28,23 @@ td, th { text-align: left; padding: .5rem .25rem; border-bottom: 1px solid var(-
 @media (max-width: 800px) {
   .page { padding: 0.5rem; }
 }
+
+/* ---- shared game layout (Game.svelte, LocalGame.svelte) ---- */
+.game { display: grid; grid-template-columns: minmax(0, 640px) 300px; gap: 1rem; justify-content: center; }
+.board-col { width: min(100%, calc(100dvh - 180px)); }
+.bar { display: flex; justify-content: space-between; align-items: center; padding: .4rem 0; color: var(--text-hi); }
+.bar a { color: var(--text-hi); }
+.side { display: flex; flex-direction: column; }
+.actions { margin-top: auto; padding-top: .75rem; min-height: 3.5rem; }
+.result { color: var(--text-hi); font-weight: 500; margin: 0 0 .5rem; }
+.h2h { padding-top: .5rem; color: var(--muted); }
+.h2h strong { color: var(--text-hi); }
+
+@media (max-width: 800px) {
+  .game { grid-template-columns: 1fr; grid-template-rows: auto 1fr; gap: .5rem;
+          min-height: calc(100dvh - 48px - 1rem); }
+  .board-col { width: min(100%, calc(100dvh - 250px)); margin: 0 auto; }
+  .bar { padding: .25rem 0; }
+  .side.panel { background: none; padding: 0; }
+  .h2h { display: none; }
+}

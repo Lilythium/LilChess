@@ -1,7 +1,10 @@
 import type { GameState } from "@lilchess/shared";
 
 export interface Players { whiteId: number; whiteName: string; blackId: number; blackName: string }
-export interface GameResponse { ok: true; game: GameState; sans: string[]; players: Players; serverNow: number }
+export interface H2H { wins: number; draws: number; losses: number }
+export interface GameResponse {
+  ok: true; game: GameState; sans: string[]; players: Players; h2h: H2H | null; serverNow: number;
+}
 
 export interface GameRow {
   id: string; white_id: number; black_id: number; white_name: string; black_name: string;

@@ -8,8 +8,8 @@
   import { replay, type Color, type GameState } from "@lilchess/shared";
   import PromotionDialog from "./PromotionDialog.svelte";
 
-  let { game, myColor, resetKey, onMove, onCancel }:
-    { game: GameState; myColor: Color | null; resetKey: number;
+  let { game, myColor, orientation, resetKey, onMove, onCancel }:
+    { game: GameState; myColor: Color | null; orientation?: Color; resetKey: number;
       onMove: (uci: string) => void; onCancel: () => void } = $props();
 
   let el: HTMLDivElement;
@@ -30,7 +30,7 @@
     });
     cg.set({
       fen: makeFen(pos.toSetup()),
-      orientation: myColor ?? "white",
+      orientation: orientation ?? myColor ?? "white",
       turnColor: game.turn,
       check: pos.isCheck(),
       lastMove: last ? [last.slice(0, 2) as Key, last.slice(2, 4) as Key] : undefined,

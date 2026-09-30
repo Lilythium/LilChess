@@ -1,10 +1,11 @@
 import type { GameEvent, GameState } from "@lilchess/shared";
-import type { GameResponse, Players } from "../types";
+import type { GameResponse, H2H, Players } from "../types";
 import { api } from "../api";
 
 export interface GameView {
   game: GameState | null;
   players: Players | null;
+  h2h: H2H | null;
   sanByPly: Record<number, string>;
   serverOffset: number; // serverNow - clientNow, for clock display
   status: "loading" | "ready" | "error";
@@ -13,7 +14,7 @@ export interface GameView {
 
 export function createGameStore(gameId: string) {
   const view = $state<GameView>({
-    game: null, players: null, sanByPly: {}, serverOffset: 0, status: "loading", error: null,
+    game: null, players: null, h2h: null, sanByPly: {}, serverOffset: 0, status: "loading", error: null,
   });
 
   async function resync(): Promise<void> {
@@ -21,6 +22,7 @@ export function createGameStore(gameId: string) {
       const body = await api<GameResponse>(`/api/games/${gameId}`);
       view.game = body.game;
       view.players = body.players;
+      view.h2h = body.h2h;
       view.serverOffset = body.serverNow - Date.now();
       view.sanByPly = Object.fromEntries(body.sans.map((s, i) => [i + 1, s]));
       view.status = "ready";
@@ -53,7 +55,9 @@ export function createGameStore(gameId: string) {
       case "draw_offer": view.game.drawOfferedBy = event.by ?? undefined; break;
       case "game_over":
         view.game.status = event.status; view.game.result = event.result;
-        view.game.termination = event.termination; break;
+        view.game.termination = event.termination;
+        void resync(); // pick up final clocks and the updated H2H
+        break;
     }
   }
 

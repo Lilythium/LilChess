@@ -3,6 +3,7 @@
   import { api } from "../lib/api";
   import { navigate } from "../lib/router.svelte";
   import { timeControl } from "../lib/format";
+  import { loadLocalGame, startLocalGame } from "../lib/game/localGame";
   import type { ChallengeRow, Challenges, MyGames } from "../lib/types";
 
   const PRESETS: [number, number][] = [[1, 0], [3, 2], [5, 3], [10, 0], [15, 10]];
@@ -16,6 +17,10 @@
   let error = $state<string | null>(null);
   let busy = $state(false);
   let challenges = $state<Challenges>({ mine: [], forMe: [], open: [] });
+
+  // Play on this device
+  let localPreset = $state<number | null>(2); // index into PRESETS; null = no clock
+  const hasLocal = loadLocalGame()?.game.status === "started";
 
   // Games that existed on first load; anything new means one of my seeks was accepted.
   let known: Set<string> | null = null;
@@ -89,6 +94,12 @@
       await refresh();
     }
   }
+
+  function playLocal() {
+    const p = localPreset === null ? null : PRESETS[localPreset]!;
+    startLocalGame(p ? { minutes: p[0], incrementSec: p[1] } : { minutes: null, incrementSec: 0 });
+    navigate("/local");
+  }
 </script>
 
 {#snippet list(title: string, rows: ChallengeRow[], label: string, action: (id: string) => void, showFrom: boolean)}
@@ -114,40 +125,58 @@
 {/snippet}
 
 <div class="grid">
-  <div class="panel">
-    <h2>Create a game</h2>
-    <div class="stack">
-      <div class="row">
-        <button class:primary={mode === "live"} onclick={() => (mode = "live")}>Live</button>
-        <button class:primary={mode === "correspondence"} onclick={() => (mode = "correspondence")}>Correspondence</button>
-      </div>
+  <div class="stack">
+    <div class="panel">
+      <h2>Create a game</h2>
+      <div class="stack">
+        <div class="row">
+          <button class:primary={mode === "live"} onclick={() => (mode = "live")}>Live</button>
+          <button class:primary={mode === "correspondence"} onclick={() => (mode = "correspondence")}>Correspondence</button>
+        </div>
 
-      {#if mode === "live"}
+        {#if mode === "live"}
+          <div class="row">
+            {#each PRESETS as [m, i], idx (idx)}
+              <button class:primary={preset === idx} onclick={() => (preset = idx)}>{m}+{i}</button>
+            {/each}
+          </div>
+        {:else}
+          <select bind:value={days}>
+            {#each DAYS as d (d)}<option value={d}>{d} day{d === 1 ? "" : "s"} per move</option>{/each}
+          </select>
+        {/if}
+
+        <div class="row">
+          <button class:primary={color === "white"} onclick={() => (color = "white")}>White</button>
+          <button class:primary={color === "random"} onclick={() => (color = "random")}>Random</button>
+          <button class:primary={color === "black"} onclick={() => (color = "black")}>Black</button>
+        </div>
+
+        <input placeholder="Challenge a specific user (optional)" bind:value={toUsername} />
+        {#if error}<span class="error">{error}</span>{/if}
+        <button class="primary" disabled={busy} onclick={create}>Create</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Play on this device</h2>
+      <div class="stack">
         <div class="row">
           {#each PRESETS as [m, i], idx (idx)}
-            <button class:primary={preset === idx} onclick={() => (preset = idx)}>{m}+{i}</button>
+            <button class:primary={localPreset === idx} onclick={() => (localPreset = idx)}>{m}+{i}</button>
           {/each}
+          <button class:primary={localPreset === null} onclick={() => (localPreset = null)}>No clock</button>
         </div>
-      {:else}
-        <select bind:value={days}>
-          {#each DAYS as d (d)}<option value={d}>{d} day{d === 1 ? "" : "s"} per move</option>{/each}
-        </select>
-      {/if}
-
-      <div class="row">
-        <button class:primary={color === "white"} onclick={() => (color = "white")}>White</button>
-        <button class:primary={color === "random"} onclick={() => (color = "random")}>Random</button>
-        <button class:primary={color === "black"} onclick={() => (color = "black")}>Black</button>
+        <div class="row">
+          <button class="primary" onclick={playLocal}>Start</button>
+          {#if hasLocal}<button onclick={() => navigate("/local")}>Resume current game</button>{/if}
+        </div>
       </div>
-
-      <input placeholder="Challenge a specific user (optional)" bind:value={toUsername} />
-      {#if error}<span class="error">{error}</span>{/if}
-      <button class="primary" disabled={busy} onclick={create}>Create</button>
     </div>
   </div>
 
   <div class="stack">
-    {@render list("Open Challenges", challenges.open, "Accept", accept, true)}
+    {@render list("Open seeks", challenges.open, "Accept", accept, true)}
     {#if challenges.forMe.length > 0}
       {@render list("Challenges for you", challenges.forMe, "Accept", accept, true)}
     {/if}
