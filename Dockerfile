@@ -2,6 +2,13 @@ FROM node:22-slim AS build
 
 WORKDIR /app
 
+# Tools required to build native dependencies such as better-sqlite3
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3 \
+        make \
+        g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
 COPY shared/package.json ./shared/
@@ -16,6 +23,7 @@ RUN npm run build
 
 RUN npm prune --omit=dev
 
+
 FROM node:22-slim AS production
 
 WORKDIR /app
@@ -24,27 +32,23 @@ ENV NODE_ENV=production
 ENV DATA_DIR=/data
 ENV PORT=3000
 
-# Copy production dependencies and workspace packages
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
 
-# Copy workspace manifests
 COPY --from=build /app/shared/package.json ./shared/package.json
 COPY --from=build /app/server/package.json ./server/package.json
 COPY --from=build /app/web/package.json ./web/package.json
 
-# Copy compiled backend and shared code
 COPY --from=build /app/server/dist ./server/dist
 COPY --from=build /app/shared/dist ./shared/dist
-COPY --from=build /app/server/src/db/migrations ./server/dist/db/migrations
-
-# Copy frontend build
 COPY --from=build /app/web/dist ./web/dist
 
-# Create non-root user and persistent data directory
+# TypeScript does not copy SQL migration files into dist
+COPY --from=build /app/server/src/db/migrations ./server/dist/db/migrations
+
 RUN useradd --system --uid 1001 app \
     && mkdir -p /data \
-    && chown -R app:app /data /app
+    && chown -R app:app /data
 
 USER app
 
