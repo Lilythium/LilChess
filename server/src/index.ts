@@ -1,17 +1,22 @@
 import Fastify from "fastify";
 import cookie from "@fastify/cookie";
+import fastifyStatic from "@fastify/static";
+import { join } from "node:path";
+
 import { openDb, closeDb } from "./db/connection.js";
 import { authRoutes } from "./auth/routes.js";
 import { gameRoutes } from "./game/routes.js";
 import { attachWebSocketServer } from "./ws/server.js";
-import { startTimeoutScheduler, stopTimeoutScheduler } from "./game/timeoutScheduler.js";
+import {
+  startTimeoutScheduler,
+  stopTimeoutScheduler,
+} from "./game/timeoutScheduler.js";
 
 const DATA_DIR = process.env.DATA_DIR ?? "./data";
 openDb(`${DATA_DIR}/lilchess.db`);
-startTimeoutScheduler(); 
+startTimeoutScheduler();
 
 const app = Fastify({ logger: true });
-
 
 app.register(cookie);
 app.register(authRoutes);
@@ -26,7 +31,22 @@ app.addHook("onClose", async () => {
   closeDb();
 });
 
+const WEB_DIR = join(process.cwd(), "web", "dist");
+
+await app.register(fastifyStatic, {
+  root: WEB_DIR,
+});
+
+app.setNotFoundHandler((request, reply) => {
+  if (request.url.startsWith("/api/")) {
+    return reply.code(404).send({ error: "Not found" });
+  }
+
+  return reply.sendFile("index.html");
+});
+
 const port = Number(process.env.PORT ?? 3000);
+
 app.listen({ port, host: "0.0.0.0" }).catch((err) => {
   app.log.error(err);
   process.exit(1);
