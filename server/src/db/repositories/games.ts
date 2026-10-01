@@ -15,6 +15,7 @@ import {
 import { gameStateToRow, rowToGameState } from "../mappers.js";
 import { broadcastGameEvent } from "../../ws/hub.js";
 import { sendWebhook } from "../../notifications/webhook.js";
+import { notifyDeadlineChanged } from "../../game/deadlineBus.js";
 
 export function insertGame(id: string, whiteId: number, blackId: number, game: GameState): void {
   const row = gameStateToRow(game);
@@ -172,6 +173,7 @@ function broadcastMoveOutcome(
   if (state.status === "finished" && state.clock.mode === "correspondence") {
     void sendWebhook(`Game ${gameId} ended: ${state.result ?? "—"} (${state.termination}).`);
   }
+  if (movePlayed) notifyDeadlineChanged();
 }
 
 export function applyMoveAndPersist(id: string, uci: string, now: number) {

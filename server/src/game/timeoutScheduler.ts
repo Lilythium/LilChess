@@ -5,6 +5,8 @@ import {
 } from "../db/repositories/games.js";
 import { deadlineBus } from "./deadlineBus.js";
 import { sendWebhook } from "../notifications/webhook.js";
+import { logger } from "../logger.js";
+const log = logger.child({ mod: "timeouts" });
 
 
 const IDLE_POLL_MS = 60_000; 
@@ -23,21 +25,35 @@ let running = false;
 
 function settleExpired(): void {
   for (const id of getExpiredStartedGameIds(Date.now())) {
-    const result = claimTimeoutAndPersist(id, Date.now());
-    if (result.ok) void sendWebhook(`Game ${id} timed out (${result.state.result}).`);
+    try {
+      const result = claimTimeoutAndPersist(id, Date.now());
+      if (result.ok) {
+        log.info({ gameId: id, result: result.state.result }, "game timed out");
+        void sendWebhook(`Game ${id} timed out (${result.state.result}).`);
+      }
+    } catch (err) {
+      log.error({ err, gameId: id }, "failed to settle expired game");
+    }
   }
 }
 
 function tick(): void {
   if (!running) return;
-  settleExpired();
 
-  const deadline = getEarliestActiveDeadline();
-  const delay = deadline === undefined ? IDLE_POLL_MS : delayFor(deadline - Date.now());
+  let delay = IDLE_POLL_MS;
+  try {
+    settleExpired();
+    const deadline = getEarliestActiveDeadline();
+    if (deadline !== undefined) delay = delayFor(deadline - Date.now());
+  } catch (err) {
+    // Must never skip rescheduling: one failure would otherwise stop ALL timeouts.
+    log.error({ err }, "scheduler tick failed, retrying in 1s");
+    delay = 1_000;
+  }
 
   clearTimeout(timer);
   timer = setTimeout(tick, delay);
-  timer.unref?.(); 
+  timer.unref?.();
 }
 
 export function startTimeoutScheduler(): void {

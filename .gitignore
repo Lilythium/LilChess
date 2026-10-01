@@ -148,3 +148,8 @@ dist/
 *.log
 data/
 .DS_Store
+
+# scratch / secrets
+*.cookies
+black.txt
+white.txt

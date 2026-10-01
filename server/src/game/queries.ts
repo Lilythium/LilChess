@@ -7,6 +7,24 @@ function generateId(bytes = 4) {
   return randomBytes(bytes).toString("hex");
 }
 
+export class ChallengeError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ChallengeError";
+    this.status = status;
+  }
+}
+
+export const MAX_OPEN_CHALLENGES = 10;
+
+export function countOpenChallengesFrom(userId: number): number {
+  const row = getDb()
+    .prepare(`SELECT COUNT(*) AS n FROM challenges WHERE from_user = ? AND expires_at > ?`)
+    .get(userId, Date.now()) as { n: number };
+  return row.n;
+}
+
 function attachPositions<T extends { id: string }>(
   rows: T[],
 ): (T & { fen: string; last_move: string | null })[] {
@@ -69,13 +87,13 @@ export function acceptChallengeTx(challengeId: string, acceptingUserId: number) 
   // Wrap in a transaction that runs strictly as BEGIN IMMEDIATE to prevent races
   const transaction = db.transaction(() => {
     const challenge = db.prepare(`SELECT * FROM challenges WHERE id = ?`).get(challengeId) as any;
-    if (!challenge) throw new Error("Challenge not found or already accepted");
+    if (!challenge) throw new ChallengeError("Challenge not found or already accepted", 404);
     if (challenge.expires_at < Date.now()) {
-      db.prepare(`DELETE FROM challenges WHERE id = ?`).run(challengeId);
-      throw new Error("Challenge expired");
+      // (the hourly purge in maintenance.ts removes it; a DELETE here would be rolled back by the throw anyway)
+      throw new ChallengeError("Challenge expired", 410);
     }
-    if (challenge.from_user === acceptingUserId) throw new Error("Cannot accept your own challenge");
-    if (challenge.to_user && challenge.to_user !== acceptingUserId) throw new Error("Not invited to this challenge");
+    if (challenge.from_user === acceptingUserId) throw new ChallengeError("Cannot accept your own challenge", 400);
+    if (challenge.to_user && challenge.to_user !== acceptingUserId) throw new ChallengeError("Not invited to this challenge", 403);
 
     // Determine colors
     let whiteId = challenge.from_user;
@@ -191,7 +209,7 @@ export function getUserProfileWithH2H(targetUsername: string, viewerId: number) 
     JOIN users bu ON bu.id = g.black_id
     WHERE g.status = 'finished' AND (g.white_id = ? OR g.black_id = ?)
     ORDER BY g.ended_at DESC LIMIT 20
-  `).all(targetUser.id, targetUser.id);
+  `).all(targetUser.id, targetUser.id) as any[];
 
   return { profile: targetUser, h2h, games: attachPositions(games) };
 }

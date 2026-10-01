@@ -2,6 +2,7 @@ import type { IncomingMessage } from "node:http";
 import { SESSION_COOKIE } from "../auth/routes.js";
 import { hashSessionToken } from "../auth/crypto.js";
 import { getSessionUser, type User } from "../auth/queries.js";
+import { originAllowed } from "../security/csrf.js";
 
 function parseCookie(header: string | undefined, name: string): string | undefined {
   if (!header) return undefined;
@@ -9,7 +10,11 @@ function parseCookie(header: string | undefined, name: string): string | undefin
     const eq = part.indexOf("=");
     if (eq === -1) continue;
     if (part.slice(0, eq).trim() === name) {
-      return decodeURIComponent(part.slice(eq + 1).trim());
+      try {
+        return decodeURIComponent(part.slice(eq + 1).trim());
+      } catch {
+        return undefined; // malformed %-escape: treat as no cookie (this used to throw and crash the process)
+      }
     }
   }
   return undefined;
@@ -22,7 +27,5 @@ export function authenticateUpgrade(req: IncomingMessage): User | undefined {
 }
 
 export function isAllowedOrigin(req: IncomingMessage): boolean {
-  const allowed = process.env.BASE_URL;
-  if (!allowed) return true;
-  return req.headers.origin === allowed;
+  return originAllowed(req.headers.origin, req.headers.host);
 }

@@ -1,53 +1,67 @@
-import Fastify from "fastify";
-import cookie from "@fastify/cookie";
-import fastifyStatic from "@fastify/static";
-import { join } from "node:path";
-
+import { config } from "./config.js";
+import { logger } from "./logger.js";
+import { buildApp } from "./app.js";
 import { openDb, closeDb } from "./db/connection.js";
-import { authRoutes } from "./auth/routes.js";
-import { gameRoutes } from "./game/routes.js";
-import { attachWebSocketServer } from "./ws/server.js";
-import {
-  startTimeoutScheduler,
-  stopTimeoutScheduler,
-} from "./game/timeoutScheduler.js";
+import { startTimeoutScheduler, stopTimeoutScheduler } from "./game/timeoutScheduler.js";
+import { startBackupScheduler, stopBackupScheduler } from "./db/backup.js";
+import { startMaintenance, stopMaintenance } from "./maintenance.js";
 
-const DATA_DIR = process.env.DATA_DIR ?? "./data";
-openDb(`${DATA_DIR}/lilchess.db`);
-startTimeoutScheduler();
+if (config.registration === "invite" && config.inviteCode === "changeme") {
+  logger.warn("INVITE_CODE is still the example value 'changeme'");
+}
+if (config.nodeEnv === "production" && !config.baseOrigin) {
+  logger.warn("BASE_URL is not set: Origin checks fall back to the Host header and cookies are Secure by NODE_ENV only");
+}
 
-const app = Fastify({ logger: true });
+openDb(`${config.dataDir}/lilchess.db`);
+startTimeoutScheduler(); // also sweeps games that expired while the server was down
+startMaintenance();
+if (config.backupKeep > 0) {
+  startBackupScheduler({ dir: config.backupDir, keep: config.backupKeep, hourUtc: config.backupHourUtc });
+}
 
-app.register(cookie);
-app.register(authRoutes);
-app.register(gameRoutes);
+const app = await buildApp();
 
-app.get("/api/health", async () => ({ ok: true }));
+let shuttingDown = false;
+async function shutdown(reason: string, exitCode = 0): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info({ reason }, "shutting down");
 
-attachWebSocketServer(app);
+  const force = setTimeout(() => {
+    logger.error("shutdown timed out, forcing exit");
+    process.exit(1);
+  }, 10_000);
+  force.unref();
 
-app.addHook("onClose", async () => {
-  stopTimeoutScheduler();
-  closeDb();
-});
-
-const WEB_DIR = join(process.cwd(), "web", "dist");
-
-await app.register(fastifyStatic, {
-  root: WEB_DIR,
-});
-
-app.setNotFoundHandler((request, reply) => {
-  if (request.url.startsWith("/api/")) {
-    return reply.code(404).send({ error: "Not found" });
+  try {
+    stopTimeoutScheduler();
+    stopMaintenance();
+    await stopBackupScheduler(); // lets an in-flight backup finish
+    await app.close(); // stops accepting connections, closes WebSockets (hook in ws/server.ts), drains requests
+    closeDb(); // checkpoints the WAL, then closes
+    logger.info("shutdown complete");
+  } catch (err) {
+    logger.error({ err }, "error during shutdown");
+    exitCode = 1;
   }
+  process.exit(exitCode);
+}
 
-  return reply.sendFile("index.html");
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("uncaughtException", (err) => {
+  logger.fatal({ err }, "uncaught exception");
+  void shutdown("uncaughtException", 1);
+});
+process.on("unhandledRejection", (err) => {
+  logger.fatal({ err }, "unhandled rejection");
+  void shutdown("unhandledRejection", 1);
 });
 
-const port = Number(process.env.PORT ?? 3000);
-
-app.listen({ port, host: "0.0.0.0" }).catch((err) => {
-  app.log.error(err);
+try {
+  await app.listen({ port: config.port, host: config.host });
+} catch (err) {
+  logger.fatal({ err }, "failed to start");
   process.exit(1);
-});
+}

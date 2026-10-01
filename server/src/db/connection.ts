@@ -20,6 +20,12 @@ export function getDb(): Database.Database {
 }
 
 export function closeDb(): void {
-  db?.close();
+  if (!db) return;
+  try {
+    db.pragma("wal_checkpoint(TRUNCATE)"); // fold the WAL into the main file before closing
+  } catch {
+    // best effort; close() below also checkpoints
+  }
+  db.close();
   db = undefined;
 }

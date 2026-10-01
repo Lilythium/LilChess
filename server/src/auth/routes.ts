@@ -1,11 +1,19 @@
-import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { hashPassword, verifyPassword, generateSessionToken, hashSessionToken } from "./crypto.js";
-import { createUser, getUserByUsername, createSession, getSessionUser, deleteSession, User } from "./queries.js";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { config } from "../config.js";
+import { LoginBody, RegisterBody, parse } from "../validation.js";
+import {
+  burnPasswordCheck,
+  generateSessionToken,
+  hashPassword,
+  hashSessionToken,
+  safeEqual,
+  verifyPassword,
+} from "./crypto.js";
+import { createSession, createUser, deleteSession, getSessionUser, getUserByUsername, type User } from "./queries.js";
 
 export const SESSION_COOKIE = "sessionId";
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
-// Augment FastifyRequest so TS knows req.user exists
 declare module "fastify" {
   interface FastifyRequest {
     user?: User;
@@ -13,88 +21,84 @@ declare module "fastify" {
 }
 
 export async function authRoutes(app: FastifyInstance) {
-  // Not global: only routes that opt in via `config.rateLimit` are limited.
-  await app.register(import("@fastify/rate-limit"), { global: false });
+  // Global rate limiting is registered once in app.ts; routes below opt in to stricter limits.
 
-  app.post("/api/register", async (req, reply) => {
-    const { username, password, inviteCode } = req.body as any;
-
-    if (!username || !password || password.length < 8) {
-      return reply.code(400).send({ error: "Invalid username or password too short" });
-    }
-
-    const regMode = process.env.REGISTRATION || "open";
-    if (regMode === "closed") {
-      return reply.code(403).send({ error: "Registration is closed" });
-    }
-    if (regMode === "invite" && inviteCode !== process.env.INVITE_CODE) {
-      return reply.code(403).send({ error: "Invalid invite code" });
-    }
-
-    try {
-      const hash = await hashPassword(password);
-      const user = createUser(username, hash);
-      await establishSession(reply, user.id);
-      return { ok: true, user };
-    } catch (err: any) {
-      if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
-        return reply.code(409).send({ error: "Username taken" });
+  app.post(
+    "/api/register",
+    { config: { rateLimit: { max: 10, timeWindow: "1 hour" } } },
+    async (req, reply) => {
+      if (config.registration === "closed") {
+        return reply.code(403).send({ error: "Registration is closed" });
       }
-      throw err;
-    }
-  });
 
-  // Login is rate limited (max 5 attempts per minute per IP)
+      const body = parse(RegisterBody, req.body, reply);
+      if (!body) return reply;
+
+      if (config.registration === "invite" && !safeEqual(body.inviteCode ?? "", config.inviteCode ?? "")) {
+        return reply.code(403).send({ error: "Invalid invite code" });
+      }
+
+      try {
+        const user = createUser(body.username, await hashPassword(body.password));
+        await establishSession(reply, user.id);
+        req.log.info({ userId: user.id }, "user registered");
+        return { ok: true, user };
+      } catch (err) {
+        if ((err as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
+          return reply.code(409).send({ error: "Username taken" });
+        }
+        throw err;
+      }
+    },
+  );
+
+  // 10 attempts per minute per IP
   app.post(
     "/api/login",
-    { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } },
+    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
     async (req, reply) => {
-      const { username, password } = req.body as any;
-      const user = getUserByUsername(username);
+      const body = parse(LoginBody, req.body, reply);
+      if (!body) return reply;
 
-      if (!user || !(await verifyPassword(password, user.password_hash))) {
+      const user = getUserByUsername(body.username);
+      const valid = user
+        ? await verifyPassword(body.password, user.password_hash)
+        : (await burnPasswordCheck(body.password), false);
+
+      if (!user || !valid) {
+        req.log.warn({ username: body.username }, "failed login");
         return reply.code(401).send({ error: "Invalid credentials" });
       }
 
       await establishSession(reply, user.id);
-      const { password_hash, ...safeUser } = user;
+      const { password_hash: _omit, ...safeUser } = user;
       return { ok: true, user: safeUser };
     },
   );
 
   app.post("/api/logout", async (req, reply) => {
     const token = req.cookies[SESSION_COOKIE];
-    if (token) {
-      deleteSession(hashSessionToken(token));
-    }
+    if (token) deleteSession(hashSessionToken(token));
     reply.clearCookie(SESSION_COOKIE, { path: "/" });
     return { ok: true };
   });
 
-  // Protected route example
-  app.get("/api/me", { preHandler: requireAuth }, async (req) => {
-    return { user: req.user };
-  });
+  app.get("/api/me", { preHandler: requireAuth }, async (req) => ({ user: req.user }));
 }
 
-// Helper to set up the DB session and attach the cookie
 async function establishSession(reply: FastifyReply, userId: number) {
   const token = generateSessionToken();
-  const tokenHash = hashSessionToken(token);
-  const expiresAt = Date.now() + THIRTY_DAYS_MS;
-
-  createSession(tokenHash, userId, expiresAt);
+  createSession(hashSessionToken(token), userId, Date.now() + THIRTY_DAYS_MS);
 
   reply.setCookie(SESSION_COOKIE, token, {
     path: "/",
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: THIRTY_DAYS_MS / 1000, // maxAge is in seconds
+    secure: config.cookieSecure, // follows BASE_URL (https => Secure); falls back to NODE_ENV
+    maxAge: THIRTY_DAYS_MS / 1000,
   });
 }
 
-// Middleware you can reuse on any route that requires a logged-in user
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
   const token = req.cookies[SESSION_COOKIE];
   if (!token) return reply.code(401).send({ error: "Unauthorized" });
