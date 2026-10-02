@@ -75,6 +75,7 @@
     }
   }
 </script>
+
 <svelte:window onkeydown={onKey} />
 
 {#if view.status === "loading"}
@@ -97,7 +98,7 @@
         <Clock game={g} side={topSide} offset={view.serverOffset} />
       </div>
 
-        <Board game={g} {myColor} {resetKey} {viewPly} onMove={sendMove} onCancel={() => resetKey++} />
+      <Board game={g} {myColor} {resetKey} {viewPly} onMove={sendMove} onCancel={() => resetKey++} />
 
       <div class="bar">
         <a href={"#/u/" + encodeURIComponent(bottomName)}>{bottomName}</a>
@@ -119,7 +120,7 @@
       <MoveList
         sanByPly={view.sanByPly}
         ply={g.ply}
-        selected={viewPly}
+        bind:selected={viewPly}
         onSelect={(p) => (viewPly = selectPly(p, g.ply))}
       />
       <MoveNav {viewPly} total={g.ply} onNav={nav} />
@@ -130,7 +131,6 @@
         <a href="#/">Back to lobby</a>
       {/if}
       <a class="muted" href={"/api/games/" + id + "/pgn"} download>Download PGN</a>
-      </div>
     </div>
   </div>
 {/if}
