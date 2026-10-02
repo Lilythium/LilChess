@@ -1,5 +1,6 @@
 import { parseUci } from "chessops/util";
-import { advanceClock } from "./clock.js";
+import { expireGame } from "./actions.js";
+import { advanceClock, inFirstMoveWindow } from "./clock.js";
 import { checkGameEnd } from "./gameEnd.js";
 import { positionKey, replay } from "./replay.js";
 import { opponent } from "./types.js";
@@ -12,6 +13,10 @@ export function applyMove(
 ): ActionResult {
   if (game.status !== "started") {
     return { ok: false, error: "game_not_active" };
+  }
+
+  if (!inFirstMoveWindow(game) && now >= game.deadlineAt) {
+    return { ok: true, state: expireGame(game) };
   }
 
   if (now >= game.deadlineAt) {
@@ -54,8 +59,8 @@ export function applyMove(
     game.blackMs,
     game.turnStartedAt,
     now,
+    game.ply,
   );
-
   const allKeys = [...positionKeys, positionKey(position)];
   const endCheck = checkGameEnd(position, mover, allKeys);
   const newMoves = [...game.moves, uci];
@@ -72,6 +77,7 @@ export function applyMove(
       turnStartedAt: now,
       deadlineAt: clock.deadlineAt,
       drawOfferedBy: undefined,
+      takebackOfferedBy: undefined,
       ...(endCheck.ended
         ? {
             status: "finished" as const,

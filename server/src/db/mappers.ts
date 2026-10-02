@@ -21,6 +21,7 @@ export function rowToGameState(row: any, moves: string[]): GameState {
     result: row.result ?? undefined,
     termination: row.termination ?? undefined,
     drawOfferedBy: row.draw_offered_by ?? undefined,
+    takebackOfferedBy: row.takeback_offered_by ?? undefined,
   };
 }
 
@@ -41,5 +42,6 @@ export function gameStateToRow(game: GameState) {
     turnStartedAt: game.turnStartedAt,
     deadlineAt: game.deadlineAt,
     drawOfferedBy: game.drawOfferedBy ?? null,
+    takebackOfferedBy: game.takebackOfferedBy ?? null,
   };
 }

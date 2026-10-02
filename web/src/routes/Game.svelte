@@ -8,7 +8,9 @@
   import Board from "../lib/components/Board.svelte";
   import Clock from "../lib/components/Clock.svelte";
   import MoveList from "../lib/components/MoveList.svelte";
+  import MoveNav from "../lib/components/MoveNav.svelte";
   import GameActions from "../lib/components/GameActions.svelte";
+  import { selectPly, stepView, type NavAction } from "../lib/game/history";
 
   let { id }: { id: string } = $props();
 
@@ -19,6 +21,32 @@
 
   let resetKey = $state(0);
   let socketStatus = $state<"connecting" | "open" | "closed">("connecting");
+
+  // null = follow the live position. Jump back to it whenever the ply changes
+  // (a move was played, or a takeback removed one).
+  let viewPly = $state<number | null>(null);
+  let lastPly = 0;
+  $effect(() => {
+    const ply = view.game?.ply ?? 0;
+    if (ply !== lastPly) {
+      lastPly = ply;
+      viewPly = null;
+    }
+  });
+
+  function nav(action: NavAction) {
+    if (view.game) viewPly = stepView(viewPly, view.game.ply, action);
+  }
+
+  function onKey(e: KeyboardEvent) {
+    const t = e.target;
+    if (t instanceof HTMLElement && ["INPUT", "SELECT", "TEXTAREA"].includes(t.tagName)) return;
+    const keys = { ArrowLeft: "prev", ArrowRight: "next", ArrowUp: "first", ArrowDown: "last" } as const;
+    const action = keys[e.key as keyof typeof keys];
+    if (!action) return;
+    e.preventDefault();
+    nav(action);
+  }
 
   onMount(() => {
     const sock = connectGameSocket(id, {
@@ -47,6 +75,7 @@
     }
   }
 </script>
+<svelte:window onkeydown={onKey} />
 
 {#if view.status === "loading"}
   <p class="muted">Loading…</p>
@@ -68,36 +97,40 @@
         <Clock game={g} side={topSide} offset={view.serverOffset} />
       </div>
 
-      <Board game={g} {myColor} {resetKey} onMove={sendMove} onCancel={() => resetKey++} />
+        <Board game={g} {myColor} {resetKey} {viewPly} onMove={sendMove} onCancel={() => resetKey++} />
 
       <div class="bar">
         <a href={"#/u/" + encodeURIComponent(bottomName)}>{bottomName}</a>
         <Clock game={g} side={bottomSide} offset={view.serverOffset} />
       </div>
+
+      {#if view.h2h && myColor}
+        {@const oppName = myColor === "white" ? p.blackName : p.whiteName}
+        <div class="h2h">
+          Head to head vs {oppName}:
+          <strong>{view.h2h.wins}</strong> W ·
+          <strong>{view.h2h.draws}</strong> D ·
+          <strong>{view.h2h.losses}</strong> L
+        </div>
+      {/if}
     </div>
 
     <div class="side panel">
-      <MoveList sanByPly={view.sanByPly} ply={g.ply} />
+      <MoveList
+        sanByPly={view.sanByPly}
+        ply={g.ply}
+        selected={viewPly}
+        onSelect={(p) => (viewPly = selectPly(p, g.ply))}
+      />
+      <MoveNav {viewPly} total={g.ply} onNav={nav} />
       <GameActions game={g} {myColor} {id} onDone={store.resync} />
+      {#if !myColor}<p class="muted">You are spectating</p>{/if}
       {#if g.status !== "started"}
         <p class="result">{resultText(g)}</p>
         <a href="#/">Back to lobby</a>
       {/if}
-      {#if socketStatus === "closed"}<p class="muted">Reconnecting…</p>{/if}
+      <a class="muted" href={"/api/games/" + id + "/pgn"} download>Download PGN</a>
+      </div>
     </div>
   </div>
 {/if}
-
-<style>
-  .game { display: grid; grid-template-columns: minmax(0, 640px) 300px; gap: 1rem; justify-content: center; }
-  .board-col { width: min(100%, calc(100dvh - 180px)); }
-  .bar { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0; }
-  .bar a { color: var(--text-hi); }
-  .result { color: var(--text-hi); font-weight: 500; }
-  @media (max-width: 800px) {
-    .game { grid-template-columns: 1fr; gap: 0.5rem; }
-    /* Board never taller than the space left after header, bars, and buttons. */
-    .board-col { width: min(100%, calc(100dvh - 300px)); margin: 0 auto; }
-    .bar { padding: 0.25rem 0; }
-  }
-</style>

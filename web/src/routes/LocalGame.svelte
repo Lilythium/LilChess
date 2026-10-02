@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
-    abort, acceptDraw, applyMove, claimTimeout, offerDraw, resign, sanForNextMove,
+    abort, acceptDraw, applyMove, claimTimeout, inFirstMoveWindow, offerDraw, resign, sanForNextMove,
     type ActionResult, type Color, type GameState,
   } from "@lilchess/shared";
   import { navigate } from "../lib/router.svelte";
@@ -21,7 +21,7 @@
     // No server here, so this page flags timeouts itself.
     const t = setInterval(() => {
       const g = save?.game;
-      if (g && g.status === "started" && Date.now() >= g.deadlineAt) {
+      if (g && g.status === "started" && !inFirstMoveWindow(g) && Date.now() >= g.deadlineAt) {
         commit(claimTimeout(g, Date.now()));
       }
     }, 200);

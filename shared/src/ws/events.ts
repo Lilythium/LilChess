@@ -25,6 +25,20 @@ export type GameEvent =
       by: Color | null; // null = offer withdrawn/declined
     }
   | {
+      type: "takeback_offer";
+      gameId: string;
+      by: Color | null; // null = offer declined
+    }
+  | {
+      type: "takeback";
+      gameId: string;
+      ply: number;
+      turn: Color;
+      whiteMs: number;
+      blackMs: number;
+      deadlineAt: number;
+    }
+  | {
       type: "game_over";
       gameId: string;
       status: "finished" | "aborted";

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyMove } from "./applyMove.js";
 import { claimTimeout } from "./actions.js";
+import { FIRST_MOVE_WINDOW_MS } from "./clock.js";
 import { createGame } from "./createGame.js";
 import type { GameState } from "./types.js";
 
@@ -56,33 +57,59 @@ describe("applyMove — game endings", () => {
 });
 
 describe("applyMove — clocks", () => {
-  it("adds increment after a normal move", () => {
+  it("charges nothing and adds no increment for each side's first move", () => {
     const game = createGame({ clock: LIVE_CLOCK, now: 0 });
-    const res = applyMove(game, "e2e4", 5_000); // 5s elapsed
+    const afterWhite = applyMove(game, "e2e4", 5_000);
+    expect(afterWhite.ok).toBe(true);
+    if (!afterWhite.ok) return;
+    expect(afterWhite.state.whiteMs).toBe(60_000);
+    expect(afterWhite.state.deadlineAt).toBe(5_000 + FIRST_MOVE_WINDOW_MS);
+
+    const afterBlack = applyMove(afterWhite.state, "e7e5", 12_000);
+    expect(afterBlack.ok).toBe(true);
+    if (!afterBlack.ok) return;
+    expect(afterBlack.state.blackMs).toBe(60_000);
+    expect(afterBlack.state.turnStartedAt).toBe(12_000);
+    expect(afterBlack.state.deadlineAt).toBe(72_000); // clock starts: 12_000 + white's full 60_000
+  });
+
+  it("starts charging time from white's second move and adds increment", () => {
+    const game = createGame({ clock: LIVE_CLOCK, now: 0 });
+    const running = play(game, ["e2e4", "e7e5"], 0, 12_000); // black moved at 12_000
+    const res = applyMove(running, "g1f3", 17_000); // 5s elapsed
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.state.whiteMs).toBe(57_000); // 60000 - 5000 + 2000
-    expect(res.state.deadlineAt).toBe(65_000); // now(5000) + black's 60000
+    expect(res.state.deadlineAt).toBe(77_000); // now(17000) + black's 60000
   });
 
-  it("ends the game on time instead of applying a late move", () => {
+  it("ends the game on time instead of applying a late move once the clock runs", () => {
     const shortClock = { mode: "live" as const, initialMs: 1_000, incrementMs: 0 };
-    const game = createGame({ clock: shortClock, now: 0 }); // deadline at 1000ms
-    const res = applyMove(game, "e2e4", 2_000); // arrives late
+    const running = play(createGame({ clock: shortClock, now: 0 }), ["e2e4", "e7e5"], 0); // deadline 2000
+    const res = applyMove(running, "g1f3", 3_000); // arrives late
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.state.status).toBe("finished");
     expect(res.state.result).toBe("0-1");
     expect(res.state.termination).toBe("timeout");
-    expect(res.state.moves).toEqual([]); // the late move was never recorded
+    expect(res.state.moves).toEqual(["e2e4", "e7e5"]); // the late move was never recorded
     expect(res.state.whiteMs).toBe(0);
+  });
+
+  it("leaves first-move deadlines to the scheduler", () => {
+    const game = createGame({ clock: LIVE_CLOCK, now: 0 });
+    const res = applyMove(game, "e2e4", FIRST_MOVE_WINDOW_MS + 20_000);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.state.status).toBe("started");
+    expect(res.state.moves).toEqual(["e2e4"]);
   });
 });
 
 describe("claimTimeout", () => {
-  it("finishes a game whose deadline has passed", () => {
-    const game = createGame({ clock: LIVE_CLOCK, now: 0 });
-    const res = claimTimeout(game, 61_000);
+  it("finishes a game whose deadline has passed once the clock runs", () => {
+    const running = play(createGame({ clock: LIVE_CLOCK, now: 0 }), ["e2e4", "e7e5"], 0); // deadline 61_000
+    const res = claimTimeout(running, 62_000);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.state.result).toBe("0-1"); // white was to move and flagged
@@ -91,7 +118,18 @@ describe("claimTimeout", () => {
   });
 
   it("refuses to claim before the deadline", () => {
+    const running = play(createGame({ clock: LIVE_CLOCK, now: 0 }), ["e2e4", "e7e5"], 0);
+    expect(claimTimeout(running, 30_000).ok).toBe(false);
+  });
+
+  it("aborts instead of flagging while the first-move window is open", () => {
     const game = createGame({ clock: LIVE_CLOCK, now: 0 });
-    expect(claimTimeout(game, 30_000).ok).toBe(false);
+    expect(claimTimeout(game, FIRST_MOVE_WINDOW_MS - 1).ok).toBe(false);
+    const res = claimTimeout(game, FIRST_MOVE_WINDOW_MS + 1);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.state.status).toBe("aborted");
+    expect(res.state.termination).toBe("abort");
+    expect(res.state.result).toBeUndefined();
   });
 });

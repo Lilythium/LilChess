@@ -31,6 +31,7 @@
   <nav>
     <a href="#/">Lobby</a>
     <a href="#/games">My games{#if yourTurn > 0} <span class="badge">{yourTurn}</span>{/if}</a>
+    <a href="#/watch">Watch</a>
     <a href={profileHref}>{auth.user?.username}</a>
     <button onclick={() => logout()}>Log out</button>
   </nav>

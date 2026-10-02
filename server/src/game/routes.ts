@@ -1,4 +1,6 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
+import { buildPgn } from "@lilchess/shared";
+import { config } from "../config.js";
 import { requireAuth } from "../auth/routes.js";
 import {
   createChallenge,
@@ -8,6 +10,7 @@ import {
   listChallenges,
   cancelChallenge,
   getGamePlayers,
+  getLiveGames,
   countOpenChallengesFrom,
   ChallengeError,
   MAX_OPEN_CHALLENGES,
@@ -19,6 +22,9 @@ import {
   acceptDrawAndPersist,
   declineDrawAndPersist,
   abortAndPersist,
+  offerTakebackAndPersist,
+  acceptTakebackAndPersist,
+  declineTakebackAndPersist,
   getGame,
   getMoveSans,
   headToHead,
@@ -87,6 +93,8 @@ export async function gameRoutes(app: FastifyInstance) {
     }
   });
 
+   app.get("/api/games/live", { preHandler: requireAuth }, async () => ({ ok: true, games: getLiveGames() }));
+
   app.get("/api/games/:id", { preHandler: requireAuth }, async (req, reply) => {
     const params = parse(IdParams, req.params, reply);
     if (!params) return reply;
@@ -109,6 +117,28 @@ export async function gameRoutes(app: FastifyInstance) {
     return { ok: true, game, sans: getMoveSans(id), players, h2h, serverNow: Date.now() };
   });
 
+  app.get("/api/games/:id/pgn", { preHandler: requireAuth }, async (req, reply) => {
+  const params = parse(IdParams, req.params, reply);
+  if (!params) return reply;
+
+  const game = getGame(params.id);
+  const players = getGamePlayers(params.id);
+  if (!game || !players) return reply.code(404).send({ error: "Game not found" });
+
+  const pgn = buildPgn({
+    game,
+    sans: getMoveSans(params.id),
+    white: players.whiteName,
+    black: players.blackName,
+    createdAt: players.createdAt,
+    site: config.baseOrigin,
+  });
+  return reply
+    .header("content-type", "application/x-chess-pgn; charset=utf-8")
+    .header("content-disposition", `attachment; filename="lilchess-${params.id}.pgn"`)
+    .send(pgn);
+  });
+  
   app.get("/api/games/my-games", { preHandler: requireAuth }, async (req) => getMyGames(req.user!.id));
 
   app.get("/api/users/:username", { preHandler: requireAuth }, async (req, reply) => {
@@ -138,6 +168,9 @@ export async function gameRoutes(app: FastifyInstance) {
     { path: "draw/accept", run: acceptDrawAndPersist, returnState: true },
     { path: "draw/decline", run: declineDrawAndPersist, returnState: false },
     { path: "abort", run: abortAndPersist, returnState: true },
+    { path: "takeback/offer", run: offerTakebackAndPersist, returnState: false },
+    { path: "takeback/accept", run: acceptTakebackAndPersist, returnState: true },
+    { path: "takeback/decline", run: declineTakebackAndPersist, returnState: false },
   ] as const;
 
   for (const a of actions) {

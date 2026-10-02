@@ -8,6 +8,9 @@ import {
   declineDraw,
   abort,
   claimTimeout,
+  offerTakeback,
+  acceptTakeback,
+  declineTakeback,
   type GameState,
   type Color,
   type ActionResult,
@@ -64,7 +67,8 @@ function updateGameState(id: string, game: GameState): void {
         status=@status, result=@result, termination=@termination,
         ply=@ply, white_ms=@whiteMs, black_ms=@blackMs,
         turn_started_at=@turnStartedAt, deadline_at=@deadlineAt,
-        draw_offered_by=@drawOfferedBy, ended_at=@endedAt
+        draw_offered_by=@drawOfferedBy, takeback_offered_by=@takebackOfferedBy,
+        ended_at=@endedAt
       WHERE id=@id`,
     )
     .run({ id, ...row, endedAt });
@@ -74,6 +78,10 @@ function appendMove(gameId: string, ply: number, uci: string, san: string): void
   getDb()
     .prepare(`INSERT INTO moves (game_id, ply, uci, san) VALUES (?, ?, ?, ?)`)
     .run(gameId, ply, uci, san);
+}
+
+function deleteMovesAfter(gameId: string, ply: number): void {
+  getDb().prepare(`DELETE FROM moves WHERE game_id = ? AND ply > ?`).run(gameId, ply);
 }
 
 export function headToHead(meId: number, themId: number) {
@@ -138,6 +146,17 @@ function applyMoveCore(id: string, uci: string, now: number) {
   return { ...result, san, movePlayed };
 }
 
+function broadcastGameOver(gameId: string, state: GameState): void {
+  if (state.status === "started") return;
+  broadcastGameEvent(gameId, {
+    type: "game_over",
+    gameId,
+    status: state.status,
+    result: state.result,
+    termination: state.termination,
+  });
+}
+
 function broadcastMoveOutcome(
   gameId: string,
   uci: string,
@@ -158,15 +177,7 @@ function broadcastMoveOutcome(
       deadlineAt: state.deadlineAt,
     });
   }
-  if (state.status === "finished") {
-    broadcastGameEvent(gameId, {
-      type: "game_over",
-      gameId,
-      status: "finished",
-      result: state.result,
-      termination: state.termination,
-    });
-  }
+  broadcastGameOver(gameId, state);
   if (movePlayed && san && state.clock.mode === "correspondence") {
     void sendWebhook(`Move played in game ${gameId}: ${san}. Now ${state.turn} to move.`);
   }
@@ -209,6 +220,7 @@ function actAndPersist(
   gameId: string,
   userId: number,
   action: (game: GameState, color: Color) => ActionResult,
+  beforeWrite?: (state: GameState) => void, // runs inside the transaction
 ): ActionResult | NotFound | NotAParticipant {
   return getDb().transaction(() => {
     const p = getParticipants(gameId);
@@ -220,7 +232,10 @@ function actAndPersist(
     if (!game) return { ok: false as const, error: "not_found" as const };
 
     const result = action(game, color);
-    if (result.ok) updateGameState(gameId, result.state);
+    if (result.ok) {
+      beforeWrite?.(result.state);
+      updateGameState(gameId, result.state);
+    }
     return result;
   }).immediate();
 }
@@ -282,6 +297,44 @@ export function abortAndPersist(gameId: string, userId: number) {
   return r;
 }
 
+export function offerTakebackAndPersist(gameId: string, userId: number) {
+  const r = actAndPersist(gameId, userId, offerTakeback);
+  if (r.ok) {
+    broadcastGameEvent(gameId, { type: "takeback_offer", gameId, by: r.state.takebackOfferedBy ?? null });
+  }
+  return r;
+}
+
+export function acceptTakebackAndPersist(gameId: string, userId: number) {
+  const r = actAndPersist(
+    gameId,
+    userId,
+    (game, color) => acceptTakeback(game, color, Date.now()),
+    (state) => deleteMovesAfter(gameId, state.ply),
+  );
+  if (r.ok) {
+    broadcastGameEvent(gameId, {
+      type: "takeback",
+      gameId,
+      ply: r.state.ply,
+      turn: r.state.turn,
+      whiteMs: r.state.whiteMs,
+      blackMs: r.state.blackMs,
+      deadlineAt: r.state.deadlineAt,
+    });
+    notifyDeadlineChanged();
+  }
+  return r;
+}
+
+export function declineTakebackAndPersist(gameId: string, userId: number) {
+  const r = actAndPersist(gameId, userId, declineTakeback);
+  if (r.ok) {
+    broadcastGameEvent(gameId, { type: "takeback_offer", gameId, by: null });
+  }
+  return r;
+}
+
 export function claimTimeoutAndPersist(gameId: string, now: number) {
   const outcome = getDb().transaction(() => {
     const game = getGame(gameId);
@@ -291,14 +344,6 @@ export function claimTimeoutAndPersist(gameId: string, now: number) {
     return result;
   }).immediate();
 
-  if (outcome.ok) {
-    broadcastGameEvent(gameId, {
-      type: "game_over",
-      gameId,
-      status: "finished",
-      result: outcome.state.result,
-      termination: outcome.state.termination,
-    });
-  }
+  if (outcome.ok) broadcastGameOver(gameId, outcome.state);
   return outcome;
 }

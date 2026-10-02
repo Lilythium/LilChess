@@ -46,6 +46,7 @@ export function createGameStore(gameId: string) {
         view.game.blackMs = event.blackMs;
         view.game.deadlineAt = event.deadlineAt;
         view.game.drawOfferedBy = undefined;
+        view.game.takebackOfferedBy = undefined;
         view.sanByPly[event.ply] = event.san;
         break;
       }
@@ -53,6 +54,11 @@ export function createGameStore(gameId: string) {
         view.game.whiteMs = event.whiteMs; view.game.blackMs = event.blackMs;
         view.game.deadlineAt = event.deadlineAt; break;
       case "draw_offer": view.game.drawOfferedBy = event.by ?? undefined; break;
+      case "takeback_offer": view.game.takebackOfferedBy = event.by ?? undefined; break;
+      case "takeback":
+        view.game.takebackOfferedBy = undefined;
+        void resync(); // moves, SANs and clocks all changed
+        break;
       case "game_over":
         view.game.status = event.status; view.game.result = event.result;
         view.game.termination = event.termination;

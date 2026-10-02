@@ -40,9 +40,13 @@ export function attachWebSocketServer(app: FastifyInstance): void {
       if (!user) return reject(socket, 401, "Unauthorized");
 
       const p = getParticipants(gameId);
-      if (!p || (p.whiteId !== user.id && p.blackId !== user.id)) {
-        return reject(socket, 403, "Forbidden"); // not found, or authenticated but not a player in this game
-      }
+      if (!p) return reject(socket, 404, "Not Found");
+      // Any logged-in user may watch; only the two players may send moves.
+      const isPlayer = p.whiteId === user.id || p.blackId === user.id;
+
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        handleGameConnection(ws as WebSocket & { isAlive?: boolean }, gameId, user, isPlayer);
+      });
 
       wss.handleUpgrade(req, socket, head, (ws) => {
         handleGameConnection(ws as WebSocket & { isAlive?: boolean }, gameId, user);

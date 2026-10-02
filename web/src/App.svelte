@@ -11,6 +11,7 @@
   import LocalGame from "./routes/LocalGame.svelte";
   import MyGames from "./routes/MyGames.svelte";
   import Profile from "./routes/Profile.svelte";
+  import Watch from "./routes/Watch.svelte";
 
   onMount(loadMe);
 
@@ -62,6 +63,7 @@
     {:else if profile}{#key profile.name}<Profile name={profile.name} />{/key}
     {:else if route.path === "/games"}<MyGames />
     {:else if route.path === "/local"}<LocalGame />
+    {:else if route.path === "/watch"}<Watch />
     {:else}<Lobby />{/if}
   </main>
 {/if}

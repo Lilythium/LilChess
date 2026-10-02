@@ -27,9 +27,13 @@ function settleExpired(): void {
   for (const id of getExpiredStartedGameIds(Date.now())) {
     try {
       const result = claimTimeoutAndPersist(id, Date.now());
-      if (result.ok) {
-        log.info({ gameId: id, result: result.state.result }, "game timed out");
-        void sendWebhook(`Game ${id} timed out (${result.state.result}).`);
+        if (result.ok) {
+          if (result.state.status === "aborted") {
+            log.info({ gameId: id }, "game aborted (no first move)");
+        } else {
+          log.info({ gameId: id, result: result.state.result }, "game timed out");
+          void sendWebhook(`Game ${id} timed out (${result.state.result}).`);
+        }
       }
     } catch (err) {
       log.error({ err, gameId: id }, "failed to settle expired game");
@@ -46,7 +50,6 @@ function tick(): void {
     const deadline = getEarliestActiveDeadline();
     if (deadline !== undefined) delay = delayFor(deadline - Date.now());
   } catch (err) {
-    // Must never skip rescheduling: one failure would otherwise stop ALL timeouts.
     log.error({ err }, "scheduler tick failed, retrying in 1s");
     delay = 1_000;
   }

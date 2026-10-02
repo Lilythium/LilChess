@@ -1,0 +1,1 @@
+ALTER TABLE games ADD COLUMN takeback_offered_by TEXT;

@@ -1,6 +1,6 @@
 import { getDb } from "../db/connection.js";
 import { randomBytes } from "node:crypto";
-import { fenAfterMoves, START_FEN } from "@lilchess/shared";
+import { fenAfterMoves, startingDeadline, START_FEN, type ClockConfig } from "@lilchess/shared";
 
 // Helper to generate short random IDs like "aB9x2p"
 function generateId(bytes = 4) {
@@ -108,12 +108,11 @@ export function acceptChallengeTx(challengeId: string, acceptingUserId: number) 
     const initialFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
     // Set initial clock deadline based on mode
-    let deadlineAt = 0;
-    if (challenge.mode === "live") {
-      deadlineAt = now + challenge.initial_ms;
-    } else if (challenge.mode === "correspondence") {
-      deadlineAt = now + (challenge.days_per_move * 24 * 60 * 60 * 1000);
-    }
+    const clock: ClockConfig =
+      challenge.mode === "live"
+        ? { mode: "live", initialMs: challenge.initial_ms, incrementMs: challenge.increment_ms ?? 0 }
+        : { mode: "correspondence", daysPerMove: challenge.days_per_move };
+    const deadlineAt = startingDeadline(clock, now);
 
     db.prepare(`
       INSERT INTO games (
@@ -217,13 +216,14 @@ export function getUserProfileWithH2H(targetUsername: string, viewerId: number) 
 export function getGamePlayers(gameId: string) {
   return getDb().prepare(`
     SELECT g.white_id AS whiteId, wu.username AS whiteName,
-           g.black_id AS blackId, bu.username AS blackName
+           g.black_id AS blackId, bu.username AS blackName,
+           g.created_at AS createdAt
     FROM games g
     JOIN users wu ON wu.id = g.white_id
     JOIN users bu ON bu.id = g.black_id
     WHERE g.id = ?
   `).get(gameId) as
-    | { whiteId: number; whiteName: string; blackId: number; blackName: string }
+    | { whiteId: number; whiteName: string; blackId: number; blackName: string; createdAt: number }
     | undefined;
 }
 
@@ -244,4 +244,19 @@ export function listChallenges(userId: number) {
 export function cancelChallenge(id: string, userId: number): boolean {
   return getDb().prepare(`DELETE FROM challenges WHERE id = ? AND from_user = ?`)
     .run(id, userId).changes > 0;
+}
+
+// Games in progress, for the "Watch live" page. Live-clock games first, most recently active first.
+export function getLiveGames(limit = 20) {
+  const rows = getDb().prepare(`
+    SELECT g.id, g.white_id, g.black_id, wu.username AS white_name, bu.username AS black_name,
+           g.mode, g.initial_ms, g.increment_ms, g.days_per_move, g.ply, g.deadline_at
+    FROM games g
+    JOIN users wu ON wu.id = g.white_id
+    JOIN users bu ON bu.id = g.black_id
+    WHERE g.status = 'started'
+    ORDER BY (g.mode = 'live') DESC, g.turn_started_at DESC
+    LIMIT ?
+  `).all(limit) as any[];
+  return attachPositions(rows);
 }

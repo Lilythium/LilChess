@@ -22,7 +22,7 @@
   let localPreset = $state<number | null>(2); // index into PRESETS; null = no clock
   const hasLocal = loadLocalGame()?.game.status === "started";
 
-  // Games that existed on first load; anything new means one of my seeks was accepted.
+  // Games that existed on first load; anything new means one of my challenges was accepted.
   let known: Set<string> | null = null;
 
   async function refresh() {
@@ -176,7 +176,7 @@
   </div>
 
   <div class="stack">
-    {@render list("Open seeks", challenges.open, "Accept", accept, true)}
+    {@render list("Open challenges", challenges.open, "Accept", accept, true)}
     {#if challenges.forMe.length > 0}
       {@render list("Challenges for you", challenges.forMe, "Accept", accept, true)}
     {/if}

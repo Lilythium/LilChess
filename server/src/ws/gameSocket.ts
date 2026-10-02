@@ -13,7 +13,12 @@ function send(socket: WebSocket, payload: unknown): void {
   if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(payload));
 }
 
-export function handleGameConnection(socket: TrackedSocket, gameId: string, user: User): void {
+export function handleGameConnection(
+  socket: TrackedSocket,
+  gameId: string,
+  user: User,
+  isPlayer: boolean,
+): void {
   socket.isAlive = true;
   socket.on("pong", () => {
     socket.isAlive = true;
@@ -41,6 +46,7 @@ export function handleGameConnection(socket: TrackedSocket, gameId: string, user
     // Validate BEFORE touching game logic: a non-string `uci` used to throw inside parseUci and crash the process.
     const msg = ClientMessageSchema.safeParse(json);
     if (!msg.success) return send(socket, { type: "error", error: "bad_message" });
+    if (!isPlayer) return send(socket, { type: "error", error: "spectators_cannot_move" });
 
     try {
       const result = submitMove(gameId, user.id, msg.data.ply, msg.data.uci);

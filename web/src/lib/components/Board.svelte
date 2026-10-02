@@ -1,16 +1,20 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { Chessground } from "chessground";
   import type { Api } from "chessground/api";
-  import type { Key } from "chessground/types";
+  import type { Key, MoveMetadata } from "chessground/types";
   import { chessgroundDests } from "chessops/compat";
   import { makeFen } from "chessops/fen";
   import { parseSquare, squareRank } from "chessops/util";
   import { replay, type Color, type GameState } from "@lilchess/shared";
+  import { boardMode } from "../game/boardMode";
+  import { gameAtPly } from "../game/history";
   import PromotionDialog from "./PromotionDialog.svelte";
 
-  let { game, myColor, orientation, resetKey, onMove, onCancel }:
+  let { game, myColor, orientation, resetKey, onMove, onCancel, viewPly = null }:
     { game: GameState; myColor: Color | null; orientation?: Color; resetKey: number;
-      onMove: (uci: string) => void; onCancel: () => void } = $props();
+      onMove: (uci: string) => void; onCancel: () => void;
+      viewPly?: number | null } = $props(); // null = show the live position
 
   let el: HTMLDivElement;
   let cg: Api | undefined;
@@ -18,34 +22,49 @@
 
   $effect(() => {
     void resetKey; // a bump forces a re-sync after a rejected/cancelled move
-    const r = replay(game);
+    const shown = gameAtPly(game, viewPly); // earlier position while browsing history
+    const r = replay(shown);
     if (!r.ok) return;
     const pos = r.position;
-    const last = game.moves.at(-1);
-    const myTurn = game.status === "started" && myColor === game.turn;
+    const last = shown.moves.at(-1);
+    const mode = boardMode(game, myColor, shown === game);
 
-    cg ??= Chessground(el, {
-      premovable: { enabled: false },
+    const api = (cg ??= Chessground(el, {
+      premovable: { showDests: true, castle: true },
       movable: { free: false, events: { after: handleAfter } },
-    });
-    cg.set({
+    }));
+    api.set({
       fen: makeFen(pos.toSetup()),
       orientation: orientation ?? myColor ?? "white",
-      turnColor: game.turn,
+      turnColor: shown.turn,
       check: pos.isCheck(),
       lastMove: last ? [last.slice(0, 2) as Key, last.slice(2, 4) as Key] : undefined,
-      movable: { color: myTurn ? myColor! : undefined, dests: myTurn ? chessgroundDests(pos) : new Map() },
+      premovable: { enabled: mode.premovesEnabled },
+      movable: {
+        color: mode.movableColor,
+        dests: mode.movesEnabled ? chessgroundDests(pos) : new Map(),
+      },
     });
+
+    if (!mode.premovesEnabled) {
+      api.cancelPremove(); // game ended, or the user is browsing history
+    } else if (mode.movesEnabled) {
+      // The opponent just moved: play any queued premove (dropped silently if illegal).
+      // untrack: handleAfter -> onMove reads game state we don't want this effect to depend on.
+      untrack(() => api.playPremove());
+    }
   });
 
-  function handleAfter(orig: Key, dest: Key) {
+  function handleAfter(orig: Key, dest: Key, meta?: MoveMetadata) {
     const r = replay(game);
     if (!r.ok) return;
     const from = parseSquare(orig)!;
     const isPawn = r.position.board.get(from)?.role === "pawn";
     const rank = squareRank(parseSquare(dest)!);
-    if (isPawn && (rank === 0 || rank === 7)) promo = { orig, dest };
-    else onMove(orig + dest);
+    if (isPawn && (rank === 0 || rank === 7)) {
+      if (meta?.premove) onMove(orig + dest + "q"); // premoved promotions auto-queen
+      else promo = { orig, dest };
+    } else onMove(orig + dest);
   }
 
   function pick(role: "q" | "r" | "b" | "n") {

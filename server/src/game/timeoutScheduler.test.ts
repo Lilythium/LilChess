@@ -47,6 +47,12 @@ function seedUsers(): void {
   ).run();
 }
 
+// A live game whose real clock is running (both sides have moved).
+function runningGame(deadlineAt: number) {
+  const clock = { mode: "live" as const, initialMs: 60_000, incrementMs: 0 };
+  return { ...createGame({ clock, now: Date.now() - 120_000 }), ply: 2, deadlineAt };
+}
+
 describe("timeout scheduler — startup sweep", () => {
   beforeEach(() => {
     openDb(":memory:");
@@ -59,12 +65,7 @@ describe("timeout scheduler — startup sweep", () => {
   });
 
   it("settles a game whose deadline already passed before the scheduler started", () => {
-    const clock = { mode: "live" as const, initialMs: 60_000, incrementMs: 0 };
-    const game = {
-      ...createGame({ clock, now: Date.now() - 120_000 }),
-      deadlineAt: Date.now() - 10_000,
-    };
-    insertGame("expired-1", 1, 2, game);
+    insertGame("expired-1", 1, 2, runningGame(Date.now() - 10_000));
 
     startTimeoutScheduler();
 
@@ -85,20 +86,26 @@ describe("timeout scheduler — startup sweep", () => {
   });
 
   it("settles every game that's expired, not just the earliest", () => {
-    const clock = { mode: "live" as const, initialMs: 60_000, incrementMs: 0 };
-    insertGame("expired-a", 1, 2, {
-      ...createGame({ clock, now: Date.now() - 120_000 }),
-      deadlineAt: Date.now() - 20_000,
-    });
-    insertGame("expired-b", 1, 2, {
-      ...createGame({ clock, now: Date.now() - 120_000 }),
-      deadlineAt: Date.now() - 5_000,
-    });
+    insertGame("expired-a", 1, 2, runningGame(Date.now() - 20_000));
+    insertGame("expired-b", 1, 2, runningGame(Date.now() - 5_000));
 
     startTimeoutScheduler();
 
     expect(getGame("expired-a")?.status).toBe("finished");
     expect(getGame("expired-b")?.status).toBe("finished");
+  });
+
+  it("aborts a live game that nobody moved in", () => {
+    const clock = { mode: "live" as const, initialMs: 60_000, incrementMs: 0 };
+    insertGame("idle-1", 1, 2, {
+      ...createGame({ clock, now: Date.now() - 120_000 }),
+      deadlineAt: Date.now() - 10_000, // first-move window long gone
+    });
+    startTimeoutScheduler();
+    const settled = getGame("idle-1");
+    expect(settled?.status).toBe("aborted");
+    expect(settled?.termination).toBe("abort");
+    expect(settled?.result).toBeUndefined();
   });
 });
 
@@ -116,12 +123,7 @@ describe("timeout scheduler — wakes on deadlineBus", () => {
   it("settles a newly-inserted expired game as soon as it's woken, without waiting for the idle poll", () => {
     startTimeoutScheduler();
 
-    const clock = { mode: "live" as const, initialMs: 5_000, incrementMs: 0 };
-    const game = {
-      ...createGame({ clock, now: Date.now() }),
-      deadlineAt: Date.now() - 1,
-    };
-    insertGame("late-insert", 1, 2, game);
+    insertGame("late-insert", 1, 2, runningGame(Date.now() - 1));
 
     notifyDeadlineChanged();
 

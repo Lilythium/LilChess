@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Color, GameState } from "@lilchess/shared";
+  import { canOfferTakeback, type Color, type GameState } from "@lilchess/shared";
   import { api } from "../api";
 
   let { game, myColor, id, onDone }: {
@@ -32,6 +32,9 @@
 
   const opponentOffered = $derived(game.drawOfferedBy !== undefined && game.drawOfferedBy !== myColor);
   const iOffered = $derived(game.drawOfferedBy !== undefined && game.drawOfferedBy === myColor);
+  const opponentAskedTakeback = $derived(game.takebackOfferedBy !== undefined && game.takebackOfferedBy !== myColor);
+  const iAskedTakeback = $derived(game.takebackOfferedBy !== undefined && game.takebackOfferedBy === myColor);
+  const takebackAllowed = $derived(myColor !== null && canOfferTakeback(game, myColor));
 </script>
 
 {#if myColor && game.status === "started"}
@@ -44,6 +47,16 @@
       <span class="muted">Draw offered</span>
     {:else}
       <button disabled={busy} onclick={() => act("draw/offer")}>Offer draw</button>
+    {/if}
+
+    {#if opponentAskedTakeback}
+      <span class="muted">Opponent asks to take back a move</span>
+      <button class="primary" disabled={busy} onclick={() => act("takeback/accept")}>Allow</button>
+      <button disabled={busy} onclick={() => act("takeback/decline")}>Decline</button>
+    {:else if iAskedTakeback}
+      <span class="muted">Takeback requested</span>
+    {:else if takebackAllowed}
+      <button disabled={busy} onclick={() => act("takeback/offer")}>Takeback</button>
     {/if}
 
     {#if game.ply <= 1}

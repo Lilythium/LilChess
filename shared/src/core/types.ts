@@ -45,6 +45,7 @@ export interface GameState {
   result?: GameResult;
   termination?: Termination;
   drawOfferedBy?: Color;
+  takebackOfferedBy?: Color;
 }
 
 export const START_FEN =

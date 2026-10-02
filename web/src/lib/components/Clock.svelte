@@ -11,7 +11,9 @@
     return () => clearInterval(t);
   });
 
-  const running = $derived(game.status === "started" && game.turn === side);
+  const running = $derived(
+    game.status === "started" && game.turn === side && (game.clock.mode === "correspondence" || game.ply >= 2),
+  );
   const live = $derived(game.clock.mode === "live");
   const ms = $derived(remainingMs(game, side, now + offset));
 </script>
