@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGame } from "@lilchess/shared";
 import { openDb, closeDb, getDb } from "../connection.js";
 import {
@@ -70,17 +70,6 @@ describe("claimTimeoutAndPersist", () => {
     const moveResult = applyMoveAndPersist("g3", "e2e4", 20_000);
     expect(moveResult.ok).toBe(true);
 
-    it("aborts a live game nobody moved in, instead of awarding a timeout win", () => {
-    const clock = { mode: "live" as const, initialMs: 60_000, incrementMs: 0 };
-    insertGame("g4", 1, 2, createGame({ clock, now: 0 })); // window ends at 30000
-
-    const result = claimTimeoutAndPersist("g4", 31_000);
-    expect(result.ok).toBe(true);
-    expect(getGame("g4")?.status).toBe("aborted");
-    expect(getGame("g4")?.termination).toBe("abort");
-    expect(getGame("g4")?.result).toBeUndefined();
-    });
-
     // A timeout claim carrying the ORIGINAL deadline is now stale.
     // claimTimeoutAndPersist re-reads the game fresh inside its own
     // transaction rather than trusting the caller's "now" against a
@@ -94,10 +83,25 @@ describe("claimTimeoutAndPersist", () => {
     expect(getGame("g3")?.moves).toEqual(["e2e4"]);
     expect(getGame("g3")?.status).toBe("started");
   });
+
+  it("aborts a live game nobody moved in, instead of awarding a timeout win", () => {
+    const clock = { mode: "live" as const, initialMs: 60_000, incrementMs: 0 };
+    insertGame("g4", 1, 2, createGame({ clock, now: 0 })); // window ends at 30000
+
+    const result = claimTimeoutAndPersist("g4", 31_000);
+    expect(result.ok).toBe(true);
+    expect(getGame("g4")?.status).toBe("aborted");
+    expect(getGame("g4")?.termination).toBe("abort");
+    expect(getGame("g4")?.result).toBeUndefined();
+  });
 });
 
 describe("takebacks", () => {
   beforeEach(() => {
+    // Mock the system time so that acceptance checks don't instantly timeout
+    vi.useFakeTimers();
+    vi.setSystemTime(1500); 
+
     openDb(":memory:");
     const db = getDb();
     db.prepare(`INSERT INTO users (id, username, password_hash, created_at) VALUES (1, 'alice', 'x', 0)`).run();
@@ -106,7 +110,10 @@ describe("takebacks", () => {
     insertGame("tb1", 1, 2, createGame({ clock, now: 0 })); // alice = white
   });
 
-  afterEach(() => closeDb());
+  afterEach(() => {
+    closeDb();
+    vi.useRealTimers();
+  });
 
   it("removes the retracted move and restores the turn", () => {
     expect(applyMoveAndPersist("tb1", "e2e4", 1_000).ok).toBe(true);

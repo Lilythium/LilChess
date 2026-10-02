@@ -43,13 +43,13 @@ export function attachWebSocketServer(app: FastifyInstance): void {
       if (!p) return reject(socket, 404, "Not Found");
       // Any logged-in user may watch; only the two players may send moves.
       const isPlayer = p.whiteId === user.id || p.blackId === user.id;
-
       wss.handleUpgrade(req, socket, head, (ws) => {
-        handleGameConnection(ws as WebSocket & { isAlive?: boolean }, gameId, user, isPlayer);
-      });
-
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        handleGameConnection(ws as WebSocket & { isAlive?: boolean }, gameId, user);
+        handleGameConnection(
+          ws as WebSocket & { isAlive?: boolean },
+          gameId,
+          user,
+          isPlayer,
+        );
       });
     } catch (err) {
       log.error({ err }, "upgrade failed");

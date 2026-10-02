@@ -26,6 +26,8 @@ afterEach(async () => {
 function connect(gameId: string, sid?: string): WebSocket {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/games/${gameId}`, {
     headers: sid ? { Cookie: `sessionId=${sid}` } : {},
+    // Disable compression to prevent the "RSV1 must be clear" frame error in tests
+    perMessageDeflate: false,
   });
   ws.on("error", () => {}); // a rejected upgrade surfaces as an error too
   sockets.push(ws);
@@ -43,14 +45,50 @@ const rejectedWith = (ws: WebSocket) =>
     ws.once("unexpected-response", (_req, res) => resolve(res.statusCode ?? 0));
   });
 
-const nextMessage = (ws: WebSocket) =>
-  new Promise<any>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("no message within 3s")), 3_000);
-    ws.once("message", (data) => {
-      clearTimeout(timer);
-      resolve(JSON.parse(data.toString()));
-    });
+// Helper to buffer all messages instantly and avoid race conditions with initial 'sync' broadcasts.
+function listen(ws: WebSocket) {
+  const queue: any[] = [];
+  const waiters: { resolve: (msg: any) => void; reject: (err: Error) => void }[] = [];
+  let closed = false;
+  let closeError = "";
+
+  ws.on("message", (data) => {
+    const msg = JSON.parse(data.toString());
+    if (waiters.length > 0) {
+      waiters.shift()!.resolve(msg);
+    } else {
+      queue.push(msg);
+    }
   });
+  
+  ws.on("close", (code, reason) => {
+    closed = true;
+    closeError = `WebSocket closed (code ${code}): ${reason.toString()}`;
+    while (waiters.length > 0) {
+      waiters.shift()!.reject(new Error(closeError));
+    }
+  });
+  
+  ws.on("error", (err) => {
+    closed = true;
+    closeError = `WebSocket error: ${err.message}`;
+    while (waiters.length > 0) {
+      waiters.shift()!.reject(err);
+    }
+  });
+
+  return async function nextMessage() {
+    if (queue.length > 0) return queue.shift();
+    if (closed) throw new Error(closeError);
+    return new Promise<any>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("no message within 3s")), 3000);
+      waiters.push({
+        resolve: (msg) => { clearTimeout(timer); resolve(msg); },
+        reject: (err) => { clearTimeout(timer); reject(err); }
+      });
+    });
+  };
+}
 
 describe("spectating", () => {
   it("lets a non-player watch moves as they happen", async () => {
@@ -60,8 +98,8 @@ describe("spectating", () => {
     const gameId = await startGame(app, alice, bob);
 
     const spectator = connect(gameId, carol);
+    const nextMessage = listen(spectator); // Start listening immediately!
     await opened(spectator);
-    const incoming = nextMessage(spectator);
 
     const res = await app.inject({
       method: "POST",
@@ -70,7 +108,14 @@ describe("spectating", () => {
       payload: { ply: 0, uci: "e2e4" },
     });
     expect(res.statusCode).toBe(200);
-    expect(await incoming).toMatchObject({ type: "move", ply: 1, uci: "e2e4", san: "e4" });
+
+    // Skip any initial sync/state messages until we see the move broadcast
+    let msg = await nextMessage();
+    while (msg && msg.type !== "move") {
+      msg = await nextMessage();
+    }
+    
+    expect(msg).toMatchObject({ type: "move", ply: 1, uci: "e2e4", san: "e4" });
   });
 
   it("does not let a spectator move", async () => {
@@ -80,10 +125,18 @@ describe("spectating", () => {
     const gameId = await startGame(app, alice, bob);
 
     const spectator = connect(gameId, carol);
+    const nextMessage = listen(spectator); // Start listening immediately!
     await opened(spectator);
-    const reply = nextMessage(spectator);
+
     spectator.send(JSON.stringify({ type: "move", ply: 0, uci: "e2e4" }));
-    expect(await reply).toEqual({ type: "error", error: "spectators_cannot_move" });
+
+    // Skip any initial sync/state messages until we see the error response
+    let msg = await nextMessage();
+    while (msg && msg.type !== "error") {
+      msg = await nextMessage();
+    }
+
+    expect(msg).toEqual({ type: "error", error: "spectators_cannot_move" });
 
     const state = await app.inject({ method: "GET", url: `/api/games/${gameId}`, cookies: { sessionId: carol } });
     expect(state.json().game.ply).toBe(0);

@@ -1,8 +1,6 @@
 import { parseUci } from "chessops/util";
 import { expireGame } from "./actions.js";
-import { advanceClock, inFirstMoveWindow } from "./clock.js";
-import { checkGameEnd } from "./gameEnd.js";
-import { positionKey, replay } from "./replay.js";
+import { advanceClock, inFirstMoveWindow } from "./clock.js";import { checkGameEnd } from "./gameEnd.js";import { positionKey, replay } from "./replay.js";
 import { opponent } from "./types.js";
 import type { ActionResult, GameState } from "./types.js";
 
@@ -19,30 +17,18 @@ export function applyMove(
     return { ok: true, state: expireGame(game) };
   }
 
-  if (now >= game.deadlineAt) {
-  const loser = game.turn;
-  return {
-    ok: true,
-    state: {
-      ...game,
-      status: "finished",
-      result: loser === "white" ? "0-1" : "1-0",
-      termination: "timeout",
-      whiteMs: loser === "white" ? 0 : game.whiteMs,
-      blackMs: loser === "black" ? 0 : game.blackMs,
-    },
-  };
-}
-
   const move = parseUci(uci);
+
   if (!move) {
     return { ok: false, error: "unparseable_move" };
   }
 
   const replayed = replay(game);
+
   if (!replayed.ok) {
     return { ok: false, error: replayed.error };
   }
+
   const { position, positionKeys } = replayed;
 
   if (!position.isLegal(move)) {
@@ -50,6 +36,7 @@ export function applyMove(
   }
 
   const mover = game.turn;
+
   position.play(move);
 
   const clock = advanceClock(
@@ -61,6 +48,7 @@ export function applyMove(
     now,
     game.ply,
   );
+
   const allKeys = [...positionKeys, positionKey(position)];
   const endCheck = checkGameEnd(position, mover, allKeys);
   const newMoves = [...game.moves, uci];

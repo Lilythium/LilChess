@@ -66,7 +66,7 @@ export function advanceClock(
     return {
       whiteMs: whiteRemaining + increment,
       blackMs: blackRemaining,
-      deadlineAt: now + whiteRemaining + increment,
+      deadlineAt: now + blackRemaining, // <-- Deadline is for Black
     };
   }
 
@@ -75,7 +75,7 @@ export function advanceClock(
   return {
     whiteMs: whiteRemaining,
     blackMs: blackRemaining + increment,
-    deadlineAt: now + blackRemaining + increment,
+    deadlineAt: now + whiteRemaining, // <-- Deadline is for White
   };
 }
 
