@@ -149,4 +149,32 @@ describe("connectGameSocket", () => {
     sock.send({ type: "move", ply: 0, uci: "e2e4" });
     expect(ws.sent).toEqual([JSON.stringify({ type: "move", ply: 0, uci: "e2e4" })]);
   });
+
+    it("ignores non-JSON frames and resyncs instead of throwing", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const h = handlers();
+    connectGameSocket("g", h);
+    FakeWebSocket.instances[0]!.emit("message", { data: "{nope" });
+    expect(h.onEvent).not.toHaveBeenCalled();
+    expect(h.onResyncNeeded).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops events that fail the schema and resyncs", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const h = handlers();
+    connectGameSocket("g", h);
+    const bad = { type: "move", gameId: "g", ply: 1, uci: "e2e4", turn: "black" }; // no san / clocks
+    FakeWebSocket.instances[0]!.emit("message", { data: JSON.stringify(bad) });
+    expect(h.onEvent).not.toHaveBeenCalled();
+    expect(h.onResyncNeeded).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes server error messages to onServerError without resyncing", () => {
+    const h = { ...handlers(), onServerError: vi.fn() };
+    connectGameSocket("g", h);
+    FakeWebSocket.instances[0]!.emit("message", { data: JSON.stringify({ type: "error", error: "ply_mismatch" }) });
+    expect(h.onServerError).toHaveBeenCalledWith("ply_mismatch");
+    expect(h.onEvent).not.toHaveBeenCalled();
+    expect(h.onResyncNeeded).not.toHaveBeenCalled();
+  });
 });

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../app.js";
 import { closeDb, getDb, openDb } from "../db/connection.js";
 import { registerUser } from "../testing/helpers.js";
-import { normalizeUsername } from "./username.js";
+import { normalizeUsername } from "@lilchess/shared";
 
 describe("normalizeUsername", () => {
   it("lowercases ASCII and trims", () => {

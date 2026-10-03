@@ -1,5 +1,5 @@
 import { getDb } from "../db/connection.js";
-import { normalizeUsername } from "./username.js";
+import { normalizeUsername } from "@lilchess/shared";
 
 export interface User {
   id: number;

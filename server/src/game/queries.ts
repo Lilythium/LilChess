@@ -1,7 +1,6 @@
 import { getDb } from "../db/connection.js";
 import { randomBytes } from "node:crypto";
-import { fenAfterMoves, startingDeadline, START_FEN, type ClockConfig } from "@lilchess/shared";
-import { normalizeUsername } from "../auth/username.js";
+import { fenAfterMoves, normalizeUsername, startingDeadline, START_FEN, type ClockConfig } from "@lilchess/shared";
 
 // Helper to generate short random IDs like "aB9x2p"
 function generateId(bytes = 4) {

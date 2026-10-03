@@ -21,6 +21,7 @@
   "dependencies": {
     "@lilchess/shared": "^0.0.0",
     "chessground": "^9.2.1",
-    "chessops": "^0.15.1"
+    "chessops": "^0.15.1",
+    "zod": "^4.6.5"
   }
 }

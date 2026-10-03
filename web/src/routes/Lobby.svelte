@@ -6,6 +6,8 @@
   import { loadLocalGame, startLocalGame } from "../lib/game/localGame";
   import type { ChallengeRow, Challenges, MyGames } from "../lib/types";
   import ModeToggle from "../lib/components/ModeToggle.svelte";
+  import { ChallengeBody } from "@lilchess/shared";
+  import { validate } from "../lib/validate";
 
   const PRESETS: [number, number][] = [[1, 0], [3, 2], [5, 3], [10, 0], [15, 10]];
   const DAYS = [1, 2, 3, 7, 14];
@@ -61,13 +63,13 @@
         ? { mode, initialMs: min * 60_000, incrementMs: inc * 1000 }
         : { mode, daysPerMove: days };
     try {
-      await api("/api/challenges", {
-        body: {
-          ...clock,
-          colorPref: color === "random" ? undefined : color,
-          toUsername: toUsername.trim() || undefined,
-        },
+      const v = validate(ChallengeBody, {
+        ...clock,
+        colorPref: color === "random" ? undefined : color,
+        toUsername: toUsername.trim() || undefined,
       });
+      if (!v.ok) { error = v.error; return; }
+      await api("/api/challenges", { body: v.data });
       toUsername = "";
       await refresh();
     } catch (err) {
@@ -76,7 +78,6 @@
       busy = false;
     }
   }
-
   async function accept(id: string) {
     error = null;
     try {

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { login, register } from "../lib/auth.svelte";
+  import { LoginBody, RegisterBody } from "@lilchess/shared";
+  import { validate } from "../lib/validate";
 
   let mode = $state<"login" | "register">("login");
   let username = $state("");
@@ -12,9 +14,17 @@
     e.preventDefault();
     busy = true;
     error = null;
+    const input = { username, password, inviteCode: inviteCode.trim() || undefined };
     try {
-      if (mode === "login") await login(username, password);
-      else await register(username, password, inviteCode.trim() || undefined);
+      if (mode === "login") {
+        const v = validate(LoginBody, input);
+        if (!v.ok) { error = v.error; return; }
+        await login(v.data.username, v.data.password);
+      } else {
+        const v = validate(RegisterBody, input);
+        if (!v.ok) { error = v.error; return; }
+        await register(v.data.username, v.data.password, v.data.inviteCode);
+      }
       // App.svelte redirects once auth.user is set
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);

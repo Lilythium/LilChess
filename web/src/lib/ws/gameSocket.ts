@@ -1,11 +1,12 @@
-import type { ClientMessage, GameEvent } from "@lilchess/shared";
+import { ServerMessageSchema, type ClientMessage, type GameEvent } from "@lilchess/shared";
 
 export interface GameSocketHandlers {
   onEvent: (event: GameEvent) => void;
-  // Called on initial connect AND every reconnect. The caller must
-  // GET /api/games/:id and reconcile local state 
+  // Called on initial connect AND every reconnect, and whenever a message can't be trusted.
+  // The caller must GET /api/games/:id and reconcile local state
   onResyncNeeded: () => void;
   onStatusChange?: (status: "connecting" | "open" | "closed") => void;
+  onServerError?: (error: string) => void; // e.g. "ply_mismatch" in reply to our own send
 }
 
 export function connectGameSocket(gameId: string, handlers: GameSocketHandlers) {
@@ -26,17 +27,26 @@ export function connectGameSocket(gameId: string, handlers: GameSocketHandlers) 
     });
 
     socket.addEventListener("message", (ev) => {
+      let raw: unknown;
       try {
-        const data = JSON.parse(ev.data as string) as Partial<GameEvent>;
-
-        if (!data || typeof data !== "object" || typeof (data as { type?: unknown }).type !== "string") {
-          throw new Error("Invalid game event payload");
-        }
-
-        handlers.onEvent(data as GameEvent);
+        raw = JSON.parse(ev.data as string);
       } catch {
+        console.warn("ignoring non-JSON game message");
         handlers.onResyncNeeded();
+        return;
       }
+      const parsed = ServerMessageSchema.safeParse(raw);
+      if (!parsed.success) {
+        // Can't trust our local state if we don't understand what the server said.
+        console.warn("ignoring malformed game message", parsed.error.issues[0]);
+        handlers.onResyncNeeded();
+        return;
+      }
+      if (parsed.data.type === "error") {
+        handlers.onServerError?.(parsed.data.error);
+        return;
+      }
+      handlers.onEvent(parsed.data);
     });
 
     socket.addEventListener("close", () => {
