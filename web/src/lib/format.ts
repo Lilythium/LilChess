@@ -20,3 +20,7 @@ export function resultText(g: GameState): string {
   const winner = g.result === "1-0" ? "White" : g.result === "0-1" ? "Black" : null;
   return winner ? `${winner} wins by ${how}` : `Draw by ${how}`;
 }
+
+export function displayName(name: string): string {
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}

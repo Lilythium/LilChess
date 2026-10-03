@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeUsername } from "./auth/username.js";
 import type { FastifyReply } from "fastify";
 
 // ---- shared field rules ----

@@ -67,7 +67,7 @@
     font-size: 14px;
     font-weight: 500;
     /* Unselected text color */
-    color: #b0b0b0; 
+    color: #ffffff; 
     transition: color 0.25s ease;
   }
 

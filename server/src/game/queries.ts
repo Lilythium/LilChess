@@ -1,6 +1,7 @@
 import { getDb } from "../db/connection.js";
 import { randomBytes } from "node:crypto";
 import { fenAfterMoves, startingDeadline, START_FEN, type ClockConfig } from "@lilchess/shared";
+import { normalizeUsername } from "../auth/username.js";
 
 // Helper to generate short random IDs like "aB9x2p"
 function generateId(bytes = 4) {
@@ -176,7 +177,7 @@ export function getMyGames(userId: number) {
 export function getUserProfileWithH2H(targetUsername: string, viewerId: number) {
   const db = getDb();
   
-  const targetUser = db.prepare(`SELECT id, username, created_at FROM users WHERE username = ?`).get(targetUsername) as any;
+  const targetUser = db.prepare(`SELECT id, username, created_at FROM users WHERE username = ?`).get(normalizeUsername(targetUsername)) as any;
   if (!targetUser) return null;
 
   // If viewing someone else, calculate H2H stats

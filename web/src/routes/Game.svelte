@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { auth } from "../lib/auth.svelte";
-  import { resultText } from "../lib/format";
+  import { displayName, resultText } from "../lib/format";
   import { createGameStore } from "../lib/game/gameStore.svelte";
   import { connectGameSocket } from "../lib/ws/gameSocket";
   import Board from "../lib/components/Board.svelte";
@@ -120,8 +120,8 @@
       <MoveList
         sanByPly={view.sanByPly}
         ply={g.ply}
-        bind:selected={viewPly}
-        onSelect={(p) => (viewPly = selectPly(p, g.ply))}
+        selected={viewPly}
+        onSelect={(p: number) => (viewPly = selectPly(p, g.ply))}
       />
       <MoveNav {viewPly} total={g.ply} onNav={nav} />
       <GameActions game={g} {myColor} {id} onDone={store.resync} />

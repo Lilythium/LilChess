@@ -26,7 +26,17 @@ export function connectGameSocket(gameId: string, handlers: GameSocketHandlers) 
     });
 
     socket.addEventListener("message", (ev) => {
-      handlers.onEvent(JSON.parse(ev.data as string) as GameEvent);
+      try {
+        const data = JSON.parse(ev.data as string) as Partial<GameEvent>;
+
+        if (!data || typeof data !== "object" || typeof (data as { type?: unknown }).type !== "string") {
+          throw new Error("Invalid game event payload");
+        }
+
+        handlers.onEvent(data as GameEvent);
+      } catch {
+        handlers.onResyncNeeded();
+      }
     });
 
     socket.addEventListener("close", () => {

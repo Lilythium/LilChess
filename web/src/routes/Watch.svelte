@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api } from "../lib/api";
-  import { timeControl } from "../lib/format";
+  import { displayName, timeControl } from "../lib/format";
   import GameCard from "../lib/components/GameCard.svelte";
   import type { LiveGameRow } from "../lib/types";
 
@@ -40,7 +40,7 @@
             href={"#/game/" + g.id}
             fen={g.fen}
             lastMove={g.last_move}
-            title={`${g.white_name} vs ${g.black_name}`}
+            title={`${displayName(g.white_name)} vs ${displayName(g.black_name)}`}
             subtitle={timeControl(g)}
           />
         {/each}

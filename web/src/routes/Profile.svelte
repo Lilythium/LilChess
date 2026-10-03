@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api } from "../lib/api";
-  import { timeControl } from "../lib/format";
+  import { displayName, timeControl } from "../lib/format";
   import type { GameRow } from "../lib/types";
   import GameCard from "../lib/components/GameCard.svelte";
 
@@ -54,7 +54,7 @@
 {:else}
   <div class="stack">
     <div class="panel">
-      <h1>{data.profile.username}</h1>
+      <h1>{displayName(data.profile.username)}</h1>
       <p class="muted">Joined {new Date(data.profile.created_at).toLocaleDateString()}</p>
       {#if data.h2h}
         <p>
@@ -78,7 +78,7 @@
               fen={g.fen}
               lastMove={g.last_move}
               orientation={orientation(g)}
-              title={opponent(g)}
+              title={displayName(opponent(g))}
               subtitle={subtitle(g)}
             />
           {/each}

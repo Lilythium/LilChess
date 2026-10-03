@@ -1,4 +1,5 @@
 import { getDb } from "../db/connection.js";
+import { normalizeUsername } from "./username.js";
 
 export interface User {
   id: number;
@@ -8,7 +9,7 @@ export interface User {
 }
 
 export function getUserByUsername(username: string) {
-  return getDb().prepare(`SELECT * FROM users WHERE username = ?`).get(username) as (User & { password_hash: string }) | undefined;
+  return getDb().prepare(`SELECT * FROM users WHERE username = ?`).get(normalizeUsername(username)) as (User & { password_hash: string }) | undefined;
 }
 
 export function createUser(username: string, passwordHash: string): User {
@@ -16,9 +17,9 @@ export function createUser(username: string, passwordHash: string): User {
   const info = getDb().prepare(`
     INSERT INTO users (username, password_hash, created_at, is_admin) 
     VALUES (?, ?, ?, ?)
-  `).run(username, passwordHash, now, 0);
+  `).run(normalizeUsername(username), passwordHash, now, 0);
 
-  return { id: info.lastInsertRowid as number, username, created_at: now, is_admin: 0 };
+  return { id: info.lastInsertRowid as number, username: normalizeUsername(username), created_at: now, is_admin: 0 };
 }
 
 export function createSession(tokenHash: string, userId: number, expiresAt: number) {

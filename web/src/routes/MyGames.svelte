@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { auth } from "../lib/auth.svelte";
-  import { formatDuration, timeControl } from "../lib/format";
+  import { displayName, formatDuration, timeControl } from "../lib/format";
   import GameCard from "../lib/components/GameCard.svelte";
   import type { GameRow, MyGames } from "../lib/types";
 
@@ -57,7 +57,7 @@
             fen={g.fen}
             lastMove={g.last_move}
             orientation={orientation(g)}
-            title={opponent(g)}
+            title={displayName(opponent(g))}
             subtitle={subtitle(g, kind)}
           />
         {/each}

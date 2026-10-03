@@ -3,6 +3,7 @@
   import { api } from "../api";
   import { auth, logout } from "../auth.svelte";
   import type { MyGames } from "../types";
+  import { displayName } from "../format";
 
   let yourTurn = $state(0);
 
@@ -32,7 +33,7 @@
     <a href="#/">Lobby</a>
     <a href="#/games">My games{#if yourTurn > 0} <span class="badge">{yourTurn}</span>{/if}</a>
     <a href="#/watch">Watch</a>
-    <a href={profileHref}>{auth.user?.username}</a>
+    <a href={profileHref}>{displayName(auth.user?.username ?? "")}</a>
     <button onclick={() => logout()}>Log out</button>
   </nav>
 </header>

@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { navigate } from "../lib/router.svelte";
-  import { timeControl } from "../lib/format";
+  import { displayName, timeControl } from "../lib/format";
   import { loadLocalGame, startLocalGame } from "../lib/game/localGame";
   import type { ChallengeRow, Challenges, MyGames } from "../lib/types";
   import ModeToggle from "../lib/components/ModeToggle.svelte";
@@ -113,7 +113,7 @@
         <tbody>
           {#each rows as c (c.id)}
             <tr>
-              {#if showFrom}<td>{c.from_name}</td>{/if}
+              {#if showFrom}<td>{displayName(c.from_name)}</td>{/if}
               <td>{timeControl(c)}</td>
               <td>{c.color_pref ? `you: ${c.color_pref === "white" ? "black" : "white"}` : ""}</td>
               <td style="text-align:right"><button onclick={() => action(c.id)}>{label}</button></td>
