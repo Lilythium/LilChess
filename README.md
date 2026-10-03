@@ -1,2 +1,255 @@
 # LilChess
-Self-hosted, lightweight chess server with accounts, live &amp; correspondence play, and per-opponent history.
+
+Self-hosted, lightweight chess server with accounts, live and correspondence play, and per-opponent game history.
+
+## Features
+
+* User accounts and authentication
+* Live multiplayer chess
+* Correspondence games
+* Open challenges
+* Time controls and chess clocks
+* Player profiles and statistics
+* Per-opponent game history
+* WebSocket-based live games
+* SQLite database
+* Automatic database backups
+* Configurable registration
+* Rate limiting
+* Health check endpoint
+* Docker support
+
+## Tech Stack
+
+* **Frontend:** Svelte 5, TypeScript, Vite
+* **Backend:** Node.js, Fastify, WebSockets
+* **Chess:** chessops, Chessground
+* **Database:** SQLite
+* **Validation:** Zod
+* **Testing:** Vitest
+* **Deployment:** Docker
+
+## Requirements
+
+### Docker
+
+* Docker Engine 22+ recommended
+
+### Local Development
+
+* Node.js 22+
+* npm
+
+## Installation
+
+### Docker
+
+Clone the repository and build the image:
+
+```bash
+git clone https://github.com/Lilythium/LilChess.git
+cd LilChess
+docker build -t lilchess .
+```
+
+Create a data directory and start the server:
+
+```bash
+mkdir data
+docker run -d \
+  --name lilchess \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  -v "$(pwd)/data:/data" \
+  lilchess
+```
+
+LilChess will be available at `http://localhost:3000`.
+
+The database and backups are stored in the mounted `data` directory.
+
+### Windows PowerShell
+
+```powershell
+git clone https://github.com/Lilythium/LilChess.git
+cd LilChess
+docker build -t lilchess .
+mkdir data
+docker run -d --name lilchess --restart unless-stopped -p 3000:3000 -v "${PWD}/data:/data" lilchess
+```
+
+## Local Development
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the development server:
+
+```bash
+npm run dev
+```
+
+The development setup starts both the Fastify server and Svelte frontend.
+
+### Other Commands
+
+```bash
+npm run build    # Build all workspaces
+npm test         # Run tests
+npm run lint     # Run ESLint
+```
+
+## Configuration
+
+LilChess can be configured with environment variables.
+
+| Variable          | Default             | Description                                   |
+| ----------------- | ------------------- | --------------------------------------------- |
+| `PORT`            | `3000`              | Server port                                   |
+| `HOST`            | `0.0.0.0`           | Server host                                   |
+| `DATA_DIR`        | `./data`            | Database/data directory                       |
+| `REGISTRATION`    | `open`              | `open`, `invite`, or `closed`                 |
+| `INVITE_CODE`     | —                   | Required when registration is set to `invite` |
+| `BASE_URL`        | —                   | Public HTTP(S) URL                            |
+| `TRUST_PROXY`     | —                   | Configure proxy trust                         |
+| `LOG_LEVEL`       | `info`              | Logging level                                 |
+| `BACKUP_DIR`      | `$DATA_DIR/backups` | Backup location                               |
+| `BACKUP_KEEP`     | `7`                 | Number of backups to retain                   |
+| `BACKUP_HOUR_UTC` | `3`                 | Daily backup hour in UTC                      |
+| `WEBHOOK_URL`     | —                   | Optional notification webhook                 |
+| `WEBHOOK_KIND`    | —                   | Webhook type, such as `ntfy` or `discord`     |
+
+See `.env.example` for the available configuration options.
+
+## Registration
+
+Registration can be configured with:
+
+* `open` — Anyone can register
+* `invite` — Registration requires an invite code
+* `closed` — New registrations are disabled
+
+Example:
+
+```env
+REGISTRATION=invite
+INVITE_CODE=your-secret-code
+```
+
+## Health Check
+
+The server provides a health endpoint:
+
+```text
+/api/health
+```
+
+Docker also uses this endpoint for its container health check.
+
+## Data & Backups
+
+LilChess stores its SQLite database and other persistent data inside `DATA_DIR`.
+
+When running with Docker, `/data` should be mounted to a persistent host directory:
+
+```bash
+-v "$(pwd)/data:/data"
+```
+
+Automatic backups are stored in:
+
+```text
+/data/backups
+```
+
+By default, the server keeps the last 7 backups.
+
+## Updating
+
+Pull the latest changes, rebuild the image, and recreate the container:
+
+```bash
+git pull
+docker build -t lilchess .
+docker stop lilchess
+docker rm lilchess
+docker run -d \
+  --name lilchess \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  -v "$(pwd)/data:/data" \
+  lilchess
+```
+
+Your database remains intact because it is stored in the mounted `data` directory.
+
+## Reverse Proxy
+
+For public deployments, place LilChess behind a reverse proxy such as nginx or Caddy and configure `BASE_URL` to match the public address.
+
+Example:
+
+```env
+BASE_URL=https://chess.example.com
+```
+
+The reverse proxy must support WebSocket connections for live games.
+
+## Project Structure
+
+```text
+LilChess/
+├── server/       # Fastify backend
+├── shared/       # Shared types and chess logic
+├── web/          # Svelte frontend
+├── Dockerfile
+├── package.json
+└── .env.example
+```
+
+## Development
+
+Build the project:
+
+```bash
+npm run build
+```
+
+Run tests:
+
+```bash
+npm test
+```
+
+Run linting:
+
+```bash
+npm run lint
+```
+
+## Third-Party Assets
+
+### Sound Effects
+
+LilChess uses sound effects created by Enigmahack from the [Lichess](https://github.com/lichess-org/lila) project.
+
+Source directory:
+
+[lichess-org/lila/public/sound/sfx](https://github.com/lichess-org/lila/tree/master/public/sound/sfx)
+
+These sound effects are licensed under the **GNU Affero General Public License v3 or later (AGPLv3+)**.
+
+Additional attribution information is available in [`web/public/sounds/ATTRIBUTION.md`](web/public/sounds/ATTRIBUTION.md).
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+For larger changes, please open an issue first to discuss the proposed change.
+
+## License
+
+LilChess is licensed under the **GNU General Public License v3.0**.
