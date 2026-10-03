@@ -4,7 +4,7 @@
   import { auth } from "../lib/auth.svelte";
   import { navigate } from "../lib/router.svelte";
   import { displayName, timeControl } from "../lib/format";
-  import { loadLocalGame, startLocalGame } from "../lib/game/localGame";
+    import { hasResumableLocalGame, startLocalGame } from "../lib/game/localGame";
   import type { ChallengeRow, Challenges, MyGames } from "../lib/types";
   import ModeToggle from "../lib/components/ModeToggle.svelte";
   import { ChallengeBody } from "@lilchess/shared";
@@ -26,7 +26,7 @@
 
   // Play on this device
   let localPreset = $state<number | null>(2); // index into PRESETS; null = no clock
-  const hasLocal = loadLocalGame()?.game.status === "started";
+  const hasLocal = hasResumableLocalGame();
 
   // Games that existed on first load; anything new means one of my challenges was accepted.
   let known: Set<string> | null = null;
@@ -289,25 +289,6 @@
               Create private challenge
             </button>
           </div>
-
-          {#if inviteUrl}
-            <div class="row">
-              <input
-                readonly
-                value={inviteUrl}
-                style="flex:1"
-                onfocus={(e) => e.currentTarget.select()}
-              />
-
-              <button onclick={() => copy(inviteUrl!)}>
-                Copy
-              </button>
-            </div>
-
-            <span class="muted">
-              Share this link. The first person to accept starts the game.
-            </span>
-          {/if}
         </div>
       </div>
     {:else}

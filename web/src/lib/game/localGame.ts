@@ -1,4 +1,4 @@
-import { createGame, type GameState } from "@lilchess/shared";
+import { createGame, inFirstMoveWindow, type GameState } from "@lilchess/shared";
 
 export interface LocalConfig { minutes: number | null; incrementSec: number } // minutes null = no clock
 export interface LocalSave { game: GameState; sans: string[]; config: LocalConfig; timed: boolean }
@@ -37,4 +37,13 @@ export function startLocalGame(config: LocalConfig): LocalSave {
   };
   saveLocalGame(save);
   return save;
+}
+
+// A saved local game worth offering "Resume" for: still running, at least one move played,
+// and not already flagged on time (nothing flags timeouts while the game page is closed).
+export function hasResumableLocalGame(): boolean {
+  const g = loadLocalGame()?.game;
+  if (!g || g.status !== "started" || g.ply === 0) return false;
+  const flagged = !inFirstMoveWindow(g) && Date.now() >= g.deadlineAt;
+  return !flagged;
 }
