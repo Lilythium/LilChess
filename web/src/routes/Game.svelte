@@ -12,6 +12,7 @@
   import GameActions from "../lib/components/GameActions.svelte";
   import AbortWarning from "../lib/components/AbortWarning.svelte";
   import { selectPly, stepView, type NavAction } from "../lib/game/history";
+  import { playSound } from "../lib/audio/audio";
 
   let { id }: { id: string } = $props();
 
@@ -50,6 +51,7 @@
   }
 
   onMount(() => {
+    playSound("gameStart");
     const sock = connectGameSocket(id, {
       onEvent: store.applyEvent,
       onResyncNeeded: () => void store.resync(),

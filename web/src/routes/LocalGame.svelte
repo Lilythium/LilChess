@@ -10,6 +10,7 @@
   import Board from "../lib/components/Board.svelte";
   import Clock from "../lib/components/Clock.svelte";
   import MoveList from "../lib/components/MoveList.svelte";
+  import { playSound } from "../lib/audio/audio";
 
   let save = $state<LocalSave | null>(loadLocalGame());
   let resetKey = $state(0);
@@ -30,15 +31,45 @@
 
   function commit(res: ActionResult, san?: string | null) {
     if (!save) return;
-    if (!res.ok) { resetKey++; return; } // snap the board back
+    if (!res.ok) {
+      resetKey++;
+      return;
+    }
+
     const moved = res.state.moves.length > save.game.moves.length;
-    save = { ...save, game: res.state, sans: moved && san ? [...save.sans, san] : save.sans };
+
+    save = {
+      ...save,
+      game: res.state,
+      sans: moved && san ? [...save.sans, san] : save.sans,
+    };
+
+    if (res.state.status === "finished") {
+      playSound("gameEnd");
+    }
+
     saveLocalGame(save);
   }
 
   function onMove(uci: string) {
     if (!save) return;
-    commit(applyMove(save.game, uci, Date.now()), sanForNextMove(save.game, uci));
+
+    const res = applyMove(save.game, uci, Date.now());
+    const san = sanForNextMove(save.game, uci);
+
+    if (res.ok) {
+      if (san === "O-O" || san === "O-O-O") {
+        playSound("castle");
+      } else if (san?.endsWith("+")) {
+        playSound("check");
+      } else if (san?.includes("x")) {
+        playSound("capture");
+      } else {
+        playSound("move");
+      }
+  }
+
+    commit(res, san);
   }
 
   function act(fn: (g: GameState) => ActionResult) {
@@ -53,6 +84,7 @@
   function rematch() {
     if (!save) return;
     save = startLocalGame(save.config);
+    playSound("gameStart");
     resetKey++;
   }
 

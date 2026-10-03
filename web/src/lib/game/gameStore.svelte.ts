@@ -2,6 +2,7 @@ import type { GameEvent, GameState } from "@lilchess/shared";
 import type { GameResponse, H2H, Players } from "../types";
 import { api } from "../api";
 import { applyGameEvent } from "./applyEvent";
+import { playSound } from "../audio/audio";
 
 export interface GameView {
   game: GameState | null;
@@ -34,9 +35,29 @@ export function createGameStore(gameId: string) {
     }
   }
 
-  function applyEvent(event: GameEvent): void {
-    if (applyGameEvent(view, event) === "resync") void resync();
+function applyEvent(event: GameEvent): void {
+  if (event.type === "game_over") {
+    playSound("gameEnd");
   }
+  const outcome = applyGameEvent(view, event);
+
+  if (outcome === "resync") {
+    void resync();
+    return;
+  }
+
+  if (outcome === "applied" && event.type === "move") {
+    if (event.san === "O-O" || event.san === "O-O-O") {
+      playSound("castle");
+    } else if (event.san.endsWith("+")) {
+      playSound("check");
+    } else if (event.san.includes("x")) {
+      playSound("capture");
+    } else {
+      playSound("move");
+    }
+  }
+}
 
   return { get view() { return view; }, resync, applyEvent };
 }

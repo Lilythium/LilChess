@@ -8,6 +8,7 @@
   import ModeToggle from "../lib/components/ModeToggle.svelte";
   import { ChallengeBody } from "@lilchess/shared";
   import { validate } from "../lib/validate";
+  import { playSound } from "../lib/audio/audio";
 
   const PRESETS: [number, number][] = [[1, 0], [3, 2], [5, 3], [10, 0], [15, 10]];
   const DAYS = [1, 2, 3, 7, 14];
@@ -100,6 +101,7 @@
   function playLocal() {
     const p = localPreset === null ? null : PRESETS[localPreset]!;
     startLocalGame(p ? { minutes: p[0], incrementSec: p[1] } : { minutes: null, incrementSec: 0 });
+    playSound("gameStart");
     navigate("/local");
   }
 </script>
