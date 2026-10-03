@@ -5,6 +5,7 @@
   import { timeControl } from "../lib/format";
   import { loadLocalGame, startLocalGame } from "../lib/game/localGame";
   import type { ChallengeRow, Challenges, MyGames } from "../lib/types";
+  import ModeToggle from "../lib/components/ModeToggle.svelte";
 
   const PRESETS: [number, number][] = [[1, 0], [3, 2], [5, 3], [10, 0], [15, 10]];
   const DAYS = [1, 2, 3, 7, 14];
@@ -127,13 +128,11 @@
 <div class="grid">
   <div class="stack">
     <div class="panel">
-      <h2>Create a game</h2>
+      <div class="header-row">
+        <h2>Create a game</h2>
+        <ModeToggle bind:value={mode} />
+      </div>
       <div class="stack">
-        <div class="row">
-          <button class:primary={mode === "live"} onclick={() => (mode = "live")}>Live</button>
-          <button class:primary={mode === "correspondence"} onclick={() => (mode = "correspondence")}>Correspondence</button>
-        </div>
-
         {#if mode === "live"}
           <div class="row">
             {#each PRESETS as [m, i], idx (idx)}
@@ -187,6 +186,12 @@
 </div>
 
 <style>
+  .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem; /* Adjust spacing as needed */
+  }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
   .stack { display: flex; flex-direction: column; gap: 0.75rem; }
   @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
