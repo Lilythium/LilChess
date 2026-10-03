@@ -1,6 +1,7 @@
 import type { GameEvent, GameState } from "@lilchess/shared";
 import type { GameResponse, H2H, Players } from "../types";
 import { api } from "../api";
+import { applyGameEvent } from "./applyEvent";
 
 export interface GameView {
   game: GameState | null;
@@ -34,37 +35,7 @@ export function createGameStore(gameId: string) {
   }
 
   function applyEvent(event: GameEvent): void {
-    if (!view.game) return;
-    switch (event.type) {
-      case "move": {
-        if (event.ply <= view.game.ply) return;            // duplicate / already applied
-        if (event.ply !== view.game.ply + 1) { void resync(); return; } // gap
-        view.game.moves.push(event.uci);
-        view.game.ply = event.ply;
-        view.game.turn = event.turn;
-        view.game.whiteMs = event.whiteMs;
-        view.game.blackMs = event.blackMs;
-        view.game.deadlineAt = event.deadlineAt;
-        view.game.drawOfferedBy = undefined;
-        view.game.takebackOfferedBy = undefined;
-        view.sanByPly[event.ply] = event.san;
-        break;
-      }
-      case "clock":
-        view.game.whiteMs = event.whiteMs; view.game.blackMs = event.blackMs;
-        view.game.deadlineAt = event.deadlineAt; break;
-      case "draw_offer": view.game.drawOfferedBy = event.by ?? undefined; break;
-      case "takeback_offer": view.game.takebackOfferedBy = event.by ?? undefined; break;
-      case "takeback":
-        view.game.takebackOfferedBy = undefined;
-        void resync(); // moves, SANs and clocks all changed
-        break;
-      case "game_over":
-        view.game.status = event.status; view.game.result = event.result;
-        view.game.termination = event.termination;
-        void resync(); // pick up final clocks and the updated H2H
-        break;
-    }
+    if (applyGameEvent(view, event) === "resync") void resync();
   }
 
   return { get view() { return view; }, resync, applyEvent };
