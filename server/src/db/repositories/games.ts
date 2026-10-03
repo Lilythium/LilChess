@@ -133,12 +133,15 @@ function applyMoveCore(id: string, uci: string, now: number) {
   const before = getGame(id);
   if (!before) return { ok: false as const, error: "not_found" as const };
 
-  const san = sanForNextMove(before, uci);
   const result = applyMove(before, uci, now);
   if (!result.ok) return result;
 
   const movePlayed = result.state.moves.length > before.moves.length;
-  if (movePlayed && san) {
+  let san: string | null = null;
+  if (movePlayed) {
+    san = sanForNextMove(before, uci);
+    // Never write a ply without its moves row. Throwing rolls back the surrounding transaction.
+    if (san === null) throw new Error(`no SAN for ${uci} in game ${id} at ply ${before.ply}`);
     appendMove(id, result.state.ply, uci, san);
   }
   updateGameState(id, result.state);
