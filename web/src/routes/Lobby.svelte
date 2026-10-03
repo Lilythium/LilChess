@@ -286,7 +286,7 @@
               disabled={busy}
               onclick={() => create(true)}
             >
-              Create invite link
+              Create private challenge
             </button>
           </div>
 
