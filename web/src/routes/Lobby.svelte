@@ -186,7 +186,7 @@
 
               <td>
                 {timeControl(c)}
-                {c.is_link ? " · invite link" : ""}
+                {c.is_link ? " · Private" : " · Open"}
               </td>
 
               <td>
