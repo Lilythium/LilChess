@@ -10,6 +10,7 @@ export const RegisterBody = z.object({
     .string()
     .trim()
     .regex(/^[A-Za-z0-9_-]{3,20}$/, "Username must be 3–20 letters, digits, _ or -")
+    .refine((n) => !/^guest[_-]/i.test(n), "That username is reserved")
     .transform(normalizeUsername),
   password: z
     .string()
@@ -27,6 +28,7 @@ export const LoginBody = z.object({
 const Common = {
   colorPref: z.enum(["white", "black", "random"]).optional(),
   toUsername: z.string().trim().min(1).max(64).transform(normalizeUsername).optional(),
+  link: z.boolean().optional(),
 };
 
 export const ChallengeBody = z.discriminatedUnion("mode", [

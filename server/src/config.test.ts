@@ -36,4 +36,9 @@ describe("loadConfig", () => {
     expect(loadConfig({ TRUST_PROXY: "true" }).trustProxy).toBe(true);
     expect(loadConfig({ TRUST_PROXY: "10.0.0.0/8" }).trustProxy).toBe("10.0.0.0/8");
   });
+
+  it("allows guests by default and can disable them", () => {
+    expect(loadConfig({}).allowGuests).toBe(true);
+    expect(loadConfig({ ALLOW_GUESTS: "false" }).allowGuests).toBe(false);
+  });
 });

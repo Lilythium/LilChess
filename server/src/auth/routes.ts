@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { config } from "../config.js";
-import { LoginBody, RegisterBody, parse } from "../validation.js";
+import { GuestBody, LoginBody, RegisterBody, parse } from "../validation.js"; 
 import {
   burnPasswordCheck,
   generateSessionToken,
@@ -9,10 +9,12 @@ import {
   safeEqual,
   verifyPassword,
 } from "./crypto.js";
-import { createSession, createUser, deleteSession, getSessionUser, getUserByUsername, type User } from "./queries.js";
+import { createGuest, createSession, createUser, deleteSession, getSessionUser, getUserByUsername, type User } from "./queries.js";
+import { getInvitePreview } from "../game/queries.js";   
 
 export const SESSION_COOKIE = "sessionId";
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const GUEST_SESSION_MS = 365 * 24 * 60 * 60 * 1000;
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -61,9 +63,10 @@ export async function authRoutes(app: FastifyInstance) {
       if (!body) return reply;
 
       const user = getUserByUsername(body.username);
-      const valid = user
-        ? await verifyPassword(body.password, user.password_hash)
-        : (await burnPasswordCheck(body.password), false);
+      const valid =
+        user && !user.is_guest
+          ? await verifyPassword(body.password, user.password_hash)
+          : (await burnPasswordCheck(body.password), false);
 
       if (!user || !valid) {
         req.log.warn({ username: body.username }, "failed login");
@@ -73,6 +76,31 @@ export async function authRoutes(app: FastifyInstance) {
       await establishSession(reply, user.id);
       const { password_hash: _omit, ...safeUser } = user;
       return { ok: true, user: safeUser };
+    },
+  );
+
+  // Guests exist only to play via an invite link: a valid link is required to get one.
+  app.post(
+    "/api/guest",
+    { config: { rateLimit: { max: 10, timeWindow: "1 hour" } } },
+    async (req, reply) => {
+      if (!config.allowGuests || config.registration === "closed") {
+        return reply.code(403).send({ error: "Guest play is disabled on this server" });
+      }
+      const body = parse(GuestBody, req.body, reply);
+      if (!body) return reply;
+      const invite = getInvitePreview(body.challengeId);
+      if (!invite) {
+        return reply.code(404).send({ error: "This invite link is invalid or has expired" });
+      }
+      if (invite.targeted) {
+        return reply.code(403).send({ error: "This challenge is for a specific player. Log in or register to accept it." });
+      }
+
+      const user = createGuest();
+      await establishSession(reply, user.id, GUEST_SESSION_MS);
+      req.log.info({ userId: user.id }, "guest created");
+      return { ok: true, user };
     },
   );
 
@@ -86,16 +114,16 @@ export async function authRoutes(app: FastifyInstance) {
   app.get("/api/me", { preHandler: requireAuth }, async (req) => ({ user: req.user }));
 }
 
-async function establishSession(reply: FastifyReply, userId: number) {
+async function establishSession(reply: FastifyReply, userId: number, maxAgeMs = THIRTY_DAYS_MS) {
   const token = generateSessionToken();
-  createSession(hashSessionToken(token), userId, Date.now() + THIRTY_DAYS_MS);
+  createSession(hashSessionToken(token), userId, Date.now() + maxAgeMs);
 
   reply.setCookie(SESSION_COOKIE, token, {
     path: "/",
     httpOnly: true,
     sameSite: "lax",
-    secure: config.cookieSecure, // follows BASE_URL (https => Secure); falls back to NODE_ENV
-    maxAge: THIRTY_DAYS_MS / 1000,
+    secure: config.cookieSecure,
+    maxAge: maxAgeMs / 1000,
   });
 }
 

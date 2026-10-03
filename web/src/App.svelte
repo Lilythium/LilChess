@@ -12,12 +12,18 @@
   import MyGames from "./routes/MyGames.svelte";
   import Profile from "./routes/Profile.svelte";
   import Watch from "./routes/Watch.svelte";
+  import Invite from "./routes/Invite.svelte";
 
   onMount(loadMe);
 
+  const game = $derived(matchRoute(route.path, "/game/:id"));
+  const profile = $derived(matchRoute(route.path, "/u/:name"));
+  const invite = $derived(matchRoute(route.path, "/c/:id"));
+
   $effect(() => {
     if (!auth.ready) return;
-    if (!auth.user && route.path !== "/login") navigate("/login");
+    // Invite links are reachable while logged out: the page offers login / register / guest.
+    if (!auth.user && route.path !== "/login" && !invite) navigate("/login");
     if (auth.user && route.path === "/login") navigate("/");
   });
 
@@ -27,7 +33,7 @@
 
   async function resume() {
     const atHome = () => route.path === "/" || route.path === "/login";
-    if (!atHome()) return; // deep links (#/games, #/u/bob, #/game/x) are left alone
+    if (!atHome()) return; // deep links (#/games, #/u/bob, #/game/x, #/c/x) are left alone
     try {
       const g = await api<MyGamesData>("/api/games/my-games");
       if (!atHome()) return;
@@ -47,19 +53,21 @@
     resumeDone = false;
     void resume().finally(() => (resumeDone = true));
   });
-
-  const game = $derived(matchRoute(route.path, "/game/:id"));
-  const profile = $derived(matchRoute(route.path, "/u/:name"));
 </script>
 
 {#if !auth.ready || (auth.user && !resumeDone)}
   <p class="page muted">Loading…</p>
 {:else if !auth.user}
-  <Login />
+  {#if invite}
+    <main class="page">{#key invite.id}<Invite id={invite.id} />{/key}</main>
+  {:else}
+    <Login />
+  {/if}
 {:else}
   <Header />
   <main class="page">
     {#if game}{#key game.id}<Game id={game.id} />{/key}
+    {:else if invite}{#key invite.id}<Invite id={invite.id} />{/key}
     {:else if profile}{#key profile.name}<Profile name={profile.name} />{/key}
     {:else if route.path === "/games"}<MyGames />
     {:else if route.path === "/local"}<LocalGame />

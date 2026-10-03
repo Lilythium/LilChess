@@ -17,6 +17,7 @@ export class ChallengeError extends Error {
 }
 
 export const MAX_OPEN_CHALLENGES = 10;
+const LINK_TTL_MS = 24 * 60 * 60 * 1000;
 
 export function countOpenChallengesFrom(userId: number): number {
   const row = getDb()
@@ -63,19 +64,19 @@ export function createChallenge(data: {
   incrementMs?: number;
   daysPerMove?: number;
   colorPref?: string;
+  isLink?: boolean;     
 }) {
-  const id = generateId();
+  const id = generateId(data.isLink ? 8 : 4);   // every challenge id acts as an invite link
   const now = Date.now();
-  // Expires in 1 hour
-  const expiresAt = now + 60 * 60 * 1000;
+  const expiresAt = now + (data.isLink ? LINK_TTL_MS : 60 * 60 * 1000);
 
   getDb().prepare(`
-    INSERT INTO challenges (id, from_user, to_user, mode, initial_ms, increment_ms, days_per_move, color_pref, created_at, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO challenges (id, from_user, to_user, mode, initial_ms, increment_ms, days_per_move, color_pref, created_at, expires_at, is_link)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    id, data.fromUser, data.toUser ?? null, data.mode, 
-    data.initialMs ?? null, data.incrementMs ?? null, data.daysPerMove ?? null, 
-    data.colorPref ?? null, now, expiresAt
+    id, data.fromUser, data.toUser ?? null, data.mode,
+    data.initialMs ?? null, data.incrementMs ?? null, data.daysPerMove ?? null,
+    data.colorPref ?? null, now, expiresAt, data.isLink ? 1 : 0
   );
 
   return id;
@@ -231,7 +232,8 @@ export function listChallenges(userId: number) {
   const rows = getDb().prepare(`
     SELECT c.*, u.username AS from_name
     FROM challenges c JOIN users u ON u.id = c.from_user
-    WHERE c.expires_at > ? AND (c.from_user = ? OR c.to_user IS NULL OR c.to_user = ?)
+    WHERE c.expires_at > ?
+      AND (c.from_user = ? OR (c.is_link = 0 AND (c.to_user IS NULL OR c.to_user = ?)))
     ORDER BY c.created_at DESC
   `).all(Date.now(), userId, userId) as any[];
   return {
@@ -259,4 +261,18 @@ export function getLiveGames(limit = 20) {
     LIMIT ?
   `).all(limit) as any[];
   return attachPositions(rows);
+}
+
+// Public preview for the invite page. Works for any live challenge; never exposes user ids.
+export function getInvitePreview(id: string) {
+  return getDb().prepare(`
+    SELECT c.id, u.username AS from_name, c.mode, c.initial_ms, c.increment_ms, c.days_per_move,
+           c.color_pref, (c.to_user IS NOT NULL) AS targeted
+    FROM challenges c JOIN users u ON u.id = c.from_user
+    WHERE c.id = ? AND c.expires_at > ?
+  `).get(id, Date.now()) as
+    | { id: string; from_name: string; mode: "live" | "correspondence";
+        initial_ms: number | null; increment_ms: number | null; days_per_move: number | null;
+        color_pref: string | null; targeted: number }
+    | undefined;
 }

@@ -26,12 +26,12 @@ export function createGameStore(gameId: string) {
     error: null,
   });
 
-  let lowTimeWarningPlayed = {
+  const lowTimeWarningPlayed = {
     white: false,
     black: false,
   };
 
-  let previousRemaining = {
+  const previousRemaining = {
     white: null as number | null,
     black: null as number | null,
   };

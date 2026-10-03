@@ -3,6 +3,8 @@
   import { LoginBody, RegisterBody } from "@lilchess/shared";
   import { validate } from "../lib/validate";
 
+  let { embedded = false }: { embedded?: boolean } = $props();
+
   let mode = $state<"login" | "register">("login");
   let username = $state("");
   let password = $state("");
@@ -34,8 +36,8 @@
   }
 </script>
 
-<div class="panel card">
-  <h1>{mode === "login" ? "Log in" : "Register"}</h1>
+<div class={embedded ? "" : "panel card"}>
+  {#if !embedded}<h1>{mode === "login" ? "Log in" : "Register"}</h1>{/if}
   <form onsubmit={submit}>
     <input placeholder="Username" autocomplete="username" bind:value={username} required />
     <input type="password" placeholder="Password" bind:value={password} required

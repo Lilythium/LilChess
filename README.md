@@ -121,6 +121,7 @@ LilChess can be configured with environment variables.
 | `BACKUP_HOUR_UTC` | `3`                 | Daily backup hour in UTC                      |
 | `WEBHOOK_URL`     | —                   | Optional notification webhook                 |
 | `WEBHOOK_KIND`    | —                   | Webhook type, such as `ntfy` or `discord`     |
+| `ALLOW_GUESTS`    | `true`              | Let invite-link visitors play as guests       |
 
 See `.env.example` for the available configuration options.
 

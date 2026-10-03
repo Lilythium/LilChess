@@ -25,6 +25,11 @@
   });
 
   const profileHref = $derived("#/u/" + encodeURIComponent(auth.user?.username ?? ""));
+
+  function onLogout() {
+    if (auth.user?.is_guest && !confirm("Guest accounts can't be recovered after logging out. Log out anyway?")) return;
+    void logout();
+  }
 </script>
 
 <header>
@@ -34,7 +39,7 @@
     <a href="#/games">My games{#if yourTurn > 0} <span class="badge">{yourTurn}</span>{/if}</a>
     <a href="#/watch">Watch</a>
     <a href={profileHref}>{displayName(auth.user?.username ?? "")}</a>
-    <button onclick={() => logout()}>Log out</button>
+    <button onclick={onLogout}>Log out</button>
   </nav>
 </header>
 

@@ -18,6 +18,7 @@ const Env = z.object({
   BACKUP_DIR: z.string().optional(),
   BACKUP_KEEP: z.coerce.number().int().min(0).max(365).default(7), // 0 disables backups
   BACKUP_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(3),
+  ALLOW_GUESTS: z.stringbool().default(true),
 });
 
 export interface Config {
@@ -34,6 +35,7 @@ export interface Config {
   backupDir: string;
   backupKeep: number;
   backupHourUtc: number;
+  allowGuests: boolean;
 }
 
 function parseTrustProxy(v: string | undefined): boolean | number | string {
@@ -71,6 +73,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     backupDir: e.BACKUP_DIR ?? `${e.DATA_DIR}/backups`,
     backupKeep: e.BACKUP_KEEP,
     backupHourUtc: e.BACKUP_HOUR_UTC,
+    allowGuests: e.ALLOW_GUESTS,
   };
 }
 

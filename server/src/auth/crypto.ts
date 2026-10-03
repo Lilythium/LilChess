@@ -6,12 +6,6 @@ const scryptAsync = promisify(scrypt);
 const KEY_LENGTH = 64;
 const SALT_LENGTH = 16;
 
-// Pre-computed dummy salt (16 bytes hex = 32 chars) and dummy hash (64 bytes hex = 128 chars)
-// Used when verifying password for non-existent users to maintain constant-time execution.
-const DUMMY_SALT = '00'.repeat(SALT_LENGTH);
-const DUMMY_KEY_HEX = '00'.repeat(KEY_LENGTH);
-const DUMMY_STORED_HASH = `${DUMMY_SALT}:${DUMMY_KEY_HEX}`;
-
 /**
  * Hashes a plaintext password using scrypt.
  * Returns a formatted string: "salt:hash" (hex encoded)

@@ -10,6 +10,7 @@ export type ChallengeInput = z.infer<typeof ChallengeBody>;
 export const Id = z.string().regex(/^[0-9a-f]{8,16}$/i, "Invalid id");
 export const IdParams = z.object({ id: Id });
 export const UsernameParams = z.object({ username: z.string().min(1).max(64).transform(normalizeUsername) });
+export const GuestBody = z.object({ challengeId: Id });
 
 // Usage in a handler:
 //   const body = parse(Schema, req.body, reply);
