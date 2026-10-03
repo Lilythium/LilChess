@@ -32,8 +32,18 @@
     }
   });
 
-  function resultLabel(r: string | null): string {
-    return r === "1/2-1/2" ? "½–½" : (r ?? "");
+  const opponent = (g: ProfileGame) => (g.white_id === data?.profile.id ? g.black_name : g.white_name);
+  const orientation = (g: ProfileGame): "white" | "black" => (g.black_id === data?.profile.id ? "black" : "white");
+
+  function outcome(g: ProfileGame): string {
+    if (g.result === "1/2-1/2") return "Draw";
+    const isWhite = g.white_id === data?.profile.id;
+    return (g.result === "1-0") === isWhite ? "Won" : "Lost";
+  }
+
+  function subtitle(g: ProfileGame): string {
+    const tc = timeControl(g);
+    return g.result ? `${tc} · ${outcome(g)}` : tc;
   }
 </script>
 
@@ -61,17 +71,18 @@
       {#if data.games.length === 0}
         <p class="muted">No finished games yet.</p>
       {:else}
-        <table>
-          <tbody>
-            {#each data.games as g (g.id)}
-              <tr>
-                <td><a href={"#/game/" + g.id}>{g.white_name} vs {g.black_name}</a></td>
-                <td>{timeControl(g)}</td>
-                <td class="muted">{resultLabel(g.result)}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+        <div class="cards">
+          {#each data.games as g (g.id)}
+            <GameCard
+              href={"#/game/" + g.id}
+              fen={g.fen}
+              lastMove={g.last_move}
+              orientation={orientation(g)}
+              title={opponent(g)}
+              subtitle={subtitle(g)}
+            />
+          {/each}
+        </div>
       {/if}
     </div>
   </div>
