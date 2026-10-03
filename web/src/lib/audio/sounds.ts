@@ -5,6 +5,7 @@ export const sounds = {
   castle: "/sounds/castle.wav",
   gameStart: "/sounds/game_start.wav",
   gameEnd: "/sounds/game_end.wav",
+  lowTime: "/sounds/low_time.wav",
 } as const;
 
 export type SoundName = keyof typeof sounds;
