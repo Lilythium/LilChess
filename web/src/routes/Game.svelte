@@ -10,6 +10,7 @@
   import MoveList from "../lib/components/MoveList.svelte";
   import MoveNav from "../lib/components/MoveNav.svelte";
   import GameActions from "../lib/components/GameActions.svelte";
+  import AbortWarning from "../lib/components/AbortWarning.svelte";
   import { selectPly, stepView, type NavAction } from "../lib/game/history";
 
   let { id }: { id: string } = $props();
@@ -88,8 +89,8 @@
   {@const flip = myColor === "black"}
   {@const topSide = flip ? "white" : "black"}
   {@const bottomSide = flip ? "black" : "white"}
-  {@const topName = topSide === "white" ? p.whiteName : p.blackName}
-  {@const bottomName = bottomSide === "white" ? p.whiteName : p.blackName}
+  {@const topName = displayName(topSide === "white" ? p.whiteName : p.blackName)}
+  {@const bottomName = displayName(bottomSide === "white" ? p.whiteName : p.blackName)}
 
   <div class="game">
     <div class="board-col">
@@ -106,7 +107,7 @@
       </div>
 
       {#if view.h2h && myColor}
-        {@const oppName = myColor === "white" ? p.blackName : p.whiteName}
+        {@const oppName = displayName(myColor === "white" ? p.blackName : p.whiteName)}
         <div class="h2h">
           Head to head vs {oppName}:
           <strong>{view.h2h.wins}</strong> W ·
@@ -124,6 +125,7 @@
         onSelect={(p: number) => (viewPly = selectPly(p, g.ply))}
       />
       <MoveNav {viewPly} total={g.ply} onNav={nav} />
+      <AbortWarning game={g} {myColor} offset={view.serverOffset} />
       <GameActions game={g} {myColor} {id} onDone={store.resync} />
       {#if !myColor}<p class="muted">You are spectating</p>{/if}
       {#if g.status !== "started"}

@@ -29,6 +29,15 @@ export function registerCsrfProtection(app: FastifyInstance): void {
   app.addHook("onRequest", async (req, reply) => {
     if (SAFE_METHODS.has(req.method)) return;
     if (req.headers["sec-fetch-site"] === "cross-site" || !originAllowed(req.headers.origin, req.headers.host)) {
+      req.log.warn(
+        {
+          origin: req.headers.origin,
+          host: req.headers.host,
+          secFetchSite: req.headers["sec-fetch-site"],
+          baseOrigin: config.baseOrigin,
+        },
+        "blocked cross-origin request",
+      );
       return reply.code(403).send({ error: "Cross-origin request blocked" });
     }
   });
