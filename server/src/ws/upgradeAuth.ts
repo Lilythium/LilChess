@@ -13,7 +13,7 @@ function parseCookie(header: string | undefined, name: string): string | undefin
       try {
         return decodeURIComponent(part.slice(eq + 1).trim());
       } catch {
-        return undefined; // malformed %-escape: treat as no cookie (this used to throw and crash the process)
+        return undefined;
       }
     }
   }

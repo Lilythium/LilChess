@@ -60,6 +60,16 @@ export function getMoveSans(gameId: string): string[] {
     .map((r: any) => r.san);
 }
 
+export function getGameWithSans(id: string): { game: GameState; sans: string[] } | undefined {
+  const db = getDb();
+  const row = db.prepare(`SELECT * FROM games WHERE id = ?`).get(id) as any;
+  if (!row) return undefined;
+  const moves = db
+    .prepare(`SELECT uci, san FROM moves WHERE game_id = ? ORDER BY ply ASC`)
+    .all(id) as { uci: string; san: string }[];
+  return { game: rowToGameState(row, moves.map((m) => m.uci)), sans: moves.map((m) => m.san) };
+}
+
 // Single choke point for writing game state: the stored position always matches the moves
 function updateGameState(id: string, game: GameState): void {
   const row = gameStateToRow(game);

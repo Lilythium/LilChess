@@ -6,7 +6,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "check-db": "tsx src/scripts/check-db.ts"
+    "check-db": "tsx src/scripts/check-db.ts",
+    "bench": "tsx src/scripts/bench-replay.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
