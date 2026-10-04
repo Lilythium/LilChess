@@ -111,7 +111,7 @@ export async function authRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  app.get("/api/me", { preHandler: requireAuth }, async (req) => ({ user: req.user }));
+    app.get("/api/me", { preHandler: requireAuth }, async (req) => ({ ok: true, user: req.user }));
 }
 
 async function establishSession(reply: FastifyReply, userId: number, maxAgeMs = THIRTY_DAYS_MS) {

@@ -11,6 +11,7 @@ import {
   offerTakeback,
   acceptTakeback,
   declineTakeback,
+  fenAfterMoves,
   type GameState,
   type Color,
   type ActionResult,
@@ -22,23 +23,24 @@ import { notifyDeadlineChanged } from "../../game/deadlineBus.js";
 
 export function insertGame(id: string, whiteId: number, blackId: number, game: GameState): void {
   const row = gameStateToRow(game);
+  const fen = fenAfterMoves(game.initialFen, game.moves) ?? game.initialFen;
   getDb()
     .prepare(
       `INSERT INTO games (
         id, white_id, black_id, variant, mode,
         initial_ms, increment_ms, days_per_move,
         status, result, termination,
-        initial_fen, ply, white_ms, black_ms,
+        initial_fen, fen, last_move, ply, white_ms, black_ms,
         turn_started_at, deadline_at, draw_offered_by, created_at
       ) VALUES (
         @id, @whiteId, @blackId, @variant, @mode,
         @initialMs, @incrementMs, @daysPerMove,
         @status, @result, @termination,
-        @initialFen, @ply, @whiteMs, @blackMs,
+        @initialFen, @fen, @lastMove, @ply, @whiteMs, @blackMs,
         @turnStartedAt, @deadlineAt, @drawOfferedBy, @createdAt
       )`,
     )
-    .run({ id, whiteId, blackId, ...row, createdAt: Date.now() });
+    .run({ id, whiteId, blackId, ...row, fen, lastMove: game.moves.at(-1) ?? null, createdAt: Date.now() });
 }
 
 export function getGame(id: string): GameState | undefined {
@@ -58,20 +60,23 @@ export function getMoveSans(gameId: string): string[] {
     .map((r: any) => r.san);
 }
 
+// Single choke point for writing game state: the stored position always matches the moves
 function updateGameState(id: string, game: GameState): void {
   const row = gameStateToRow(game);
-  const endedAt = game.status === "started" ? null : Date.now();
+  const fen = fenAfterMoves(game.initialFen, game.moves);
+  if (fen === null) throw new Error(`game ${id}: moves do not replay from initial_fen`);
   getDb()
     .prepare(
       `UPDATE games SET
         status=@status, result=@result, termination=@termination,
-        ply=@ply, white_ms=@whiteMs, black_ms=@blackMs,
+        ply=@ply, fen=@fen, last_move=@lastMove,
+        white_ms=@whiteMs, black_ms=@blackMs,
         turn_started_at=@turnStartedAt, deadline_at=@deadlineAt,
         draw_offered_by=@drawOfferedBy, takeback_offered_by=@takebackOfferedBy,
-        ended_at=@endedAt
+        ended_at = CASE WHEN @status = 'started' THEN NULL ELSE COALESCE(ended_at, @endedAt) END
       WHERE id=@id`,
     )
-    .run({ id, ...row, endedAt });
+    .run({ id, ...row, fen, lastMove: game.moves.at(-1) ?? null, endedAt: Date.now() });
 }
 
 function appendMove(gameId: string, ply: number, uci: string, san: string): void {
@@ -143,6 +148,7 @@ function applyMoveCore(id: string, uci: string, now: number) {
     // Never write a ply without its moves row. Throwing rolls back the surrounding transaction.
     if (san === null) throw new Error(`no SAN for ${uci} in game ${id} at ply ${before.ply}`);
     appendMove(id, result.state.ply, uci, san);
+    assertMoveRows(id, result.state.ply);
   }
   updateGameState(id, result.state);
 
@@ -313,7 +319,10 @@ export function acceptTakebackAndPersist(gameId: string, userId: number) {
     gameId,
     userId,
     (game, color) => acceptTakeback(game, color, Date.now()),
-    (state) => deleteMovesAfter(gameId, state.ply),
+    (state) => {
+      deleteMovesAfter(gameId, state.ply);
+      assertMoveRows(gameId, state.ply);
+    },
   );
   if (r.ok) {
     broadcastGameEvent(gameId, {
@@ -349,4 +358,15 @@ export function claimTimeoutAndPersist(gameId: string, now: number) {
 
   if (outcome.ok) broadcastGameOver(gameId, outcome.state);
   return outcome;
+}
+
+// games.ply and the moves table are written in one transaction. If a bug ever breaks that,
+// fail (and roll back) loudly instead of storing a game whose rows disagree with its ply.
+function assertMoveRows(gameId: string, ply: number): void {
+  const row = getDb()
+    .prepare(`SELECT COUNT(*) AS n, COALESCE(MAX(ply), 0) AS top FROM moves WHERE game_id = ?`)
+    .get(gameId) as { n: number; top: number };
+  if (row.n !== ply || row.top !== ply) {
+    throw new Error(`game ${gameId}: ${row.n} move rows (max ply ${row.top}) but ply is ${ply}`);
+  }
 }

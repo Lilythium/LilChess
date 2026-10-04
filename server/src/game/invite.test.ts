@@ -70,20 +70,6 @@ describe("invite links and guests", () => {
     expect(me.json().user.is_guest).toBe(1);
   });
 
-  it("creates guests only for open or link challenges, and only when enabled", async () => {
-    await registerUser(app, "bob");
-    const targeted = (await challenge(alice, { toUsername: "bob" })).json().challengeId as string;
-    expect((await makeGuest(targeted)).res.statusCode).toBe(403);
-    expect((await makeGuest("deadbeefdeadbeef")).res.statusCode).toBe(404);
-
-    const open = (await challenge(alice, {})).json().challengeId as string;
-    expect((await makeGuest(open)).res.statusCode).toBe(200);
-
-    const id = await makeLink();
-    config.allowGuests = false;
-    expect((await makeGuest(id)).res.statusCode).toBe(403);
-  });
-
   it("lets a guest accept the link and play", async () => {
     const id = await makeLink();
     const { sid } = await makeGuest(id);

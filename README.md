@@ -199,6 +199,23 @@ BASE_URL=[https://chess.example.com](https://chess.example.com)
 
 The reverse proxy must support WebSocket connections for live games.
 
+### Restoring a backup
+
+Stop the container, replace the database with a backup, and start it again:
+
+```bash
+docker stop lilchess
+cp data/backups/lilchess-YYYYMMDD-HHMMSS.db data/lilchess.db
+rm -f data/lilchess.db-wal data/lilchess.db-shm
+docker start lilchess
+```
+
+To check a backup before restoring it:
+
+```bash
+docker exec lilchess node server/dist/scripts/check-db.js /data/backups/lilchess-YYYYMMDD-HHMMSS.db --deep
+```
+
 ## Project Structure
 
 ```text

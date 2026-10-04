@@ -1,7 +1,8 @@
 import { config } from "./config.js";
 import { logger } from "./logger.js";
 import { buildApp } from "./app.js";
-import { openDb, closeDb } from "./db/connection.js";
+import { openDb, closeDb, getDb } from "./db/connection.js";
+import { checkIntegrity } from "./db/integrity.js";
 import { startTimeoutScheduler, stopTimeoutScheduler } from "./game/timeoutScheduler.js";
 import { startBackupScheduler, stopBackupScheduler } from "./db/backup.js";
 import { startMaintenance, stopMaintenance } from "./maintenance.js";
@@ -14,6 +15,7 @@ if (config.nodeEnv === "production" && !config.baseOrigin) {
 }
 
 openDb(`${config.dataDir}/lilchess.db`);
+for (const issue of checkIntegrity(getDb())) logger.warn(issue, "database integrity issue");
 startTimeoutScheduler(); // also sweeps games that expired while the server was down
 startMaintenance();
 if (config.backupKeep > 0) {

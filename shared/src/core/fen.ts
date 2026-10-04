@@ -16,3 +16,20 @@ export function fenAfterMoves(initialFen: string, moves: string[]): string | nul
     return null;
   }
 }
+
+// FEN after every ply (index 0 = the start position) from one replay, or null if anything is invalid.
+export function fensForMoves(initialFen: string, moves: string[]): string[] | null {
+  try {
+    const pos = Chess.fromSetup(parseFen(initialFen).unwrap()).unwrap();
+    const fens = [makeFen(pos.toSetup())];
+    for (const uci of moves) {
+      const move = parseUci(uci);
+      if (!move || !pos.isLegal(move)) return null;
+      pos.play(move);
+      fens.push(makeFen(pos.toSetup()));
+    }
+    return fens;
+  } catch {
+    return null;
+  }
+}

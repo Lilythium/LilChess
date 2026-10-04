@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { migrate } from "./migrate.js";
+import { backfillPositions } from "./backfill.js";
 
 let db: Database.Database | undefined;
 
@@ -11,6 +12,7 @@ export function openDb(path: string): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON"); // off by default in SQLite
   migrate(db);
+  backfillPositions(db);
   return db;
 }
 

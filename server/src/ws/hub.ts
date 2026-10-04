@@ -1,6 +1,8 @@
 import type { WebSocket } from "ws";
 import type { GameEvent } from "@lilchess/shared";
 
+const MAX_BUFFERED_BYTES = 1024 * 1024; // a client this far behind is dead or hopeless
+
 const gameSockets = new Map<string, Set<WebSocket>>();
 
 export function subscribe(gameId: string, socket: WebSocket): void {
@@ -19,11 +21,25 @@ export function unsubscribe(gameId: string, socket: WebSocket): void {
   if (set.size === 0) gameSockets.delete(gameId);
 }
 
+/** Live subscriptions for one game, or across all games. Used by tests and diagnostics. */
+export function socketCount(gameId?: string): number {
+  if (gameId !== undefined) return gameSockets.get(gameId)?.size ?? 0;
+  let n = 0;
+  for (const set of gameSockets.values()) n += set.size;
+  return n;
+}
+
 export function broadcastGameEvent(gameId: string, event: GameEvent): void {
   const set = gameSockets.get(gameId);
   if (!set || set.size === 0) return;
   const payload = JSON.stringify(event);
   for (const socket of set) {
-    if (socket.readyState === socket.OPEN) socket.send(payload);
+    if (socket.readyState === socket.OPEN) {
+      if (socket.bufferedAmount > MAX_BUFFERED_BYTES) socket.terminate(); 
+      else socket.send(payload);
+    } else if (socket.readyState === socket.CLOSED) {
+      set.delete(socket); // never keep a dead socket around
+    }
   }
+  if (set.size === 0) gameSockets.delete(gameId);
 }

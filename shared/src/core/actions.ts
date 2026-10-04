@@ -1,12 +1,15 @@
 import { clockAfterTakeback, inFirstMoveWindow } from "./clock.js";
 import type { ActionResult, Color, GameState } from "./types.js";
 
+const CLEARED_OFFERS = { drawOfferedBy: undefined, takebackOfferedBy: undefined } as const;
+
 export function resign(game: GameState, by: Color): ActionResult {
   if (game.status !== "started") return { ok: false, error: "game_not_active" };
   return {
     ok: true,
     state: {
       ...game,
+      ...CLEARED_OFFERS,
       status: "finished",
       result: by === "white" ? "0-1" : "1-0",
       termination: "resignation",
@@ -28,10 +31,10 @@ export function acceptDraw(game: GameState, by: Color): ActionResult {
     ok: true,
     state: {
       ...game,
+      ...CLEARED_OFFERS,
       status: "finished",
       result: "1/2-1/2",
       termination: "agreement",
-      drawOfferedBy: undefined,
     },
   };
 }
@@ -47,25 +50,20 @@ export function declineDraw(game: GameState, by: Color): ActionResult {
 // game, no result) is the same regardless of who requests it.
 export function abort(game: GameState): ActionResult {
   if (game.status !== "started") return { ok: false, error: "game_not_active" };
-  if (game.ply > 1) return { ok: false, error: "too_late_to_abort" }; // black has already replied
-  return { ok: true, state: { ...game, status: "aborted", termination: "abort" } };
+  if (game.ply > 1) return { ok: false, error: "too_late_to_abort" };
+  return { ok: true, state: { ...game, ...CLEARED_OFFERS, status: "aborted", termination: "abort" } };
 }
 
 // What happens when a deadline passes. Inside the first-move window of a
 // live game nobody has lost on time: the game is simply aborted.
 export function expireGame(game: GameState): GameState {
   if (inFirstMoveWindow(game)) {
-    return {
-      ...game,
-      status: "aborted",
-      termination: "abort",
-      drawOfferedBy: undefined,
-      takebackOfferedBy: undefined,
-    };
+    return { ...game, ...CLEARED_OFFERS, status: "aborted", termination: "abort" };
   }
   const loser = game.turn;
   return {
     ...game,
+    ...CLEARED_OFFERS,
     status: "finished",
     result: loser === "white" ? "0-1" : "1-0",
     termination: "timeout",

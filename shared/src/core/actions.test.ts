@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { abort, acceptDraw, offerDraw, resign } from "./actions.js";
+import { abort, acceptDraw, claimTimeout, offerDraw, resign} from "./actions.js";
 import { applyMove } from "./applyMove.js";
 import { createGame } from "./createGame.js";
+import type { GameState } from "../index.js";
 
 const LIVE_CLOCK = { mode: "live" as const, initialMs: 60_000, incrementMs: 0 };
 
@@ -50,5 +51,40 @@ describe("abort", () => {
     if (!s2.ok) throw new Error("setup failed");
 
     expect(abort(s2.state).ok).toBe(false);
+  });
+});
+
+describe("ending a game voids pending offers", () => {
+  const withOffers = (): GameState => ({
+    ...createGame({ clock: LIVE_CLOCK, now: 0 }),
+    drawOfferedBy: "white",
+    takebackOfferedBy: "black",
+  });
+  const gone = (s: GameState) => {
+    expect(s.drawOfferedBy).toBeUndefined();
+    expect(s.takebackOfferedBy).toBeUndefined();
+  };
+
+  it("resign", () => {
+    const r = resign(withOffers(), "white");
+    if (!r.ok) throw new Error(r.error);
+    gone(r.state);
+  });
+  it("accepting a draw", () => {
+    const r = acceptDraw(withOffers(), "black");
+    if (!r.ok) throw new Error(r.error);
+    gone(r.state);
+  });
+  it("abort", () => {
+    const r = abort(withOffers());
+    if (!r.ok) throw new Error(r.error);
+    gone(r.state);
+  });
+  it("timeout", () => {
+    const running: GameState = { ...withOffers(), moves: ["e2e4", "e7e5"], ply: 2, deadlineAt: 500 };
+    const r = claimTimeout(running, 1_000);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.state.termination).toBe("timeout");
+    gone(r.state);
   });
 });

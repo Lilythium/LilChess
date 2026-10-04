@@ -10,3 +10,4 @@ export { createGame } from "./createGame.js";
 export { sanForNextMove } from "./notation.js";
 export { fenAfterMoves } from "./fen.js";
 export { buildPgn, type BuildPgnOptions } from "./pgn.js";
+export { gameStateProblems } from "./invariants.js";

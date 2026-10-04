@@ -54,23 +54,19 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(gameRoutes);
   app.get("/api/health", { config: { rateLimit: false } }, async () => ({ ok: true }));
 
-  // Static Assets Serving (web/dist)
+  // Static assets (web/dist) + SPA fallback
   const webDistPath = path.resolve(process.cwd(), "web/dist");
-  if (fs.existsSync(webDistPath)) {
-    await app.register(fastifyStatic, {
-      root: webDistPath,
-      prefix: "/",
-      wildcard: false,
-    });
-
-    // SPA Fallback: Route non-API GET requests to index.html
-    app.setNotFoundHandler((req, reply) => {
-      if (req.method === "GET" && !req.url.startsWith("/api") && !req.url.startsWith("/ws")) {
-        return reply.sendFile("index.html");
-      }
-      return reply.status(404).send({ error: "Not Found", statusCode: 404 });
-    });
+  const hasWeb = fs.existsSync(webDistPath);
+  if (hasWeb) {
+    await app.register(fastifyStatic, { root: webDistPath, prefix: "/", wildcard: false });
   }
+
+  app.setNotFoundHandler((req, reply) => {
+    if (hasWeb && req.method === "GET" && !req.url.startsWith("/api") && !req.url.startsWith("/ws")) {
+      return reply.sendFile("index.html");
+    }
+    return reply.code(404).send({ error: "Not found" });
+  });
 
   attachWebSocketServer(app);
   return app;

@@ -18,15 +18,16 @@ export function connectGameSocket(gameId: string, handlers: GameSocketHandlers) 
   function open() {
     handlers.onStatusChange?.("connecting");
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    socket = new WebSocket(`${proto}//${location.host}/ws/games/${gameId}`);
+    const ws = new WebSocket(`${proto}//${location.host}/ws/games/${gameId}`);
+    socket = ws;
 
-    socket.addEventListener("open", () => {
+    ws.addEventListener("open", () => {
       attempt = 0;
       handlers.onStatusChange?.("open");
       handlers.onResyncNeeded();
     });
 
-    socket.addEventListener("message", (ev) => {
+    ws.addEventListener("message", (ev) => {
       let raw: unknown;
       try {
         raw = JSON.parse(ev.data as string);
@@ -35,6 +36,7 @@ export function connectGameSocket(gameId: string, handlers: GameSocketHandlers) 
         handlers.onResyncNeeded();
         return;
       }
+
       const parsed = ServerMessageSchema.safeParse(raw);
       if (!parsed.success) {
         // Can't trust our local state if we don't understand what the server said.
@@ -42,15 +44,21 @@ export function connectGameSocket(gameId: string, handlers: GameSocketHandlers) 
         handlers.onResyncNeeded();
         return;
       }
+
       if (parsed.data.type === "error") {
         handlers.onServerError?.(parsed.data.error);
         return;
       }
+
       handlers.onEvent(parsed.data);
     });
 
-    socket.addEventListener("close", () => {
+    ws.addEventListener("close", () => {
+      // Ignore events from a socket that has already been replaced.
+      if (ws !== socket) return;
+
       handlers.onStatusChange?.("closed");
+
       if (!closedByUser) {
         const delay = Math.min(1000 * 2 ** attempt, 15_000);
         attempt += 1;
@@ -58,17 +66,24 @@ export function connectGameSocket(gameId: string, handlers: GameSocketHandlers) 
       }
     });
 
-    socket.addEventListener("error", () => socket?.close());
+    ws.addEventListener("error", () => {
+      // Only close this particular socket.
+      ws.close();
+    });
   }
 
   function onVisible() {
     if (document.visibilityState !== "visible") return;
+
+    // A connection is already in progress. Don't open another one.
+    if (socket?.readyState === WebSocket.CONNECTING) return;
+
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       clearTimeout(reconnectTimer);
       attempt = 0;
       open();
     } else {
-      handlers.onResyncNeeded(); 
+      handlers.onResyncNeeded();
     }
   }
 
@@ -77,8 +92,11 @@ export function connectGameSocket(gameId: string, handlers: GameSocketHandlers) 
 
   return {
     send(msg: ClientMessage) {
-      if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(msg));
+      }
     },
+
     close() {
       closedByUser = true;
       clearTimeout(reconnectTimer);

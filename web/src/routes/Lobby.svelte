@@ -217,8 +217,9 @@
         <div class="header-row">
           <h2>Create a game</h2>
           <ModeToggle bind:value={mode} />
+          
         </div>
-
+        <span class="muted">Creating a new {mode} challenge replaces your current one.</span>
         <div class="stack">
           {#if mode === "live"}
             <div class="row">

@@ -84,4 +84,10 @@ describe("HTTP hardening", () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+    it("answers unknown API routes with a JSON 404", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/nope" });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ error: "Not found" });
+  });
 });

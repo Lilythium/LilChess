@@ -14,6 +14,7 @@ const GAME_WS_PATH = /^\/ws\/games\/([0-9a-f]{8,16})$/i;
 const MAX_PAYLOAD_BYTES = 1024; // moves are ~40 bytes; ws defaults to 100 MiB
 const UPGRADES_PER_MINUTE = 120;
 const CLOSE_GRACE_MS = 2_000;
+export const MAX_SOCKETS_PER_USER = 20;
 
 function reject(socket: Duplex, status: number, text: string): void {
   socket.write(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
@@ -21,8 +22,13 @@ function reject(socket: Duplex, status: number, text: string): void {
 }
 
 export function attachWebSocketServer(app: FastifyInstance): void {
-  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
+  const wss = new WebSocketServer({
+  noServer: true,
+  maxPayload: MAX_PAYLOAD_BYTES,
+  perMessageDeflate: false,
+});
   const upgradeLimiter = new RateWindow(60_000, UPGRADES_PER_MINUTE);
+  const socketsPerUser = new Map<number, number>();
 
   app.server.on("upgrade", (req, socket, head) => {
     socket.on("error", () => socket.destroy()); // an unhandled socket 'error' would crash the process
@@ -39,17 +45,22 @@ export function attachWebSocketServer(app: FastifyInstance): void {
       const user = authenticateUpgrade(req);
       if (!user) return reject(socket, 401, "Unauthorized");
 
+      if ((socketsPerUser.get(user.id) ?? 0) >= MAX_SOCKETS_PER_USER) {
+        return reject(socket, 429, "Too Many Requests");
+      }
+
       const p = getParticipants(gameId);
       if (!p) return reject(socket, 404, "Not Found");
       // Any logged-in user may watch; only the two players may send moves.
       const isPlayer = p.whiteId === user.id || p.blackId === user.id;
       wss.handleUpgrade(req, socket, head, (ws) => {
-        handleGameConnection(
-          ws as WebSocket & { isAlive?: boolean },
-          gameId,
-          user,
-          isPlayer,
-        );
+        socketsPerUser.set(user.id, (socketsPerUser.get(user.id) ?? 0) + 1);
+        ws.once("close", () => {
+          const left = (socketsPerUser.get(user.id) ?? 1) - 1;
+          if (left <= 0) socketsPerUser.delete(user.id);
+          else socketsPerUser.set(user.id, left);
+        });
+        handleGameConnection(ws as WebSocket & { isAlive?: boolean }, gameId, user, isPlayer);
       });
     } catch (err) {
       log.error({ err }, "upgrade failed");
