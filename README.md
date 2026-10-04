@@ -47,7 +47,7 @@ Self-hosted, lightweight chess server with accounts, live and correspondence pla
 Clone the repository and build the image:
 
 ```bash
-git clone https://github.com/Lilythium/LilChess.git
+git clone [https://github.com/Lilythium/LilChess.git](https://github.com/Lilythium/LilChess.git)
 cd LilChess
 docker build -t lilchess .
 ```
@@ -71,7 +71,7 @@ The database and backups are stored in the mounted `data` directory.
 ### Windows PowerShell
 
 ```powershell
-git clone https://github.com/Lilythium/LilChess.git
+git clone [https://github.com/Lilythium/LilChess.git](https://github.com/Lilythium/LilChess.git)
 cd LilChess
 docker build -t lilchess .
 mkdir data
@@ -194,7 +194,7 @@ For public deployments, place LilChess behind a reverse proxy such as nginx or C
 Example:
 
 ```env
-BASE_URL=https://chess.example.com
+BASE_URL=[https://chess.example.com](https://chess.example.com)
 ```
 
 The reverse proxy must support WebSocket connections for live games.
@@ -235,13 +235,23 @@ npm run lint
 
 ### Sound Effects
 
-LilChess uses sound effects created by Enigmahack from the [Lichess](https://github.com/lichess-org/lila) project.
+LilChess uses sound effects from the Chess Analyzer Pro project.
 
-Source directory:
+**Author**
+The sound effects were synthesized from scratch for Chess Analyzer Pro by its project author.
 
-[lichess-org/lila/public/sound/sfx](https://github.com/lichess-org/lila/tree/master/public/sound/sfx)
+**Source**
+The original sound effects are available in the following repository:
+https://github.com/imutkarsht/Chess_analyzer
+Original directory:
+https://github.com/imutkarsht/Chess_analyzer/tree/master/assets/sounds
 
-These sound effects are licensed under the **GNU Affero General Public License v3 or later (AGPLv3+)**.
+**License**
+The sound effects are dedicated to the public domain under the CC0 1.0 Universal license.
+License information:
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The sound effects included in this directory are third-party assets. LilChess is not the original author.
 
 Additional attribution information is available in [`web/public/sounds/ATTRIBUTION.md`](web/public/sounds/ATTRIBUTION.md).
 
