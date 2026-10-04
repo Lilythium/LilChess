@@ -105,14 +105,13 @@
     height: 100%;
   }
 
-  /* Lichess style nav buttons */
   .nav-item {
     display: flex;
     align-items: center;
     height: 100%;
-    padding: 0 0.85rem;
+    padding: 0 0.9rem;
     color: #b0b0b0;
-    font-size: 0.85rem;
+    font-size: 0.95rem;
     font-weight: 600;
     letter-spacing: 0.05em;
     text-decoration: none;

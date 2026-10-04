@@ -42,6 +42,7 @@
       if (
         g &&
         g.status === "started" &&
+        g.ply > 0 &&
         !inFirstMoveWindow(g) &&
         Date.now() >= g.deadlineAt
       ) {
