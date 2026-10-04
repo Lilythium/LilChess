@@ -36,11 +36,13 @@
     display: flex;
     width: 280px;
     height: 44px;
-    background: #2a2a2a;
-    border-radius: 9999px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     cursor: pointer;
     user-select: none;
-    overflow: hidden;
+    /* Optional: add a subtle shadow for depth */
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
   }
 
   .toggle-thumb {
@@ -49,8 +51,9 @@
     left: 3px;
     width: calc(50% - 3px);
     height: calc(100% - 6px);
-    background: rgb(98, 153, 36);
-    border-radius: 9999px;
+    background: var(--green);
+    /* Nest the curves cleanly by subtracting the offset from the radius */
+    border-radius: max(2px, calc(var(--radius) - 3px));
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
@@ -66,14 +69,12 @@
     z-index: 1;
     font-size: 14px;
     font-weight: 500;
-    /* Unselected text color */
-    color: #ffffff; 
+    color: var(--muted); 
     transition: color 0.25s ease;
   }
 
-  /* Selected (highlighted) text color turns white */
   .toggle-switch:not(.correspondence) .toggle-label:first-of-type,
   .toggle-switch.correspondence .toggle-label:last-of-type {
-    color: #ffffff;
+    color: var(--text-hi);
   }
 </style>
