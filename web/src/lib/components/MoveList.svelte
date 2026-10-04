@@ -6,7 +6,12 @@
     onSelect?: (p: number) => void;
   };
 
-  let { sanByPly, ply, selected = null, onSelect = () => {} }: Props = $props();
+  let {
+    sanByPly,
+    ply,
+    selected = null,
+    onSelect = () => {},
+  }: Props = $props();
 
   let box: HTMLDivElement;
 
@@ -20,82 +25,96 @@
     })),
   );
 
-  // Keep the latest move in view (vertical on desktop, horizontal on mobile).
   $effect(() => {
     void ply;
+
     if (!box) return;
+
     box.scrollTop = box.scrollHeight;
-    box.scrollLeft = box.scrollWidth;
   });
 </script>
 
 <div class="moves" bind:this={box}>
   {#each rows as r (r.n)}
-    <span class="num">{r.n}.</span>
-    {#if r.white}
-      <button
-        type="button"
-        class="san"
-        class:active={selected === r.whitePly || (selected === null && r.whitePly === ply)}
-        onclick={() => onSelect(r.whitePly)}
-      >
-        {r.white}
-      </button>
-    {:else}
-      <span class="san"></span>
-    {/if}
+    <div class="move-row">
+      <span class="num">{r.n}.</span>
 
-    {#if r.black}
-      <button
-        type="button"
-        class="san"
-        class:active={selected === r.blackPly || (selected === null && r.blackPly === ply)}
-        onclick={() => onSelect(r.blackPly)}
-      >
-        {r.black}
-      </button>
-    {:else}
-      <span class="san"></span>
-    {/if}
+      {#if r.white}
+        <button
+          type="button"
+          class="san"
+          class:active={
+            selected === r.whitePly ||
+            (selected === null && r.whitePly === ply)
+          }
+          onclick={() => onSelect(r.whitePly)}
+        >
+          {r.white}
+        </button>
+      {:else}
+        <span class="san"></span>
+      {/if}
+
+      {#if r.black}
+        <button
+          type="button"
+          class="san"
+          class:active={
+            selected === r.blackPly ||
+            (selected === null && r.blackPly === ply)
+          }
+          onclick={() => onSelect(r.blackPly)}
+        >
+          {r.black}
+        </button>
+      {:else}
+        <span class="san"></span>
+      {/if}
+    </div>
   {/each}
 </div>
 
 <style>
   .moves {
-    display: grid;
-    grid-template-columns: 2.5rem 1fr 1fr;
-    align-content: start;
-    max-height: 320px;
-    min-height: 120px;
+    height: 220px;
+    min-height: 220px;
     overflow-y: auto;
-    margin-bottom: 1rem;
+    font-size: 0.85rem;
   }
+
+  .move-row {
+    display: grid;
+    grid-template-columns: 2rem 1fr 1fr;
+    align-items: center;
+    min-height: 1.5rem;
+  }
+
   .num {
-    color: var(--muted);
     padding: 0.15rem 0.25rem;
+    color: var(--muted);
   }
+
   .san {
-    padding: 0.15rem 0.4rem;
-    border-radius: var(--radius);
-    background: transparent;
-    border: none;
-    color: inherit;
-    font: inherit;
+    min-width: 0;
+    padding: 0.15rem 0.25rem;
+    border: 0;
+    border-radius: 0.2rem;
+    background: none;
+    color: var(--text);
     text-align: left;
     cursor: pointer;
+    font: inherit;
   }
-  .san:hover {
-    background: var(--panel-hi);
-  }
-  .active {
-    background: var(--panel-hi);
-    color: var(--text-hi);
-    font-weight: bold;
+
+  .san:hover,
+  .san.active {
+    background: var(--panel-hover);
   }
 
   @media (max-width: 800px) {
     .moves {
-      display: none;
+      height: 180px;
+      min-height: 180px;
     }
   }
 </style>
