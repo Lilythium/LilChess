@@ -207,4 +207,60 @@ LilChess/
 ├── shared/       # Shared types and chess logic
 ├── web/          # Svelte frontend
 ├── Dockerfile
-├── package.
+├── package.json
+└── .env.example
+```
+
+## Development
+
+Build the project:
+
+```bash
+npm run build
+```
+
+Run tests:
+
+```bash
+npm test
+```
+
+Run linting:
+
+```bash
+npm run lint
+```
+
+## Third-Party Assets
+
+### Sound Effects
+
+LilChess uses sound effects from the Chess Analyzer Pro project.
+
+**Author**
+The sound effects were synthesized from scratch for Chess Analyzer Pro by its project author.
+
+**Source**
+The original sound effects are available in the following repository:
+https://github.com/imutkarsht/Chess_analyzer
+Original directory:
+https://github.com/imutkarsht/Chess_analyzer/tree/master/assets/sounds
+
+**License**
+The sound effects are dedicated to the public domain under the CC0 1.0 Universal license.
+License information:
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The sound effects included in this directory are third-party assets. LilChess is not the original author.
+
+Additional attribution information is available in [`web/public/sounds/ATTRIBUTION.md`](web/public/sounds/ATTRIBUTION.md).
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+For larger changes, please open an issue first to discuss the proposed change.
+
+## License
+
+LilChess is licensed under the **GNU General Public License v3.0**.
