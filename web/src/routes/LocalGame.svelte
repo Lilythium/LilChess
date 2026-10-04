@@ -175,7 +175,8 @@
           {#if
             g.clock.mode === "live" &&
             g.clock.initialMs !== undefined &&
-            g.clock.incrementMs !== undefined
+            g.clock.incrementMs !== undefined &&
+            save.timed
           }
             {Math.floor(g.clock.initialMs / 60000)}+{Math.floor(g.clock.incrementMs / 1000)}
           {:else}
@@ -211,20 +212,18 @@
 
     <div class="sidebar-area">
       <aside class="sidebar">
-        {#if g.clock.mode === "live"}
-          <Clock game={g} side={opponentColor} offset={0} />
+        {#if save.timed}
+          <div class="slot clock-slot">
+            <Clock game={g} side={opponentColor} offset={0} />
+          </div>
         {/if}
 
-        <MoveNav
-          viewPly={viewPly}
-          total={g.ply}
-          onNav={nav}
-        />
+        <div class="slot nav-slot">
+          <MoveNav {viewPly} total={g.ply} onNav={nav} />
+        </div>
 
-        <div class="move-box">
-          <div class="player-name">
-            {label(opponentColor)}
-          </div>
+        <div class="moves-box">
+          <div class="player-name">{label(opponentColor)}</div>
 
           <MoveList
             {sanByPly}
@@ -233,67 +232,61 @@
             onSelect={selectPly}
           />
 
-          <div class="player-name">
-            {label(playerColor)}
-          </div>
+          <div class="player-name">{label(playerColor)}</div>
         </div>
 
-        <div class="actions">
-          {#if g.status === "started"}
-            <div class="row">
-              <button onclick={() => act(drawByAgreement)}>
-                Agree draw
-              </button>
+        {#if g.status === "started"}
+          <div class="bar">
+            <button
+              title="Draw by agreement"
+              aria-label="Draw by agreement"
+              onclick={() => act(drawByAgreement)}>½</button>
 
-              {#if g.ply <= 1}
-                <button onclick={() => act(abort)}>
-                  Abort
-                </button>
-              {/if}
-
+            {#if g.ply <= 1}
               <button
-                class="danger"
-                onclick={() => act((x) => resign(x, "white"))}
-              >
-                White resigns
-              </button>
+                title="Abort game"
+                aria-label="Abort game"
+                onclick={() => act(abort)}>✕</button>
+            {/if}
 
-              <button
-                class="danger"
-                onclick={() => act((x) => resign(x, "black"))}
-              >
-                Black resigns
-              </button>
-            </div>
+            <button
+              title="Flip board"
+              aria-label="Flip board"
+              disabled={autoFlip}
+              onclick={() => (flipped = !flipped)}>⇅</button>
 
-            <div class="row controls">
-              <button
-                disabled={autoFlip}
-                onclick={() => (flipped = !flipped)}
-              >
-                Flip board
-              </button>
+            <button
+              class="danger"
+              title="White resigns"
+              aria-label="White resigns"
+              onclick={() => act((x) => resign(x, "white"))}>⚐ W</button>
 
-              <label>
-                <input type="checkbox" bind:checked={autoFlip} />
-                Auto-flip
-              </label>
-            </div>
-          {:else}
+            <button
+              class="danger"
+              title="Black resigns"
+              aria-label="Black resigns"
+              onclick={() => act((x) => resign(x, "black"))}>⚑ B</button>
+          </div>
+
+          <label class="opt">
+            <input type="checkbox" bind:checked={autoFlip} />
+            Auto-flip board each move
+          </label>
+        {:else}
+          <div class="finished">
             <p class="result">{resultText(g)}</p>
 
             <div class="row">
-              <button class="primary" onclick={rematch}>
-                Rematch
-              </button>
-
+              <button class="primary" onclick={rematch}>Rematch</button>
               <a href="#/">Back to lobby</a>
             </div>
-          {/if}
-        </div>
+          </div>
+        {/if}
 
-        {#if g.clock.mode === "live"}
-          <Clock game={g} side={playerColor} offset={0} />
+        {#if save.timed}
+          <div class="slot clock-slot">
+            <Clock game={g} side={playerColor} offset={0} />
+          </div>
         {/if}
       </aside>
     </div>
@@ -301,11 +294,11 @@
 {/if}
 
 <style>
+  /* Name card (unchanged apart from dropping the border to match the sidebar panel) */
   .name-card {
     width: 100%;
     padding: 0.75rem 1rem;
     background: var(--panel);
-    border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text-hi);
   }
@@ -330,21 +323,22 @@
     font-weight: 600;
   }
 
+  /* One attached panel, same structure as GameSidebar.svelte */
   .sidebar {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
     width: 100%;
     min-width: 0;
+    background: var(--panel);
+    border-radius: var(--radius);
+    overflow: hidden;
   }
 
-  .move-box {
-    min-height: 0;
-    padding: 0.75rem;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-  }
+  .slot { background: var(--panel-hi); }
+  .clock-slot { padding: 0.35rem 0.75rem; }
+  .nav-slot { border-top: 1px solid var(--border); }
+
+  .moves-box { padding: 0.5rem 0.75rem; }
 
   .player-name {
     padding: 0.25rem 0;
@@ -352,25 +346,47 @@
     font-weight: 600;
   }
 
-  .actions {
+  /* Icon bar, same look as GameActions.svelte */
+  .bar {
+    display: flex;
+    background: var(--panel-hi);
+    border-top: 1px solid var(--border);
+  }
+  .bar button {
+    flex: 1;
+    padding: 0.55rem 0;
+    background: transparent;
+    border-radius: 0;
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+  .bar button:hover:not(:disabled) { background: #3a3835; }
+  .bar button.danger:hover:not(:disabled) { background: var(--red); }
+
+  .opt {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    background: var(--panel-hi);
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  .finished {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-  }
-
-  .controls {
-    margin-top: 0.5rem;
+    padding: 0.75rem;
+    background: var(--panel-hi);
+    border-top: 1px solid var(--border);
   }
 
   .result {
     color: var(--text-hi);
     font-weight: 500;
     margin: 0;
-  }
-
-  @media (max-width: 800px) {
-    .sidebar {
-      width: 100%;
-    }
   }
 </style>

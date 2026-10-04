@@ -76,8 +76,7 @@
 
 <style>
   .moves {
-    height: 220px;
-    min-height: 220px;
+    height: clamp(140px, calc(var(--board, 600px) * 0.28), 240px);
     overflow-y: auto;
     font-size: 0.85rem;
   }
@@ -108,13 +107,6 @@
 
   .san:hover,
   .san.active {
-    background: var(--panel-hover);
-  }
-
-  @media (max-width: 800px) {
-    .moves {
-      height: 180px;
-      min-height: 180px;
-    }
+    background: var(--border);
   }
 </style>

@@ -80,7 +80,7 @@
     display: flex; 
     justify-content: space-between; 
     align-items: center;
-    height: 48px; 
+    height: var(--header-h);
     padding: 0 1rem; 
     background: linear-gradient(to bottom, #2e2b26, #1f1d19);
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
@@ -184,7 +184,7 @@
       height: 44px;
       padding: 0 1.25rem;
       border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-      justify-content: font-start;
+      justify-content: flex-start;
       font-size: 0.9rem;
     }
   }

@@ -5,6 +5,7 @@
   import MoveNav from "./MoveNav.svelte";
   import MoveList from "./MoveList.svelte";
   import GameActions from "./GameActions.svelte";
+  import GameAlerts from "./GameAlerts.svelte";
 
   let {
     game,
@@ -38,72 +39,65 @@
 
   const playerColor = $derived.by(() => myColor ?? game.turn);
 
-  const opponentName = $derived.by(() =>
+  const opponentName = $derived(
     opponentColor === "white" ? players.whiteName : players.blackName,
   );
-
-  const playerName = $derived.by(() =>
+  const playerName = $derived(
     playerColor === "white" ? players.whiteName : players.blackName,
   );
 </script>
 
-<aside class="sidebar">
-  <!-- Other player's clock -->
-  <Clock game={game} side={opponentColor} offset={serverOffset} />
-
-  <!-- Move navigation -->
-  <MoveNav {viewPly} total={game.ply} onNav={onNav} />
-
-  <!-- Move history -->
-  <div class="move-box">
-    <div class="player-name">
-      {opponentName}
+<div class="wrap">
+  <aside class="sidebar">
+    <div class="slot clock-slot">
+      <Clock {game} side={opponentColor} offset={serverOffset} />
     </div>
 
-    <MoveList
-      {sanByPly}
-      ply={game.ply}
-      selected={viewPly}
-      {onSelect}
-    />
-
-    <div class="player-name">
-      {playerName}
+    <div class="slot nav-slot">
+      <MoveNav {viewPly} total={game.ply} {onNav} />
     </div>
-  </div>
 
-  <!-- Game actions -->
-  <GameActions
-    game={game}
-    {myColor}
-    {id}
-    onDone={onDone}
-  />
+    <div class="moves-box">
+      <div class="player-name">{opponentName}</div>
+      <MoveList {sanByPly} ply={game.ply} selected={viewPly} {onSelect} />
+      <div class="player-name">{playerName}</div>
+    </div>
 
-  <!-- Your clock -->
-  <Clock game={game} side={playerColor} offset={serverOffset} />
-</aside>
+    <GameActions {game} {myColor} {id} {onDone} />
+
+    <div class="slot clock-slot">
+      <Clock {game} side={playerColor} offset={serverOffset} />
+    </div>
+  </aside>
+
+  <GameAlerts {game} {myColor} {id} offset={serverOffset} {onDone} />
+</div>
 
 <style>
+  .wrap { position: relative; width: 100%; min-width: 0; }
+
   .sidebar {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
     width: 100%;
     min-width: 0;
+    background: var(--panel);
+    border-radius: var(--radius);
+    overflow: hidden;
   }
 
-  .move-box {
-    min-height: 0;
-    padding: 0.75rem;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 0.5rem;
-  }
+  .slot { background: var(--panel-hi); }
+  .clock-slot { padding: 0.35rem 0.75rem; }
+  .nav-slot { border-top: 1px solid var(--border); }
+
+  .moves-box { padding: 0.5rem 0.75rem; }
 
   .player-name {
     padding: 0.25rem 0;
     color: var(--text-hi);
     font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

@@ -14,50 +14,21 @@
   const at = $derived(viewPly ?? total);
 </script>
 
-<div class="row nav">
-  <button
-    aria-label="First move"
-    disabled={at === 0}
-    onclick={() => onNav("first")}
-  >
-    «
-  </button>
-
-  <button
-    aria-label="Previous move"
-    disabled={at === 0}
-    onclick={() => onNav("prev")}
-  >
-    ‹
-  </button>
-
-  <button
-    aria-label="Next move"
-    disabled={viewPly === null}
-    onclick={() => onNav("next")}
-  >
-    ›
-  </button>
-
-  <button
-    aria-label="Latest position"
-    disabled={viewPly === null}
-    onclick={() => onNav("last")}
-  >
-    »
-  </button>
-
-  {#if viewPly !== null}
-    <span class="muted">Move {viewPly} of {total}</span>
-  {/if}
+<div class="nav">
+  <button aria-label="First move" disabled={at === 0} onclick={() => onNav("first")}>«</button>
+  <button aria-label="Previous move" disabled={at === 0} onclick={() => onNav("prev")}>‹</button>
+  <button aria-label="Next move" disabled={viewPly === null} onclick={() => onNav("next")}>›</button>
+  <button aria-label="Latest position" disabled={viewPly === null} onclick={() => onNav("last")}>»</button>
 </div>
 
 <style>
-  .nav {
-    margin-bottom: 0.5rem;
-  }
-
+  .nav { display: flex; }
   .nav button {
-    padding: 0.35rem 0.8rem;
+    flex: 1;
+    padding: 0.4rem 0;
+    background: transparent;
+    border-radius: 0;
+    font-size: 1.1rem;
   }
+  .nav button:hover:not(:disabled) { background: #3a3835; }
 </style>

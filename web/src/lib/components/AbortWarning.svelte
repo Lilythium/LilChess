@@ -18,7 +18,14 @@
 {/if}
 
 <style>
-  .warn { margin: 0 0 .5rem; padding: .5rem .75rem; background: var(--panel-hi);
-          border-left: 3px solid var(--blue); border-radius: var(--radius); color: var(--text-hi); }
+  .warn {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    background: var(--panel-hi);
+    border-left: 3px solid var(--blue);
+    border-radius: var(--radius);
+    color: var(--text-hi);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  }
   .urgent { border-left-color: var(--red); }
 </style>

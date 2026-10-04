@@ -55,34 +55,11 @@
     width: 100%;
     padding: 0.75rem 1rem;
     background: var(--panel);
-    border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text-hi);
   }
-
-  .title {
-    margin-bottom: 0.5rem;
-    color: var(--muted);
-    font-size: 0.85rem;
-    font-weight: 600;
-  }
-
-  .players {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-
-  .player {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-weight: 600;
-  }
-
-  .piece {
-    width: 1.2rem;
-    flex: 0 0 1.2rem;
-    text-align: center;
-  }
+  .title { margin-bottom: 0.5rem; color: var(--muted); font-size: 0.85rem; font-weight: 600; }
+  .players { display: flex; flex-direction: column; gap: 0.35rem; }
+  .player { display: flex; align-items: center; gap: 0.4rem; font-weight: 600; min-width: 0; }
+  .piece { width: 1.2rem; flex: 0 0 1.2rem; text-align: center; }
 </style>

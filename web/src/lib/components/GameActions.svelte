@@ -1,6 +1,6 @@
 <script lang="ts">
   import { canOfferTakeback, type Color, type GameState } from "@lilchess/shared";
-  import { api } from "../api";
+  import { postGameAction } from "../game/gameAction";
 
   let { game, myColor, id, onDone }: {
     game: GameState;
@@ -15,9 +15,7 @@
   async function act(path: string) {
     busy = true;
     try {
-      await api(`/api/games/${id}/${path}`, { method: "POST" });
-    } catch {
-      // server state wins; resync below
+      await postGameAction(id, path);
     } finally {
       busy = false;
       confirmResign = false;
@@ -30,41 +28,42 @@
     else confirmResign = true;
   }
 
-  const opponentOffered = $derived(game.drawOfferedBy !== undefined && game.drawOfferedBy !== myColor);
-  const iOffered = $derived(game.drawOfferedBy !== undefined && game.drawOfferedBy === myColor);
-  const opponentAskedTakeback = $derived(game.takebackOfferedBy !== undefined && game.takebackOfferedBy !== myColor);
-  const iAskedTakeback = $derived(game.takebackOfferedBy !== undefined && game.takebackOfferedBy === myColor);
+  const drawPending = $derived(game.drawOfferedBy !== undefined);
   const takebackAllowed = $derived(myColor !== null && canOfferTakeback(game, myColor));
 </script>
 
 {#if myColor && game.status === "started"}
-  <div class="row">
-    {#if opponentOffered}
-      <span class="muted">Opponent offers a draw</span>
-      <button class="primary" disabled={busy} onclick={() => act("draw/accept")}>Accept</button>
-      <button disabled={busy} onclick={() => act("draw/decline")}>Decline</button>
-    {:else if iOffered}
-      <span class="muted">Draw offered</span>
-    {:else}
-      <button disabled={busy} onclick={() => act("draw/offer")}>Offer draw</button>
-    {/if}
+  <div class="bar">
+    <button title="Offer draw" aria-label="Offer draw"
+            disabled={busy || drawPending} onclick={() => act("draw/offer")}>½</button>
 
-    {#if opponentAskedTakeback}
-      <span class="muted">Opponent asks to take back a move</span>
-      <button class="primary" disabled={busy} onclick={() => act("takeback/accept")}>Allow</button>
-      <button disabled={busy} onclick={() => act("takeback/decline")}>Decline</button>
-    {:else if iAskedTakeback}
-      <span class="muted">Takeback requested</span>
-    {:else if takebackAllowed}
-      <button disabled={busy} onclick={() => act("takeback/offer")}>Takeback</button>
-    {/if}
+    <button title="Ask for takeback" aria-label="Ask for takeback"
+            disabled={busy || !takebackAllowed} onclick={() => act("takeback/offer")}>↶</button>
 
     {#if game.ply <= 1}
-      <button disabled={busy} onclick={() => act("abort")}>Abort</button>
+      <button title="Abort game" aria-label="Abort game"
+              disabled={busy} onclick={() => act("abort")}>✕</button>
     {/if}
 
-    <button class="danger" disabled={busy} onclick={resign}>
-      {confirmResign ? "Really resign?" : "Resign"}
-    </button>
+    <button class="danger" title="Resign" aria-label="Resign"
+            disabled={busy} onclick={resign}>{confirmResign ? "Sure?" : "⚑"}</button>
   </div>
 {/if}
+
+<style>
+  .bar {
+    display: flex;
+    background: var(--panel-hi);
+    border-top: 1px solid var(--border);
+  }
+  .bar button {
+    flex: 1;
+    padding: 0.55rem 0;
+    background: transparent;
+    border-radius: 0;
+    font-size: 1.1rem;
+    line-height: 1.2;
+  }
+  .bar button:hover:not(:disabled) { background: #3a3835; }
+  .bar button.danger:hover:not(:disabled) { background: var(--red); }
+</style>

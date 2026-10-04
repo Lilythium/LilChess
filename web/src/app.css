@@ -4,6 +4,7 @@
   --text: #bababa;  --text-hi: #e8e8e8;  --muted: #7d7b78;
   --green: #629924;  --green-hi: #77b52a;  --blue: #3692e7;  --red: #cc3333;
   --radius: 3px;
+  --header-h: 48px;
   --font: "Noto Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 * { box-sizing: border-box; }
@@ -30,85 +31,51 @@ td, th { text-align: left; padding: .5rem .25rem; border-bottom: 1px solid var(-
 }
 
 /* ---- shared game layout ---- */
+
+/* Makes cqw below mean "width of the page content". */
+.page { container-type: inline-size; }
+/* Game pages get more room so the board can reach full size. */
+.page:has(.game) { max-width: 1400px; }
+
 .game {
+  --name-w: 180px;
+  --gap: 1rem;
+  /* Board fills what's left after the name column, the sidebar (3/8 of the board) and the gaps. */
+  --board: min(
+    700px, 
+    calc((100cqw - var(--name-w) - 2 * var(--gap)) / 1.375),
+    max(320px, calc(100dvh - var(--header-h) - 2rem)));
+
   display: grid;
-  grid-template-columns: 180px minmax(400px, 700px) 260px;
-  gap: 1rem;
+  /* sidebar = 3 of the board's 8 squares */
+  grid-template-columns: var(--name-w) var(--board) calc(var(--board) * 3 / 8);
+  gap: var(--gap);
   align-items: start;
   justify-content: center;
-  width: 100%;
-  max-width: 1200px;
   margin: 0 auto;
 }
 
-.name-area {
-  width: 180px;
-}
+.name-area { align-self: start; }      /* top lines up with the board */
+.board-area { width: 100%; min-width: 0; }
+.sidebar-area { align-self: center; width: 100%; min-width: 0; }  /* vertically centred on the board */
 
-.board-area {
-  width: 100%;
-  min-width: 0;
-}
+.game-actions { width: min(100%, 1000px); margin: 1rem auto 0; }
 
-.sidebar-area {
-  align-self: center;
-  width: 100%;
-}
-
-.game-actions {
-  width: min(100%, 1000px);
-  margin: 1rem auto 0;
-}
-
-.result {
-  color: var(--text-hi);
-  font-weight: 500;
-  margin: 0 0 .5rem;
-}
-
-.h2h {
-  padding-top: .5rem;
-  color: var(--muted);
-}
-
-.h2h strong {
-  color: var(--text-hi);
-}
-
-@media (max-width: 1100px) {
-  .game {
-    grid-template-columns: 150px minmax(350px, 600px) 220px;
-    gap: 0.75rem;
-  }
-
-  .name-area {
-    width: 150px;
-  }
-}
+.result { color: var(--text-hi); font-weight: 500; margin: 0 0 .5rem; }
+.h2h { padding-top: .5rem; color: var(--muted); }
+.h2h strong { color: var(--text-hi); }
 
 @media (max-width: 800px) {
   .game {
+    --board: min(100cqw, calc(100dvh - 250px));
     display: flex;
     flex-direction: column;
     align-items: stretch;
     gap: 0.5rem;
   }
-
-  .name-area {
-    width: 100%;
-  }
-
-  .board-area {
-    width: min(100%, calc(100dvh - 250px));
-    margin: 0 auto;
-  }
-
-  .game-actions {
-    width: 100%;
-    margin-top: 0.5rem;
-  }
-
-  .h2h {
-    display: none;
-  }
+  .name-area { width: 100%; }
+  .board-area { width: var(--board); margin: 0 auto; }
+  .sidebar-area { width: 100%; }
+  .game-actions { width: 100%; margin-top: 0.5rem; }
+  .h2h { display: none; }
 }
