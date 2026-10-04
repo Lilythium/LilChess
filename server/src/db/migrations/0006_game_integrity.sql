@@ -65,6 +65,7 @@ SELECT
 FROM games;
 
 -- moves
+UPDATE moves SET ply = 1 WHERE ply = 0; -- Older versions stored the first move as ply 0.
 CREATE TABLE moves_new (
   game_id TEXT NOT NULL REFERENCES games(id),
   ply INTEGER NOT NULL CHECK (ply >= 1),
