@@ -29,31 +29,72 @@ td, th { text-align: left; padding: .5rem .25rem; border-bottom: 1px solid var(-
   .page { padding: 0.5rem; }
 }
 
-/* ---- shared game layout (Game.svelte, LocalGame.svelte) ---- */
+/* ---- shared game layout ---- */
 .game {
   display: grid;
-  grid-template-columns: minmax(0, 8fr) minmax(0, 3fr);
+  grid-template-columns: 180px minmax(400px, 700px) 260px;
   gap: 1rem;
-  align-items: center;
+  align-items: start;
   justify-content: center;
-  width: min(100%, 1000px);
+  width: 100%;
+  max-width: 1200px;
   margin: 0 auto;
 }
+
+.name-area {
+  width: 180px;
+}
+
 .board-area {
   width: 100%;
+  min-width: 0;
 }
+
+.sidebar-area {
+  align-self: center;
+  width: 100%;
+}
+
 .game-actions {
   width: min(100%, 1000px);
   margin: 1rem auto 0;
 }
-.result { color: var(--text-hi); font-weight: 500; margin: 0 0 .5rem; }
-.h2h { padding-top: .5rem; color: var(--muted); }
-.h2h strong { color: var(--text-hi); }
+
+.result {
+  color: var(--text-hi);
+  font-weight: 500;
+  margin: 0 0 .5rem;
+}
+
+.h2h {
+  padding-top: .5rem;
+  color: var(--muted);
+}
+
+.h2h strong {
+  color: var(--text-hi);
+}
+
+@media (max-width: 1100px) {
+  .game {
+    grid-template-columns: 150px minmax(350px, 600px) 220px;
+    gap: 0.75rem;
+  }
+
+  .name-area {
+    width: 150px;
+  }
+}
 
 @media (max-width: 800px) {
   .game {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
     gap: 0.5rem;
+  }
+
+  .name-area {
     width: 100%;
   }
 
@@ -66,5 +107,8 @@ td, th { text-align: left; padding: .5rem .25rem; border-bottom: 1px solid var(-
     width: 100%;
     margin-top: 0.5rem;
   }
-  .h2h { display: none; }
+
+  .h2h {
+    display: none;
+  }
 }

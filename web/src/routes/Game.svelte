@@ -20,7 +20,6 @@
   let resetKey = $state(0);
   let socketStatus = $state<"connecting" | "open" | "closed">("connecting");
 
-  // null = follow the live position.
   let viewPly = $state<number | null>(null);
   let lastPly = 0;
 
@@ -89,6 +88,10 @@
         : null;
   });
 
+  const orientation = $derived(
+    myColor === "black" ? "black" : "white",
+  );
+
   async function sendMove(uci: string) {
     if (!view.game) return;
 
@@ -121,16 +124,19 @@
   {@const p = view.players}
 
   <div class="game">
-    <div class="board-area">
+    <div class="name-area">
       <NameCard
         players={p}
         clock={g.clock as any}
-        {myColor}
+        {orientation}
       />
+    </div>
 
+    <div class="board-area">
       <Board
         game={g}
         {myColor}
+        {orientation}
         {resetKey}
         viewPly={viewPly ?? g.ply}
         onMove={sendMove}
@@ -138,16 +144,19 @@
       />
     </div>
 
-    <GameSidebar
-      game={g}
-      players={p}
-      {myColor}
-      sanByPly={Object.values(view.sanByPly ?? {})}
-      viewPly={viewPly ?? g.ply}
-      serverOffset={view.serverOffset}
-      {id}
-      onNav={nav}
-      onDone={store.resync}
-    />
+    <div class="sidebar-area">
+      <GameSidebar
+        game={g}
+        players={p}
+        {myColor}
+        sanByPly={view.sanByPly}
+        {viewPly}
+        serverOffset={view.serverOffset}
+        {id}
+        onNav={nav}
+        onSelect={(ply: number) => (viewPly = selectPly(ply, g.ply))}
+        onDone={store.resync}
+      />
+    </div>
   </div>
 {/if}

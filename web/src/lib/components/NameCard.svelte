@@ -1,74 +1,88 @@
 <script lang="ts">
   import type { Players } from "../types";
-  import { displayName, timeControl } from "../format";
 
   let {
     players,
     clock,
-    myColor
+    orientation,
   }: {
     players: Players;
-    clock: Parameters<typeof timeControl>[0];
-    myColor: "white" | "black" | null;
+    clock: {
+      mode: string;
+      initialMs?: number;
+      incrementMs?: number;
+    };
+    orientation: "white" | "black";
   } = $props();
 
-  // svelte-ignore state_referenced_locally
-  const whiteIsMe = myColor === "white";
+  const title = $derived.by(() => {
+    if (
+      clock.mode === "live" &&
+      clock.initialMs !== undefined &&
+      clock.incrementMs !== undefined
+    ) {
+      return `${Math.floor(clock.initialMs / 60000)}+${Math.floor(clock.incrementMs / 1000)}`;
+    }
 
-  const playerName = (color: "white" | "black") => {
-    const name = color === "white" ? players.whiteName : players.blackName;
-    return displayName(name);
-  };
+    return clock.mode;
+  });
+
+  const topColor = $derived(orientation === "white" ? "black" : "white");
+  const bottomColor = $derived(orientation);
+
+  const name = (color: "white" | "black") =>
+    color === "white" ? players.whiteName : players.blackName;
 </script>
 
 <div class="name-card">
-  <div class="time-control">
-    {timeControl(clock)}
-  </div>
+  <div class="title">{title}</div>
 
   <div class="players">
-    <div class:me={whiteIsMe} class="player">
-      <span class="piece">⚪</span>
-      <span>{playerName("white")}</span>
+    <div class="player">
+      <span class="piece">{topColor === "white" ? "⚪" : "⚫"}</span>
+      <span>{name(topColor)}</span>
     </div>
 
-    <div class:me={!whiteIsMe && myColor !== null} class="player">
-      <span class="piece">⚫</span>
-      <span>{playerName("black")}</span>
+    <div class="player">
+      <span class="piece">{bottomColor === "white" ? "⚪" : "⚫"}</span>
+      <span>{name(bottomColor)}</span>
     </div>
   </div>
 </div>
 
 <style>
   .name-card {
-    padding: 0 0 0.75rem;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     color: var(--text-hi);
   }
 
-  .time-control {
-    font-size: 0.95rem;
+  .title {
+    margin-bottom: 0.5rem;
+    color: var(--muted);
+    font-size: 0.85rem;
     font-weight: 600;
-    margin-bottom: 0.4rem;
   }
 
   .players {
     display: flex;
-    gap: 1.25rem;
-    align-items: center;
+    flex-direction: column;
+    gap: 0.35rem;
   }
 
   .player {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    min-width: 0;
-  }
-
-  .player.me {
     font-weight: 600;
   }
 
   .piece {
-    font-size: 0.9rem;
+    width: 1.2rem;
+    flex: 0 0 1.2rem;
+    text-align: center;
   }
 </style>
