@@ -2,7 +2,7 @@ import { getDb } from "../db/connection.js";
 import { randomBytes } from "node:crypto";
 import { createGame, normalizeUsername, type ClockConfig } from "@lilchess/shared";
 import { insertGame, headToHead } from "../db/repositories/games.js";
-import { getRatingBadge as _getRatingBadge } from "../db/repositories/ratings.js";
+import { getPlayerRatings, getRatingHistory, getRatingBadge } from "../db/repositories/ratings.js";
 
 // Helper to generate short random IDs like "aB9x2p"
 function generateId(bytes = 4) {
@@ -155,21 +155,21 @@ return { myTurn, theirTurn, finished };
 
 // Fetch user profile and Head-to-Head stats
 export function getUserProfileWithH2H(targetUsername: string, viewerId: number) {
-const db = getDb();
+  const db = getDb();
+  const targetUser = db.prepare(`SELECT id, username, created_at FROM users WHERE username = ?`).get(normalizeUsername(targetUsername)) as any;
+  if (!targetUser) return null;
 
-const targetUser = db.prepare(`SELECT id, username, created_at FROM users WHERE username = ?`).get(normalizeUsername(targetUsername)) as any;
-if (!targetUser) return null;
+  const ratings = getPlayerRatings(targetUser.id);
+  const history = getRatingHistory(targetUser.id);
 
-// If viewing someone else, calculate H2H stats
-let h2h = null;
-if (targetUser.id !== viewerId) {
-   const r = headToHead(viewerId, targetUser.id) as { wins: number | null; draws: number | null; losses: number | null };
-   h2h = { wins: r.wins ?? 0, draws: r.draws ?? 0, losses: r.losses ?? 0 };
+  let h2h = null;
+  if (targetUser.id !== viewerId) {
+     const r = headToHead(viewerId, targetUser.id) as { wins: number | null; draws: number | null; losses: number | null };
+     h2h = { wins: r.wins ?? 0, draws: r.draws ?? 0, losses: r.losses ?? 0 };
+  }
 
-
-}
-
-const games = db.prepare(`     SELECT g.id, g.mode, g.initial_ms, g.increment_ms, g.days_per_move,
+  const games = db.prepare(`
+    SELECT g.id, g.mode, g.initial_ms, g.increment_ms, g.days_per_move,
           g.result, g.termination, g.ended_at,
           g.white_id, g.black_id, wu.username AS white_name, bu.username AS black_name,
           g.fen, g.last_move
@@ -180,20 +180,32 @@ const games = db.prepare(`     SELECT g.id, g.mode, g.initial_ms, g.increment_ms
     ORDER BY g.ended_at DESC LIMIT 20
   `).all(targetUser.id, targetUser.id) as any[];
 
-return { profile: targetUser, h2h, games };
+  return { profile: targetUser, ratings, history, h2h, games };
 }
 
 export function getGamePlayers(gameId: string) {
-return getDb().prepare(`     SELECT g.white_id AS whiteId, wu.username AS whiteName,
-           g.black_id AS blackId, bu.username AS blackName,
-           g.created_at AS createdAt
+  const db = getDb();
+  const g = db.prepare(`
+    SELECT g.white_id AS whiteId, wu.username AS whiteName, wu.is_guest AS whiteIsGuest,
+           g.black_id AS blackId, bu.username AS blackName, bu.is_guest AS blackIsGuest,
+           g.created_at AS createdAt, g.variant
     FROM games g
     JOIN users wu ON wu.id = g.white_id
     JOIN users bu ON bu.id = g.black_id
     WHERE g.id = ?
-  `).get(gameId) as
-| { whiteId: number; whiteName: string; blackId: number; blackName: string; createdAt: number }
-| undefined;
+  `).get(gameId) as any;
+
+  if (!g) return undefined;
+
+  return {
+    whiteId: g.whiteId,
+    whiteName: g.whiteName,
+    whiteRating: g.whiteIsGuest ? null : getRatingBadge(g.whiteId, g.variant),
+    blackId: g.blackId,
+    blackName: g.blackName,
+    blackRating: g.blackIsGuest ? null : getRatingBadge(g.blackId, g.variant),
+    createdAt: g.createdAt,
+  };
 }
 
 export function listChallenges(userId: number) {

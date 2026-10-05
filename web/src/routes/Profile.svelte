@@ -12,9 +12,26 @@
     | "white_id" | "black_id" | "white_name" | "black_name"
     | "fen" | "last_move"
   >;
+
+  interface ProfileRating {
+    variant: string;
+    rating: number;
+    rd: number;
+    games: number;
+    provisional: boolean;
+  }
+
+  interface RatingPoint {
+    gameId: string;
+    createdAt: number;
+    rating: number;
+  }
+
   interface ProfileResponse {
     ok: true;
     profile: { id: number; username: string; created_at: number };
+    ratings?: ProfileRating[];
+    history?: RatingPoint[];
     h2h: { wins: number; draws: number; losses: number } | null;
     games: ProfileGame[];
   }
@@ -67,6 +84,28 @@
     </div>
 
     <div class="panel">
+      <h2>Ratings</h2>
+      {#if !data.ratings || data.ratings.length === 0}
+        <p class="muted">No ratings established yet.</p>
+      {:else}
+        <div class="ratings-grid">
+          {#each data.ratings as r}
+            <div class="rating-box">
+              <span class="variant-label">{r.variant}</span>
+              <div class="rating-main">
+                <span class="rating-number">{r.rating}</span>
+                {#if r.provisional}
+                  <span class="provisional-badge" title="Provisional rating">?</span>
+                {/if}
+              </div>
+              <span class="muted small">{r.games} games · RD {r.rd}</span>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+    <div class="panel">
       <h2>Recent games</h2>
       {#if data.games.length === 0}
         <p class="muted">No finished games yet.</p>
@@ -90,4 +129,11 @@
 
 <style>
   .stack { display: flex; flex-direction: column; gap: 1rem; }
+  .ratings-grid { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.5rem; }
+  .rating-box { background: var(--bg-surface, rgba(255,255,255,0.03)); border: 1px solid var(--border, rgba(255,255,255,0.1)); padding: 0.75rem 1rem; border-radius: 6px; min-width: 140px; display: flex; flex-direction: column; gap: 0.25rem; }
+  .variant-label { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .rating-main { display: flex; align-items: baseline; gap: 0.5rem; }
+  .rating-number { font-size: 1.5rem; font-weight: bold; }
+  .provisional-badge { background: var(--accent, #6366f1); color: white; border-radius: 50%; width: 1.25rem; height: 1.25rem; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; }
+  .small { font-size: 0.8rem; }
 </style>
