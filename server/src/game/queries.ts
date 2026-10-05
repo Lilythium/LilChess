@@ -2,7 +2,7 @@ import { getDb } from "../db/connection.js";
 import { randomBytes } from "node:crypto";
 import { createGame, normalizeUsername, type ClockConfig } from "@lilchess/shared";
 import { insertGame, headToHead } from "../db/repositories/games.js";
-import { getRatingBadge } from "../db/repositories/ratings.js";
+import { getRatingBadge as _getRatingBadge } from "../db/repositories/ratings.js";
 
 // Helper to generate short random IDs like "aB9x2p"
 function generateId(bytes = 4) {
