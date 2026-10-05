@@ -1,10 +1,12 @@
 <script lang="ts">
+  import { VARIANT_LABELS, type Variant } from "@lilchess/shared";
   import type { Players } from "../types";
 
   let {
     players,
     clock,
     orientation,
+    variant = "standard",
   }: {
     players: Players & {
       whiteRating?: { rating: number; provisional: boolean } | null;
@@ -16,18 +18,15 @@
       incrementMs?: number;
     };
     orientation: "white" | "black";
+    variant: Variant;
   } = $props();
 
   const title = $derived.by(() => {
-    if (
-      clock.mode === "live" &&
-      clock.initialMs !== undefined &&
-      clock.incrementMs !== undefined
-    ) {
-      return `${Math.floor(clock.initialMs / 60000)}+${Math.floor(clock.incrementMs / 1000)}`;
-    }
-
-    return clock.mode;
+    const base =
+      clock.mode === "live" && clock.initialMs !== undefined && clock.incrementMs !== undefined
+        ? `${Math.floor(clock.initialMs / 60000)}+${Math.floor(clock.incrementMs / 1000)}`
+        : clock.mode;
+    return variant === "standard" ? base : `${base} · ${VARIANT_LABELS[variant]}`;
   });
 
   const topColor = $derived(orientation === "white" ? "black" : "white");

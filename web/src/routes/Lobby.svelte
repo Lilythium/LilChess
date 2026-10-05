@@ -6,13 +6,21 @@
   import { displayName, timeControl } from "../lib/format";
     import { hasResumableLocalGame, startLocalGame } from "../lib/game/localGame";
   import type { ChallengeRow, Challenges, MyGames } from "../lib/types";
+  import HoverDropdown from "../lib/components/HoverDropdown.svelte";
   import ModeToggle from "../lib/components/ModeToggle.svelte";
-  import { ChallengeBody } from "@lilchess/shared";
+  import { ChallengeBody, VARIANTS, VARIANT_LABELS, type Variant } from "@lilchess/shared";
   import { validate } from "../lib/validate";
   import { playSound } from "../lib/audio/audio";
 
   const PRESETS: [number, number][] = [[1, 0], [3, 2], [5, 3], [10, 0], [15, 10]];
   const DAYS = [1, 2, 3, 7, 14];
+  const VARIANT_OPTIONS = VARIANTS.map((value: Variant) => ({
+    value,
+    label: VARIANT_LABELS[value],
+  }));
+
+  let variant = $state<Variant>("standard");
+  let localVariant = $state<Variant>("standard");
 
   let mode = $state<"live" | "correspondence">("live");
   let preset = $state(2); // 5+3
@@ -98,7 +106,7 @@
         ...clock,
         colorPref: color === "random" ? undefined : color,
         toUsername: asLink ? undefined : toUsername.trim() || undefined,
-        link: asLink || undefined,
+        link: asLink || undefined, variant: variant === "standard" ? undefined : variant,
       });
 
       if (!v.ok) {
@@ -153,8 +161,8 @@
 
     startLocalGame(
       p
-        ? { minutes: p[0], incrementSec: p[1] }
-        : { minutes: null, incrementSec: 0 },
+        ? { minutes: p[0], incrementSec: p[1], variant: localVariant }
+        : { minutes: null, incrementSec: 0, variant: localVariant },
     );
 
     playSound("gameStart");
@@ -214,12 +222,21 @@
   <div class="stack">
     {#if !auth.user?.is_guest}
       <div class="panel">
-        <div class="header-row">
+        <div class="row">
           <h2>Create a game</h2>
-          <ModeToggle bind:value={mode} />
-          
         </div>
-        <span class="muted">Creating a new {mode} challenge replaces your current one.</span>
+        <div class="row">
+          <ModeToggle bind:value={mode} />
+          <HoverDropdown
+            bind:value={variant}
+            options={VARIANT_OPTIONS}
+            label="Game variant"
+            width="33%"
+          />
+        </div>
+        <span class="muted" style="display: block; margin: .5rem;">
+          Creating a new {mode} challenge replaces your current one.
+        </span>
         <div class="stack">
           {#if mode === "live"}
             <div class="row">
@@ -376,13 +393,6 @@
 </div>
 
 <style>
-  .header-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 1rem;
-  }
-
   .grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

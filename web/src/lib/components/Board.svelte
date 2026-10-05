@@ -42,7 +42,7 @@
       premovable: { enabled: mode.premovesEnabled },
       movable: {
         color: mode.movableColor,
-        dests: mode.movesEnabled ? chessgroundDests(pos) : new Map(),
+        dests: mode.movesEnabled ? chessgroundDests(pos, { chess960: String(shown.variant) === "chess960" }) : new Map(),
       },
     });
 

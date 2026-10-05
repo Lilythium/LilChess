@@ -180,6 +180,7 @@
             save.timed
           }
             {Math.floor(g.clock.initialMs / 60000)}+{Math.floor(g.clock.incrementMs / 1000)}
+            {g.variant !== "standard" ? " · " + g.variant : ""}
           {:else}
             Untimed
           {/if}

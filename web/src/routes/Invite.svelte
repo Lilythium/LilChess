@@ -10,7 +10,7 @@
   interface InviteInfo {
     id: string; from_name: string; mode: "live" | "correspondence";
     initial_ms: number | null; increment_ms: number | null; days_per_move: number | null;
-    color_pref: string | null;
+    color_pref: string | null; variant: string;
   }
 
   let { id }: { id: string } = $props();
@@ -82,7 +82,7 @@
   {:else}
     <h1>{displayName(invite.from_name)} invited you to play</h1>
     <p>
-      {timeControl(invite)} · {invite.mode}
+      {timeControl(invite)} · {invite.mode} · {invite.variant}
       {#if yourColor}<span class="muted"> · you play {yourColor}</span>{/if}
     </p>
 

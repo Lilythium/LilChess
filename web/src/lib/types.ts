@@ -11,7 +11,7 @@ export interface GameRow {
   mode: "live" | "correspondence"; initial_ms: number | null; increment_ms: number | null;
   days_per_move: number | null; status: string; result: string | null; termination: string | null;
   ply: number; deadline_at: number; ended_at: number | null;
-  fen: string; last_move: string | null;
+  fen: string; last_move: string | null; variant: string;
 }
 
 export interface MyGames { myTurn: GameRow[]; theirTurn: GameRow[]; finished: GameRow[] }
@@ -20,7 +20,7 @@ export type LiveGameRow = Pick<
   GameRow,
   | "id" | "white_id" | "black_id" | "white_name" | "black_name"
   | "mode" | "initial_ms" | "increment_ms" | "days_per_move"
-  | "ply" | "deadline_at" | "fen" | "last_move"
+  | "ply" | "deadline_at" | "fen" | "last_move" | "variant"
 >;
 
 export interface ChallengeRow {

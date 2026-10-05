@@ -14,6 +14,7 @@
   --red: #cc3333;
   /* Increased border radius for a modern feel */
   --radius: 6px;
+  --mode-toggle-height: 44px;
   --header-h: 48px;
   /* Upgraded typography stack */
   --font: "Inter", "Roboto", "Noto Sans", system-ui, -apple-system, sans-serif;

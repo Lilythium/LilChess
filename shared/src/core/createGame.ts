@@ -1,6 +1,6 @@
 import { startingDeadline } from "./clock.js";
-import { START_FEN } from "./types.js";
 import type { ClockConfig, GameState, Variant } from "./types.js";
+import { startFenFor } from "./variants.js";
 
 export interface CreateGameOptions {
   clock: ClockConfig;
@@ -11,11 +11,12 @@ export interface CreateGameOptions {
 }
 
 export function createGame(opts: CreateGameOptions): GameState {
+  const variant = opts.variant ?? "standard";
   const startMs = opts.clock.mode === "live" ? opts.clock.initialMs ?? 0 : 0;
   return {
-    variant: opts.variant ?? "standard",
+    variant,
+    initialFen: opts.initialFen ?? startFenFor(variant),
     rated: opts.rated ?? false,
-    initialFen: opts.initialFen ?? START_FEN,
     moves: [],
     ply: 0,
     turn: "white",

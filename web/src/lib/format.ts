@@ -1,11 +1,15 @@
-import type { GameState } from "@lilchess/shared";
+import { VARIANT_LABELS, type GameState, type Variant } from "@lilchess/shared";
 
-type TC = { mode: string; initial_ms: number | null; increment_ms: number | null; days_per_move: number | null };
+type TC = {
+  mode: string; initial_ms: number | null; increment_ms: number | null;
+  days_per_move: number | null; variant?: string;
+};
 
 export function timeControl(t: TC): string {
-  return t.mode === "live"
+  const base = t.mode === "live"
     ? `${(t.initial_ms ?? 0) / 60_000}+${(t.increment_ms ?? 0) / 1000}`
     : `${t.days_per_move} day${t.days_per_move === 1 ? "" : "s"}`;
+  return t.variant && t.variant !== "standard" ? `${base} · ${VARIANT_LABELS[t.variant as Variant]}` : base;
 }
 
 export function formatDuration(ms: number): string {

@@ -84,6 +84,7 @@ const challengeId = createChallenge({
       ? body.colorPref
       : undefined,
   isLink,
+  variant: body.variant,
 });
 
 return { ok: true, challengeId };

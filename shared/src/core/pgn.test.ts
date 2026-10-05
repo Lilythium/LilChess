@@ -66,4 +66,12 @@ describe("buildPgn", () => {
     const movetext = buildPgn(opts(base(), sans)).split("\n\n")[1]!;
     for (const line of movetext.trimEnd().split("\n")) expect(line.length).toBeLessThanOrEqual(80);
   });
+
+  it("tags Chess960 games and always includes the start position", () => {
+    const game = createGame({ clock: LIVE, now: 0, variant: "chess960", initialFen: "bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w KQkq - 0 1" });
+    const pgn = buildPgn(opts(game, ["Nd3"]));
+    expect(pgn).toContain('[Variant "Chess960"]');
+    expect(pgn).toContain('[SetUp "1"]');
+    expect(pgn).toContain('[FEN "bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w KQkq - 0 1"]');
+  });
 });

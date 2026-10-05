@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { fenAfterMoves } from "@lilchess/shared";
+import { fenAfterMoves, VARIANTS } from "@lilchess/shared";
 import { latestVersion } from "./migrate.js";
 
 export interface IntegrityIssue {
@@ -35,6 +35,12 @@ export function checkIntegrity(db: Database.Database, opts: { deep?: boolean } =
 
   for (const g of db.prepare(`SELECT id FROM games WHERE fen IS NULL`).all() as { id: string }[]) {
     add("fen", `game ${g.id} has no stored position`);
+  }
+
+  const marks = VARIANTS.map(() => "?").join(",");
+  for (const g of db.prepare(`SELECT id, variant FROM games WHERE variant NOT IN (${marks})`).all(...VARIANTS) as
+    { id: string; variant: string }[]) {
+    add("variant", `game ${g.id} has unknown variant '${g.variant}'`);
   }
 
   if (opts.deep) {

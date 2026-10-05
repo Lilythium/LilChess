@@ -1,6 +1,6 @@
-import { createGame, inFirstMoveWindow, type GameState } from "@lilchess/shared";
+import { createGame, inFirstMoveWindow, type GameState, type Variant } from "@lilchess/shared";
 
-export interface LocalConfig { minutes: number | null; incrementSec: number } // minutes null = no clock
+export interface LocalConfig { minutes: number | null; incrementSec: number; variant?: Variant }
 export interface LocalSave { game: GameState; sans: string[]; config: LocalConfig; timed: boolean }
 
 const KEY = "lilchess.local";
@@ -30,6 +30,7 @@ export function startLocalGame(config: LocalConfig): LocalSave {
     game: createGame({
       clock: { mode: "live", initialMs, incrementMs: config.incrementSec * 1000 },
       now: Date.now(),
+      variant: config.variant,
     }),
     sans: [],
     config,

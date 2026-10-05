@@ -10,7 +10,7 @@
     | "id" | "mode" | "initial_ms" | "increment_ms" | "days_per_move"
     | "result" | "termination" | "ended_at"
     | "white_id" | "black_id" | "white_name" | "black_name"
-    | "fen" | "last_move"
+    | "fen" | "last_move" | "variant"
   >;
 
   interface ProfileRating {

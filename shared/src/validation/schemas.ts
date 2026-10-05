@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { normalizeUsername } from "./username.js";
+import { VARIANTS } from "../core/types.js";
 
 export const Uci = z.string().regex(/^[a-h][1-8][a-h][1-8][qrbn]?$/, "Invalid move");
 export const Ply = z.number().int().min(0).max(10_000);
@@ -30,6 +31,7 @@ const Common = {
   toUsername: z.string().trim().min(1).max(64).transform(normalizeUsername).optional(),
   link: z.boolean().optional(),
   rated: z.boolean().optional(),
+  variant: z.enum(VARIANTS).optional(),
 };
 
 export const ChallengeBody = z.discriminatedUnion("mode", [

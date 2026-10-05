@@ -42,7 +42,7 @@ function wrap(tokens: string[], width = 80): string {
   return lines.join("\n");
 }
 
-// Standard games from the normal start position (variants and black-to-move
+// Standard or 960 games from the start position (black-to-move
 // starting FENs are not handled yet).
 export function buildPgn(o: BuildPgnOptions): string {
   const { game } = o;
@@ -61,7 +61,10 @@ export function buildPgn(o: BuildPgnOptions): string {
     ["TimeControl", timeControlTag(game)],
     ["Termination", terminationTag(game)],
   ];
-  if (game.initialFen !== START_FEN) headers.push(["SetUp", "1"], ["FEN", game.initialFen]);
+  if (game.variant === "chess960") headers.push(["Variant", "Chess960"]);
+  if (game.variant === "chess960" || game.initialFen !== START_FEN) {
+    headers.push(["SetUp", "1"], ["FEN", game.initialFen]);
+  }
 
   const tokens: string[] = [];
   o.sans.forEach((san, i) => {

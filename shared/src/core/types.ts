@@ -4,7 +4,13 @@ export function opponent(color: Color): Color {
   return color === "white" ? "black" : "white";
 }
 
-export type Variant = "standard"; // add more later
+export const VARIANTS = ["standard", "chess960"] as const;
+export type Variant = (typeof VARIANTS)[number];
+
+export const VARIANT_LABELS: Record<Variant, string> = {
+  standard: "Standard",
+  chess960: "Chess960",
+};
 
 export type ClockMode = "live" | "correspondence";
 

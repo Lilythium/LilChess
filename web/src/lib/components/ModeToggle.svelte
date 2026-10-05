@@ -35,7 +35,7 @@
     position: relative;
     display: flex;
     width: 280px;
-    height: 44px;
+    height: var(--mode-toggle-height);
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
