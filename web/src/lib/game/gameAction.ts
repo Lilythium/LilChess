@@ -5,5 +5,7 @@ import { api } from "../api";
 export async function postGameAction(id: string, path: string): Promise<void> {
   try {
     await api(`/api/games/${id}/${path}`, { method: "POST" });
-  } catch { }
+  } catch {
+    // Server state wins, errors are intentionally ignored and caller resyncs
+  }
 }
