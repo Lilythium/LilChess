@@ -158,6 +158,9 @@ function applyMoveCore(id: string, uci: string, now: number) {
   let san: string | null = null;
   if (movePlayed) {
     san = sanForNextMove(before, uci);
+    if (!san) {
+      throw new Error("no SAN generated for move"); 
+    }
     // Never write a ply without its moves row. Throwing rolls back the surrounding transaction.
     if (san === null) throw new Error(`no SAN for ${uci} in game ${id} at ply ${before.ply}`);
     appendMove(id, result.state.ply, uci, san);

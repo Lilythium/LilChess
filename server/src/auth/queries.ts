@@ -10,10 +10,12 @@ export interface User {
   is_guest: number;
 }
 
-export function getUserByUsername(username: string) {
-  return getDb().prepare(
-    `SELECT * FROM users WHERE LOWER(username) = LOWER(?)`
-  ).get(username);
+export interface UserRow extends User {
+  password_hash: string;
+}
+
+export function getUserByUsername(username: string): UserRow | undefined {
+  return getDb().prepare("SELECT * FROM users WHERE username = ?").get(username) as UserRow | undefined;
 }
 
 export function createUser(username: string, passwordHash: string): User {

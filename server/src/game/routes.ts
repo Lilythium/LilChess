@@ -59,9 +59,7 @@ const isLink = body.link === true;
 let toUser: number | undefined;
 
 if (body.toUsername && !isLink) {
-  const target = getUserByUsername(body.toUsername) as
-    | { id: number; is_guest: boolean }
-    | null;
+  const target = getUserByUsername(body.toUsername);
 
   if (!target) return reply.code(404).send({ error: "User not found" });
   if (target.id === req.user!.id) {
