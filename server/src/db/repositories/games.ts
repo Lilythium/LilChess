@@ -156,16 +156,17 @@ function applyMoveCore(id: string, uci: string, now: number) {
 
   const movePlayed = result.state.moves.length > before.moves.length;
   let san: string | null = null;
+  
   if (movePlayed) {
     san = sanForNextMove(before, uci);
     if (!san) {
-      throw new Error("no SAN generated for move"); 
+      throw new Error(`no SAN for ${uci} in game ${id} at ply ${before.ply}`);
     }
     // Never write a ply without its moves row. Throwing rolls back the surrounding transaction.
-    if (san === null) throw new Error(`no SAN for ${uci} in game ${id} at ply ${before.ply}`);
     appendMove(id, result.state.ply, uci, san);
     assertMoveRows(id, result.state.ply);
   }
+  
   updateGameState(id, result.state);
 
   return { ...result, san, movePlayed };
