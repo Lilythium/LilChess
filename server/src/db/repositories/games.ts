@@ -157,7 +157,7 @@ function applyMoveCore(id: string, uci: string, now: number) {
   const movePlayed = result.state.moves.length > before.moves.length;
   let san: string | null = null;
   
-  if (movePlayed) {
+  if (movePlayed && result.state.termination !== "timeout") {
     san = sanForNextMove(before, uci);
     if (!san) {
       throw new Error(`no SAN for ${uci} in game ${id} at ply ${before.ply}`);
