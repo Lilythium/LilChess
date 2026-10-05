@@ -32,6 +32,7 @@ export type GameResult = "1-0" | "0-1" | "1/2-1/2";
 
 export interface GameState {
   variant: Variant;
+  rated: boolean;
   initialFen: string;
   moves: string[]; // UCI strings, in the order played
   ply: number; // == moves.length, kept explicit to mirror the DB schema

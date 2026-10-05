@@ -8,6 +8,7 @@ export function rowToGameState(row: any, moves: string[]): GameState {
 
   return {
     variant: row.variant,
+    rated: row.rated === 1,
     initialFen: row.initial_fen,
     moves,
     ply: row.ply,
@@ -28,6 +29,7 @@ export function rowToGameState(row: any, moves: string[]): GameState {
 export function gameStateToRow(game: GameState) {
   return {
     variant: game.variant,
+    rated: game.rated ? 1 : 0,
     mode: game.clock.mode,
     initialMs: game.clock.mode === "live" ? game.clock.initialMs ?? null : null,
     incrementMs: game.clock.mode === "live" ? game.clock.incrementMs ?? 0 : null,

@@ -29,6 +29,7 @@ const Common = {
   colorPref: z.enum(["white", "black", "random"]).optional(),
   toUsername: z.string().trim().min(1).max(64).transform(normalizeUsername).optional(),
   link: z.boolean().optional(),
+  rated: z.boolean().optional(),
 };
 
 export const ChallengeBody = z.discriminatedUnion("mode", [

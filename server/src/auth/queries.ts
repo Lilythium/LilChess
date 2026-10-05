@@ -11,7 +11,9 @@ export interface User {
 }
 
 export function getUserByUsername(username: string) {
-  return getDb().prepare(`SELECT * FROM users WHERE username = ?`).get(normalizeUsername(username)) as (User & { password_hash: string }) | undefined;
+  return getDb().prepare(
+    `SELECT * FROM users WHERE LOWER(username) = LOWER(?)`
+  ).get(username);
 }
 
 export function createUser(username: string, passwordHash: string): User {

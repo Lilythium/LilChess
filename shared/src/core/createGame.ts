@@ -6,6 +6,7 @@ export interface CreateGameOptions {
   clock: ClockConfig;
   variant?: Variant;
   initialFen?: string;
+  rated?: boolean;
   now: number;
 }
 
@@ -13,6 +14,7 @@ export function createGame(opts: CreateGameOptions): GameState {
   const startMs = opts.clock.mode === "live" ? opts.clock.initialMs ?? 0 : 0;
   return {
     variant: opts.variant ?? "standard",
+    rated: opts.rated ?? false,
     initialFen: opts.initialFen ?? START_FEN,
     moves: [],
     ply: 0,

@@ -2,6 +2,7 @@ import { getDb } from "../db/connection.js";
 import { randomBytes } from "node:crypto";
 import { createGame, normalizeUsername, type ClockConfig } from "@lilchess/shared";
 import { insertGame, headToHead } from "../db/repositories/games.js";
+import { getRatingBadge } from "../db/repositories/ratings.js";
 
 // Helper to generate short random IDs like "aB9x2p"
 function generateId(bytes = 4) {
@@ -42,21 +43,22 @@ incrementMs?: number;
 daysPerMove?: number;
 colorPref?: string;
 isLink?: boolean;
+rated?: boolean;
 }) {
 const db = getDb();
-const id = generateId(data.isLink ? 8 : 4); // every challenge id acts as an invite link
+const id = generateId(data.isLink ? 8 : 4);
 const now = Date.now();
 const expiresAt = now + challengeTtlMs(data.mode);
 
 // A user has at most one challenge per mode: creating a new one replaces the old one.
 db.transaction(() => {
 db.prepare(`DELETE FROM challenges WHERE from_user = ? AND mode = ?`).run(data.fromUser, data.mode);
-db.prepare(`       INSERT INTO challenges (id, from_user, to_user, mode, initial_ms, increment_ms, days_per_move, color_pref, created_at, expires_at, is_link)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+db.prepare(`     INSERT INTO challenges (id, from_user, to_user, mode, initial_ms, increment_ms, days_per_move, color_pref, created_at, expires_at, is_link, rated)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
 id, data.fromUser, data.toUser ?? null, data.mode,
 data.initialMs ?? null, data.incrementMs ?? null, data.daysPerMove ?? null,
-data.colorPref ?? null, now, expiresAt, data.isLink ? 1 : 0,
+data.colorPref ?? null, now, expiresAt, data.isLink ? 1 : 0, data.rated ? 1 : 0,
 );
 }).immediate();
 
@@ -76,6 +78,10 @@ throw new ChallengeError("Challenge expired", 410);
 }
 if (challenge.from_user === acceptingUserId) throw new ChallengeError("Cannot accept your own challenge", 400);
 if (challenge.to_user && challenge.to_user !== acceptingUserId) throw new ChallengeError("Not invited to this challenge", 403);
+if (challenge.rated) {
+  const me = db.prepare(`SELECT is_guest FROM users WHERE id = ?`).get(acceptingUserId) as { is_guest: number } | undefined;
+  if (me?.is_guest) throw new ChallengeError("Guests can only play casual games. Register to play rated.", 403);
+}
 
 // Determine colors
 let whiteId = challenge.from_user;
@@ -91,7 +97,7 @@ const clock: ClockConfig =
     ? { mode: "live", initialMs: challenge.initial_ms, incrementMs: challenge.increment_ms ?? 0 }
     : { mode: "correspondence", daysPerMove: challenge.days_per_move };
 
-insertGame(gameId, whiteId, blackId, createGame({ clock, now: Date.now() }));
+insertGame(gameId, whiteId, blackId, createGame({ clock, now: Date.now(), rated: challenge.rated }));
 
 // Delete the consumed challenge
 db.prepare(`DELETE FROM challenges WHERE id = ?`).run(challengeId);
@@ -228,20 +234,24 @@ export function getLiveGames(limit = 20) {
 
 // Public preview for the invite page. Works for any live challenge; never exposes user ids.
 export function getInvitePreview(id: string) {
-return getDb().prepare(`     SELECT c.id, u.username AS from_name, c.mode, c.initial_ms, c.increment_ms, c.days_per_move,
-           c.color_pref, (c.to_user IS NOT NULL) AS targeted
-    FROM challenges c JOIN users u ON u.id = c.from_user
-    WHERE c.id = ? AND c.expires_at > ?
-  `).get(id, Date.now()) as
-| {
-id: string;
-from_name: string;
-mode: "live" | "correspondence";
-initial_ms: number | null;
-increment_ms: number | null;
-days_per_move: number | null;
-color_pref: string | null;
-targeted: number;
-}
-| undefined;
+  return getDb()
+    .prepare(
+      `SELECT c.id, u.username AS from_name, c.mode, c.initial_ms, c.increment_ms, c.days_per_move, c.rated,
+              c.color_pref, (c.to_user IS NOT NULL) AS targeted
+       FROM challenges c JOIN users u ON u.id = c.from_user
+       WHERE c.id = ? AND c.expires_at > ?`,
+    )
+    .get(id, Date.now()) as
+    | {
+        id: string;
+        from_name: string;
+        mode: "live" | "correspondence";
+        initial_ms: number | null;
+        increment_ms: number | null;
+        days_per_move: number | null;
+        rated: number;
+        color_pref: string | null;
+        targeted: number;
+      }
+    | undefined;
 }

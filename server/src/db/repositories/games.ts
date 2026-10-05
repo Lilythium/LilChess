@@ -20,6 +20,7 @@ import { gameStateToRow, rowToGameState } from "../mappers.js";
 import { broadcastGameEvent } from "../../ws/hub.js";
 import { sendWebhook } from "../../notifications/webhook.js";
 import { notifyDeadlineChanged } from "../../game/deadlineBus.js";
+import { settleRatings } from "./ratings.js";
 
 export function insertGame(id: string, whiteId: number, blackId: number, game: GameState): void {
   const row = gameStateToRow(game);
@@ -27,13 +28,13 @@ export function insertGame(id: string, whiteId: number, blackId: number, game: G
   getDb()
     .prepare(
       `INSERT INTO games (
-        id, white_id, black_id, variant, mode,
+        id, white_id, black_id, variant, rated, mode,
         initial_ms, increment_ms, days_per_move,
         status, result, termination,
         initial_fen, fen, last_move, ply, white_ms, black_ms,
         turn_started_at, deadline_at, draw_offered_by, created_at
       ) VALUES (
-        @id, @whiteId, @blackId, @variant, @mode,
+        @id, @whiteId, @blackId, @variant, @rated, @mode,
         @initialMs, @incrementMs, @daysPerMove,
         @status, @result, @termination,
         @initialFen, @fen, @lastMove, @ply, @whiteMs, @blackMs,
@@ -87,6 +88,8 @@ function updateGameState(id: string, game: GameState): void {
       WHERE id=@id`,
     )
     .run({ id, ...row, fen, lastMove: game.moves.at(-1) ?? null, endedAt: Date.now() });
+
+  if (game.status === "finished" && game.rated) settleRatings(id);
 }
 
 function appendMove(gameId: string, ply: number, uci: string, san: string): void {
