@@ -4,5 +4,10 @@ export default defineConfig({
   test: {
     isolate: false,
     exclude: ["**/node_modules/**", "**/dist/**", "**/.git/**"],
+    server: {
+      deps: {
+        inline: ["@lilchess/shared"],
+      },
+    },
   },
 });
