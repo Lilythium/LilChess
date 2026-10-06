@@ -1,7 +1,7 @@
 import { api } from "./api";
 import { navigate } from "./router.svelte";
 
-export interface User { id: number; username: string; created_at: number; is_admin: number; is_guest: number }
+export interface User { id: number; username: string; created_at: number; is_admin: number; is_guest: number; email: string | null }
 export const auth = $state<{ user: User | null; ready: boolean }>({ user: null, ready: false });
 
 export async function loadMe() {

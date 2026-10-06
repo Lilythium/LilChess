@@ -6,10 +6,12 @@ import path from "node:path";
 import fs from "node:fs";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
-import { authRoutes } from "./auth/routes.js";
-import { gameRoutes } from "./game/routes.js";
 import { attachWebSocketServer } from "./ws/server.js";
 import { registerCsrfProtection } from "./security/csrf.js";
+import { authRoutes } from "./auth/routes.js";
+import { resetRoutes } from "./auth/resetRoutes.js";
+import { gameRoutes } from "./game/routes.js";
+import { notificationRoutes } from "./notifications/routes.js";
 
 type TrustProxy = boolean | string | ((address: string, hop: number) => boolean);
 
@@ -51,7 +53,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // API Routes
   await app.register(authRoutes);
+  await app.register(resetRoutes);
   await app.register(gameRoutes);
+  await app.register(notificationRoutes);
   app.get("/api/health", { config: { rateLimit: false } }, async () => ({ ok: true }));
 
   // Static assets (web/dist) + SPA fallback

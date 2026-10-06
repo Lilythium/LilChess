@@ -19,7 +19,22 @@ const Env = z.object({
   BACKUP_KEEP: z.coerce.number().int().min(0).max(365).default(7), // 0 disables backups
   BACKUP_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(3),
   ALLOW_GUESTS: z.stringbool().default(true),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  SMTP_SECURE: z.stringbool().default(false), // true for implicit TLS (port 465)
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
 });
+
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string | undefined;
+  pass: string | undefined;
+  from: string;
+}
 
 export interface Config {
   nodeEnv: string;
@@ -36,6 +51,7 @@ export interface Config {
   backupKeep: number;
   backupHourUtc: number;
   allowGuests: boolean;
+  smtp: SmtpConfig | undefined;
 }
 
 function parseTrustProxy(v: string | undefined): boolean | number | string {
@@ -58,6 +74,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
 
   const baseOrigin = e.BASE_URL ? new URL(e.BASE_URL).origin : undefined;
+
+  if (e.SMTP_HOST) {
+    const problems: string[] = [];
+    if (!e.SMTP_FROM) problems.push("SMTP_FROM: required when SMTP_HOST is set");
+    if (!baseOrigin) problems.push("BASE_URL: required when SMTP_HOST is set (emails contain links)");
+    if (Boolean(e.SMTP_USER) !== Boolean(e.SMTP_PASS)) problems.push("SMTP_USER / SMTP_PASS: set both or neither");
+    if (problems.length > 0) throw new Error(`Invalid configuration:\n  ${problems.join("\n  ")}`);
+  }
   return {
     nodeEnv: e.NODE_ENV,
     port: e.PORT,
@@ -74,9 +98,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     backupKeep: e.BACKUP_KEEP,
     backupHourUtc: e.BACKUP_HOUR_UTC,
     allowGuests: e.ALLOW_GUESTS,
+    smtp: e.SMTP_HOST ? {
+      host: e.SMTP_HOST ?? "localhost",
+      port: e.SMTP_PORT,
+      secure: e.SMTP_SECURE,
+      user: e.SMTP_USER,
+      pass: e.SMTP_PASS,
+      from: e.SMTP_FROM ?? "noreply@example.com",
+    } : undefined,
   };
 }
 
 export const config: Config = loadConfig(
-  process.env.VITEST ? { ...process.env, BASE_URL: undefined } : process.env,
+  process.env.VITEST ? { ...process.env, BASE_URL: undefined, SMTP_HOST: undefined } : process.env,
 );

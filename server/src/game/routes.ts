@@ -31,6 +31,7 @@ headToHead,
 import { getUserByUsername } from "../auth/queries.js";
 import { notifyDeadlineChanged } from "./deadlineBus.js";
 import { ChallengeBody, IdParams, MoveBody, UsernameParams, parse } from "../validation.js";
+import { notifyChallengeAccepted, notifyChallengeReceived } from "../notifications/dispatch.js";
 
 const STATUS: Record<string, number> = {
 not_found: 404,
@@ -87,6 +88,18 @@ const challengeId = createChallenge({
   variant: body.variant,
 });
 
+if (toUser !== undefined) {
+      notifyChallengeReceived({
+        fromId: req.user!.id,
+        fromName: req.user!.username,
+        toId: toUser,
+        clock:
+          body.mode === "live"
+            ? { mode: "live", initialMs: body.initialMs, incrementMs: body.incrementMs }
+            : { mode: "correspondence", daysPerMove: body.daysPerMove },
+      });
+    }
+
 return { ok: true, challengeId };
 
 });
@@ -137,6 +150,7 @@ if (!params) return reply;
 try {
   const gameId = acceptChallengeTx(params.id, req.user!.id);
   notifyDeadlineChanged();
+  notifyChallengeAccepted(gameId, req.user!.id);
   return { ok: true, gameId };
 } catch (err) {
   if (err instanceof ChallengeError) {

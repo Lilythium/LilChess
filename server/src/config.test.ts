@@ -41,4 +41,18 @@ describe("loadConfig", () => {
     expect(loadConfig({}).allowGuests).toBe(true);
     expect(loadConfig({ ALLOW_GUESTS: "false" }).allowGuests).toBe(false);
   });
+
+    it("leaves email off unless SMTP_HOST is set", () => {
+    expect(loadConfig({}).smtp).toBeUndefined();
+  });
+
+  it("requires SMTP_FROM and BASE_URL with SMTP_HOST, and user/pass together", () => {
+    expect(() => loadConfig({ SMTP_HOST: "smtp.test" })).toThrow(/SMTP_FROM[\s\S]*BASE_URL/);
+    const ok = { SMTP_HOST: "smtp.test", SMTP_FROM: "noreply@chess.test", BASE_URL: "https://chess.test" };
+    expect(() => loadConfig({ ...ok, SMTP_USER: "u" })).toThrow(/SMTP_USER/);
+    expect(loadConfig(ok).smtp).toEqual({
+      host: "smtp.test", port: 587, secure: false, user: undefined, pass: undefined, from: "noreply@chess.test",
+    });
+    expect(loadConfig({ ...ok, SMTP_PORT: "465", SMTP_SECURE: "true" }).smtp).toMatchObject({ port: 465, secure: true });
+  });
 });

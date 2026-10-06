@@ -8,14 +8,17 @@ export interface User {
   created_at: number;
   is_admin: number;
   is_guest: number;
+  email: string | null;
 }
 
 export interface UserRow extends User {
   password_hash: string;
 }
 
-export function getUserByUsername(username: string): UserRow | undefined {
-  return getDb().prepare("SELECT * FROM users WHERE username = ?").get(username) as UserRow | undefined;
+export function getUserByUsername(username: string) {
+  return getDb().prepare(
+    `SELECT id, username, password_hash, created_at, is_admin, is_guest, email FROM users WHERE username = ?`,
+  ).get(normalizeUsername(username)) as (User & { password_hash: string }) | undefined;
 }
 
 export function createUser(username: string, passwordHash: string): User {
@@ -25,7 +28,7 @@ export function createUser(username: string, passwordHash: string): User {
     VALUES (?, ?, ?, ?)
   `).run(normalizeUsername(username), passwordHash, now, 0);
 
-  return { id: info.lastInsertRowid as number, username: normalizeUsername(username), created_at: now, is_admin: 0, is_guest: 0 };
+    return { id: info.lastInsertRowid as number, username: normalizeUsername(username), created_at: now, is_admin: 0, is_guest: 0, email: null };
 }
 
 // '!' can never match a "salt:hash" value, so guests cannot log in with a password.
@@ -39,7 +42,7 @@ export function createGuest(): User {
         INSERT INTO users (username, password_hash, created_at, is_admin, is_guest)
         VALUES (?, '!', ?, 0, 1)
       `).run(username, now);
-      return { id: Number(info.lastInsertRowid), username, created_at: now, is_admin: 0, is_guest: 1 };
+            return { id: Number(info.lastInsertRowid), username, created_at: now, is_admin: 0, is_guest: 1, email: null };
     } catch (err) {
       if ((err as { code?: string }).code !== "SQLITE_CONSTRAINT_UNIQUE") throw err;
     }
@@ -56,7 +59,7 @@ export function createSession(tokenHash: string, userId: number, expiresAt: numb
 
 export function getSessionUser(tokenHash: string): User | undefined {
   return getDb().prepare(`
-    SELECT u.id, u.username, u.created_at, u.is_admin, u.is_guest
+    SELECT u.id, u.username, u.created_at, u.is_admin, u.is_guest, u.email
     FROM sessions s
     JOIN users u ON s.user_id = u.id
     WHERE s.token_hash = ? AND s.expires_at > ?

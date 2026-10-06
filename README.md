@@ -122,6 +122,12 @@ LilChess can be configured with environment variables.
 | `WEBHOOK_URL`     | —                   | Optional notification webhook                 |
 | `WEBHOOK_KIND`    | —                   | Webhook type, such as `ntfy` or `discord`     |
 | `ALLOW_GUESTS`    | `true`              | Let invite-link visitors play as guests       |
+| `SMTP_HOST`       | —                   | SMTP server; enables email (needs `SMTP_FROM` and `BASE_URL`) |
+| `SMTP_PORT`       | `587`               | SMTP port                                     |
+| `SMTP_SECURE`     | `false`             | `true` for implicit TLS (port 465)            |
+| `SMTP_USER`       | —                   | SMTP login (set with `SMTP_PASS`)             |
+| `SMTP_PASS`       | —                   | SMTP password                                 |
+| `SMTP_FROM`       | —                   | From address, e.g. `noreply@chess.example.com`|
 
 See `.env.example` for the available configuration options.
 
@@ -139,6 +145,13 @@ Example:
 REGISTRATION=invite
 INVITE_CODE=your-secret-code
 ```
+
+## Email
+
+Email is optional. Without `SMTP_HOST` the server never sends anything. With it, users can add an
+email address in Settings (it isn't verified) to get notifications for challenges, their turn in
+correspondence games, and finished correspondence games, and to reset a forgotten password.
+`BASE_URL` must be set so links in emails point at your server.
 
 ## Health Check
 

@@ -21,6 +21,7 @@ import { broadcastGameEvent } from "../../ws/hub.js";
 import { sendWebhook } from "../../notifications/webhook.js";
 import { notifyDeadlineChanged } from "../../game/deadlineBus.js";
 import { settleRatings } from "./ratings.js";
+import { notifyGameOver, notifyYourTurn } from "../../notifications/dispatch.js";
 
 export function insertGame(id: string, whiteId: number, blackId: number, game: GameState): void {
   const row = gameStateToRow(game);
@@ -189,6 +190,7 @@ function broadcastMoveOutcome(
   state: GameState,
   san: string | null,
   movePlayed: boolean,
+  actorId: number | null = null,
 ): void {
   if (movePlayed && san) {
     broadcastGameEvent(gameId, {
@@ -210,6 +212,9 @@ function broadcastMoveOutcome(
   if (state.status === "finished" && state.clock.mode === "correspondence") {
     void sendWebhook(`Game ${gameId} ended: ${state.result ?? "—"} (${state.termination}).`);
   }
+  // Emails. A late move that only flags the mover is a timeout, so nobody "acted".
+  if (movePlayed && san) notifyYourTurn(gameId, state, uci, san);
+  notifyGameOver(gameId, state, movePlayed ? actorId : null);
   if (movePlayed) notifyDeadlineChanged();
 }
 
@@ -237,7 +242,7 @@ export function submitMove(
   }).immediate();
 
   if (outcome.ok) {
-    broadcastMoveOutcome(gameId, uci, outcome.state, outcome.san, outcome.movePlayed);
+    broadcastMoveOutcome(gameId, uci, outcome.state, outcome.san, outcome.movePlayed, userId);
   }
   return outcome;
 }
@@ -276,6 +281,7 @@ export function resignAndPersist(gameId: string, userId: number) {
       result: r.state.result,
       termination: r.state.termination,
     });
+    notifyGameOver(gameId, r.state, userId);
   }
   return r;
 }
@@ -298,6 +304,7 @@ export function acceptDrawAndPersist(gameId: string, userId: number) {
       result: r.state.result,
       termination: r.state.termination,
     });
+    notifyGameOver(gameId, r.state, userId);
   }
   return r;
 }
@@ -373,7 +380,10 @@ export function claimTimeoutAndPersist(gameId: string, now: number) {
     return result;
   }).immediate();
 
-  if (outcome.ok) broadcastGameOver(gameId, outcome.state);
+  if (outcome.ok) {
+    broadcastGameOver(gameId, outcome.state);
+    notifyGameOver(gameId, outcome.state, null);
+  }
   return outcome;
 }
 

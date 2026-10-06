@@ -70,6 +70,9 @@
     </a>
     <a href="#/watch" class="nav-item" onclick={closeMenu}>WATCH</a>
     <a href={profileHref} class="nav-item" onclick={closeMenu}>{displayName(auth.user?.username ?? "").toUpperCase()}</a>
+    {#if !auth.user?.is_guest}
+      <a href="#/settings" class="nav-item" onclick={closeMenu}>SETTINGS</a>
+    {/if}
     <button class="nav-item btn-logout" onclick={onLogout}>LOG OUT</button>
   </nav>
 </header>

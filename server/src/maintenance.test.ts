@@ -38,4 +38,15 @@ describe("purgeExpired", () => {
     const left = db.prepare(`SELECT username FROM users ORDER BY id`).all().map((r) => (r as { username: string }).username);
     expect(left).toEqual(["alice", "bob", "guest_aaaaaa", "guest_bbbbbb"]);
   });
+
+    it("drops expired password resets and month-old notification log rows", () => {
+    const db = getDb();
+    db.exec(`
+      INSERT INTO password_resets (token_hash, user_id, created_at, expires_at) VALUES ('old',1,0,100), ('fresh',1,0,${FAR});
+      INSERT INTO notification_log (user_id, dedup_key, kind, created_at) VALUES (1,'a','your_turn',0), (1,'b','your_turn',${FAR});
+    `);
+    expect(purgeExpired()).toMatchObject({ resets: 1, notifications: 1 });
+    expect(db.prepare(`SELECT token_hash FROM password_resets`).all()).toEqual([{ token_hash: "fresh" }]);
+    expect(db.prepare(`SELECT dedup_key FROM notification_log`).all()).toEqual([{ dedup_key: "b" }]);
+  });
 });

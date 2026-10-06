@@ -11,6 +11,7 @@
   let inviteCode = $state("");
   let error = $state<string | null>(null);
   let busy = $state(false);
+  let loginFailed = $state(false);
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -30,6 +31,9 @@
       // App.svelte redirects once auth.user is set
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
+      if (mode === "login") {
+        loginFailed = true;
+      }
     } finally {
       busy = false;
     }
@@ -47,6 +51,9 @@
       <span class="muted">Password must be at least 8 characters.</span>
     {/if}
     {#if error}<span class="error">{error}</span>{/if}
+    {#if mode === "login" && loginFailed}
+      <a href="#/forgot">Forgot your password?</a>
+    {/if}
     <button class="primary" disabled={busy}>{mode === "login" ? "Log in" : "Create account"}</button>
   </form>
   <p class="muted">

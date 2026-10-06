@@ -13,17 +13,26 @@
   import Profile from "./routes/Profile.svelte";
   import Watch from "./routes/Watch.svelte";
   import Invite from "./routes/Invite.svelte";
+  import Settings from "./routes/Settings.svelte";
+  import Forgot from "./routes/Forgot.svelte";
+  import ResetPassword from "./routes/ResetPassword.svelte";
+  import Unsubscribe from "./routes/Unsubscribe.svelte";
 
   onMount(loadMe);
 
   const game = $derived(matchRoute(route.path, "/game/:id"));
   const profile = $derived(matchRoute(route.path, "/u/:name"));
   const invite = $derived(matchRoute(route.path, "/c/:id"));
+  const reset = $derived(matchRoute(route.path, "/reset/:token"));
+  const unsub = $derived(matchRoute(route.path, "/unsubscribe/:token"));
+  const forgot = $derived(route.path === "/forgot");
+  // Reachable without logging in (the user is locked out, or clicked a link in an email).
+  const publicPage = $derived(forgot || !!reset || !!unsub);
 
   $effect(() => {
     if (!auth.ready) return;
     // Invite links are reachable while logged out: the page offers login / register / guest.
-    if (!auth.user && route.path !== "/login" && !invite) navigate("/login");
+    if (!auth.user && route.path !== "/login" && !invite && !publicPage) navigate("/login");
     if (auth.user && route.path === "/login") navigate("/");
   });
 
@@ -55,11 +64,19 @@
   });
 </script>
 
+{#snippet publicPages()}
+  {#if forgot}<Forgot />
+  {:else if reset}{#key reset.token}<ResetPassword token={reset.token} />{/key}
+  {:else if unsub}{#key unsub.token}<Unsubscribe token={unsub.token} />{/key}{/if}
+{/snippet}
+
 {#if !auth.ready || (auth.user && !resumeDone)}
   <p class="page muted">Loading…</p>
 {:else if !auth.user}
   {#if invite}
     <main class="page">{#key invite.id}<Invite id={invite.id} />{/key}</main>
+  {:else if publicPage}
+    <main class="page">{@render publicPages()}</main>
   {:else}
     <Login />
   {/if}
@@ -69,7 +86,9 @@
     {#if game}{#key game.id}<Game id={game.id} />{/key}
     {:else if invite}{#key invite.id}<Invite id={invite.id} />{/key}
     {:else if profile}{#key profile.name}<Profile name={profile.name} />{/key}
+    {:else if publicPage}{@render publicPages()}
     {:else if route.path === "/games"}<MyGames />
+    {:else if route.path === "/settings"}<Settings />
     {:else if route.path === "/local"}<LocalGame />
     {:else if route.path === "/watch"}<Watch />
     {:else}<Lobby />{/if}
