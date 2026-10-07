@@ -11,9 +11,10 @@
   };
   type Detail = {
     tournament: {
-      id: string; name: string; status: string; mode: "live" | "correspondence";
+      id: string; name: string; description: string | null; rated: boolean; status: string; mode: "live" | "correspondence";
       initialMs: number | null; incrementMs: number | null; daysPerMove: number | null;
       variant: string; maxPlayers: number; organizer: string; joined: boolean; isOrganizer: boolean;
+      startsAt: number | null; endsAt: number | null;
     };
     participants: { id: number; username: string }[];
     standings: { id: number; username: string; points: number; wins: number; gamesPlayed: number }[];
@@ -71,7 +72,8 @@
       <div>
         <p class="eyebrow">ROUND ROBIN · {tournament.status.toUpperCase()}</p>
         <h1>{tournament.name}</h1>
-        <p class="meta">Hosted by {displayName(tournament.organizer)} · {control(tournament)} · {tournament.variant === "chess960" ? "Chess960" : "Standard"}</p>
+        <p class="meta">Hosted by {displayName(tournament.organizer)} · {control(tournament)} · {tournament.variant === "chess960" ? "Chess960" : "Standard"}{tournament.rated ? " · Rated" : " · Casual"}</p>
+        {#if tournament.startsAt}<p class="schedule">Starts {new Date(tournament.startsAt).toLocaleString()}{#if tournament.endsAt} · Ends {new Date(tournament.endsAt).toLocaleString()}{/if}</p>{/if}
       </div>
       <div class="actions">
         {#if tournament.status === "open" && !tournament.joined}
@@ -80,11 +82,12 @@
           <button disabled={busy} onclick={() => act("withdraw")}>Withdraw</button>
         {/if}
         {#if tournament.status === "open" && tournament.isOrganizer}
-          <button class="primary" disabled={busy || data.participants.length < 2} onclick={() => act("start")}>Start tournament</button>
+          <button class="primary" disabled={busy || data.participants.length < 2 || (tournament.startsAt !== null && tournament.startsAt > Date.now())} onclick={() => act("start")}>Start tournament</button>
           <button class="danger" disabled={busy} onclick={() => act("cancel")}>Cancel</button>
         {/if}
       </div>
     </header>
+    {#if tournament.description}<p class="description">{tournament.description}</p>{/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}
 
     <section class="participants">
@@ -135,6 +138,8 @@
   h1 { margin:0; font-size:1.8rem; overflow-wrap:anywhere; }
   h2 { margin:0; font-size:1.05rem; }
   .meta { margin:.35rem 0 0; color:var(--muted); font-size:.9rem; }
+  .schedule { margin:.2rem 0 0; color:#9dbf76; font-size:.84rem; }
+  .description { max-width:70ch; padding:.8rem 0; color:var(--text); border-bottom:1px solid var(--border); }
   .actions { display:flex; flex-wrap:wrap; justify-content:end; gap:.5rem; }
   button.danger { color:#e38c84; }
   .participants { padding:1.2rem 0; border-bottom:1px solid var(--border); }

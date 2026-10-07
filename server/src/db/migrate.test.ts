@@ -46,4 +46,36 @@ describe("migrate", () => {
     expect(backfillPositions(db)).toBe(0);
     expect(db.prepare(`SELECT COUNT(*) AS n FROM moves`).get()).toEqual({ n: 1 });
   });
+
+  it("moves existing tournament games into round pairings when upgrading to v11", () => {
+    const db = open();
+    migrate(db, 10);
+    db.exec(`
+      INSERT INTO users (id, username, password_hash, created_at) VALUES (1,'alice','x',0),(2,'bob','x',0);
+      INSERT INTO tournaments (id, created_by, name, mode, initial_ms, increment_ms, variant, max_players, created_at, status)
+        VALUES ('event0001',1,'Old Cup','live',60000,0,'standard',4,0,'running');
+      INSERT INTO tournament_participants (tournament_id, user_id, joined_at) VALUES ('event0001',1,0),('event0001',2,0);
+      INSERT INTO games (
+        id, white_id, black_id, mode, initial_ms, increment_ms, status, initial_fen,
+        white_ms, black_ms, turn_started_at, deadline_at, created_at
+      ) VALUES (
+        'game000001',1,2,'live',60000,0,'started',
+        'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        60000,60000,0,30000,0
+      );
+      INSERT INTO tournament_games (tournament_id, game_id, round_number) VALUES ('event0001','game000001',2);
+    `);
+
+    migrate(db);
+
+    expect(db.prepare(`
+      SELECT tournament_id, round_number, white_id, black_id, game_id
+      FROM tournament_pairings
+    `).get()).toEqual({
+      tournament_id: "event0001", round_number: 2, white_id: 1, black_id: 2, game_id: "game000001",
+    });
+    expect(db.prepare(`SELECT rated, current_round FROM tournaments WHERE id = 'event0001'`).get())
+      .toEqual({ rated: 0, current_round: 1 });
+    expect(db.pragma("foreign_key_check")).toEqual([]);
+  });
 });

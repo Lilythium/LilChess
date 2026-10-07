@@ -58,6 +58,11 @@ export const gameCompleted = (opponent: string, gameId: string, outcome: string)
   text: `${outcome}\n\nView the game: ${link("/game/" + gameId)}\n`,
 });
 
+export const tournamentStarting = (name: string, tournamentId: string): Message => ({
+  subject: `${name} is starting`,
+  text: `The tournament "${name}" has started.\n\nOpen the tournament: ${link("/tournament/" + tournamentId)}\n`,
+});
+
 export const passwordReset = (username: string, token: string): Message => ({
   subject: "Reset your LilChess password",
   text:

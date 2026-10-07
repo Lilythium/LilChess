@@ -22,6 +22,7 @@ import { sendWebhook } from "../../notifications/webhook.js";
 import { notifyDeadlineChanged } from "../../game/deadlineBus.js";
 import { settleRatings } from "./ratings.js";
 import { notifyGameOver, notifyYourTurn } from "../../notifications/dispatch.js";
+import { advanceTournamentAfterGame } from "../../tournaments/service.js";
 
 export function insertGame(id: string, whiteId: number, blackId: number, game: GameState): void {
   const row = gameStateToRow(game);
@@ -90,6 +91,7 @@ function updateGameState(id: string, game: GameState): void {
     )
     .run({ id, ...row, fen, lastMove: game.moves.at(-1) ?? null, endedAt: Date.now() });
 
+  if (game.status !== "started") advanceTournamentAfterGame(id);
   if (game.status === "finished" && game.rated) settleRatings(id);
 }
 
@@ -215,11 +217,11 @@ function broadcastMoveOutcome(
   // Emails. A late move that only flags the mover is a timeout, so nobody "acted".
   if (movePlayed && san) notifyYourTurn(gameId, state, uci, san);
   notifyGameOver(gameId, state, movePlayed ? actorId : null);
-  if (movePlayed) notifyDeadlineChanged();
 }
 
 export function applyMoveAndPersist(id: string, uci: string, now: number) {
   const outcome = getDb().transaction(() => applyMoveCore(id, uci, now)).immediate();
+  if (outcome.ok && (outcome.movePlayed || outcome.state.status !== "started")) notifyDeadlineChanged();
   if (outcome.ok) broadcastMoveOutcome(id, uci, outcome.state, outcome.san, outcome.movePlayed);
   return outcome;
 }
@@ -241,6 +243,7 @@ export function submitMove(
     return applyMoveCore(gameId, uci, Date.now());
   }).immediate();
 
+  if (outcome.ok && (outcome.movePlayed || outcome.state.status !== "started")) notifyDeadlineChanged();
   if (outcome.ok) {
     broadcastMoveOutcome(gameId, uci, outcome.state, outcome.san, outcome.movePlayed, userId);
   }
@@ -253,7 +256,7 @@ function actAndPersist(
   action: (game: GameState, color: Color) => ActionResult,
   beforeWrite?: (state: GameState) => void, // runs inside the transaction
 ): ActionResult | NotFound | NotAParticipant {
-  return getDb().transaction(() => {
+  const result = getDb().transaction(() => {
     const p = getParticipants(gameId);
     if (!p) return { ok: false as const, error: "not_found" as const };
     const color = colorOf(userId, p);
@@ -269,6 +272,8 @@ function actAndPersist(
     }
     return result;
   }).immediate();
+  if (result.ok && result.state.status !== "started") notifyDeadlineChanged();
+  return result;
 }
 
 export function resignAndPersist(gameId: string, userId: number) {
@@ -381,6 +386,7 @@ export function claimTimeoutAndPersist(gameId: string, now: number) {
   }).immediate();
 
   if (outcome.ok) {
+    notifyDeadlineChanged();
     broadcastGameOver(gameId, outcome.state);
     notifyGameOver(gameId, outcome.state, null);
   }

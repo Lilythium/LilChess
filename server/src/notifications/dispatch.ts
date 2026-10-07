@@ -103,3 +103,18 @@ export function notifyGameOver(gameId: string, state: GameState, actorId: number
     );
   }
 }
+
+export function notifyTournamentStarting(tournamentId: string): void {
+  const db = getDb();
+  const tournament = db.prepare(`SELECT name FROM tournaments WHERE id = ?`).get(tournamentId) as
+    { name: string } | undefined;
+  if (!tournament) return;
+  const participants = db.prepare(`
+    SELECT user_id FROM tournament_participants WHERE tournament_id = ?
+  `).all(tournamentId) as { user_id: number }[];
+  for (const participant of participants) {
+    notifyUser(participant.user_id, "tournament_starting", `tournament-started:${tournamentId}`, () =>
+      t.tournamentStarting(tournament.name, tournamentId),
+    );
+  }
+}

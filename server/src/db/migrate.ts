@@ -6,9 +6,10 @@ import type Database from "better-sqlite3";
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "migrations");
 
 function migrationFiles(): string[] {
-  return readdirSync(MIGRATIONS_DIR)
-    .filter((f) => f.endsWith(".sql"))
-    .sort(); // "0001_..." < "0002_..." lexically: zero-pad the prefix
+  const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql"));
+  const versions = files.map((file) => versionOf(file));
+  if (new Set(versions).size !== versions.length) throw new Error("duplicate migration version number");
+  return files.sort((a, b) => versionOf(a) - versionOf(b));
 }
 
 const versionOf = (file: string) => Number(file.split("_")[0]);

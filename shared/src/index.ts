@@ -5,3 +5,4 @@ export * from "./validation/username.js";
 export * from "./validation/schemas.js";
 export * from "./validation/eventSchemas.js";
 export * from "./validation/notifications.js";
+export * from "./tournaments/roundRobin.js";

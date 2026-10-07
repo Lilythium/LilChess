@@ -26,7 +26,7 @@ describe("notification settings", () => {
     const body = (await get()).json();
     expect(body.email).toBeNull();
     expect(body.emailAvailable).toBe(false);
-    expect(Object.values(body.prefs)).toEqual([true, true, true, true]);
+    expect(Object.values(body.prefs)).toEqual([true, true, true, true, true]);
   });
 
   it("stores a lowercased email, shows it on /api/me, and removes it again", async () => {
@@ -69,7 +69,7 @@ describe("notification settings", () => {
     const post = (token: string) => app.inject({ method: "POST", url: "/api/unsubscribe", payload: { token } });
 
     expect((await post(unsubscribe_token)).statusCode).toBe(200);
-    expect(Object.values((await get()).json().prefs)).toEqual([false, false, false, false]);
+    expect(Object.values((await get()).json().prefs)).toEqual([false, false, false, false, false]);
     expect((await post("0".repeat(32))).statusCode).toBe(404);
     expect((await post("nope")).statusCode).toBe(400);
   });

@@ -5,19 +5,24 @@
   import { timeControl } from "../lib/format";
 
   type TournamentRow = {
-    id: string; name: string; status: string; mode: "live" | "correspondence";
-    variant: string; maxPlayers: number; participantCount: number; gameCount: number; joined: number;
+    id: string; name: string; description: string | null; status: string; mode: "live" | "correspondence";
+    variant: string; rated: number; startsAt: number | null; endsAt: number | null;
+    maxPlayers: number; participantCount: number; gameCount: number; joined: number;
   };
 
   let tournaments = $state<TournamentRow[] | null>(null);
   let error = $state<string | null>(null);
   let busy = $state(false);
   let name = $state("");
+  let description = $state("");
   let mode = $state<"live" | "correspondence">("live");
   let clockPreset = $state("300000:2000");
   let daysPerMove = $state(3);
   let maxPlayers = $state(8);
   let variant = $state("standard");
+  let rated = $state(false);
+  let startsAt = $state("");
+  let endsAt = $state("");
 
   async function refresh() {
     try {
@@ -41,19 +46,27 @@
       await api("/api/tournaments", {
         body: {
           name,
+          description: description.trim() || undefined,
           mode,
           ...(mode === "live" ? { initialMs, incrementMs } : { daysPerMove }),
           maxPlayers,
           variant,
+          rated,
+          startsAt: startsAt ? new Date(startsAt).getTime() : undefined,
+          endsAt: endsAt ? new Date(endsAt).getTime() : undefined,
         },
       });
       name = "";
+      description = "";
+      startsAt = "";
+      endsAt = "";
       await refresh();
     } catch (err) { error = err instanceof Error ? err.message : String(err); }
     finally { busy = false; }
   }
 
   const formatClock = (t: TournamentRow) => t.mode === "live" ? "Live" : "Correspondence";
+  const formatStart = (t: TournamentRow) => t.startsAt ? new Date(t.startsAt).toLocaleString() : "Start when ready";
 </script>
 
 <svelte:head><title>Tournaments | LilChess</title></svelte:head>
@@ -71,6 +84,7 @@
     <form class="create" onsubmit={(event) => { event.preventDefault(); void create(); }}>
       <div class="create-heading"><h2>Host a tournament</h2><span>Round robin</span></div>
       <label class="name-field">Name<input bind:value={name} minlength="3" maxlength="60" placeholder="Friday club night" required /></label>
+      <label class="description-field">Description<input bind:value={description} maxlength="500" placeholder="Optional event details" /></label>
       <div class="settings">
         <label>Time mode
           <select bind:value={mode}><option value="live">Live</option><option value="correspondence">Correspondence</option></select>
@@ -88,6 +102,9 @@
         {/if}
         <label>Players<select bind:value={maxPlayers}>{#each [2, 4, 6, 8, 10, 12, 16] as count}<option value={count}>{count}</option>{/each}</select></label>
         <label>Variant<select bind:value={variant}><option value="standard">Standard</option><option value="chess960">Chess960</option></select></label>
+        <label>Starts at<input type="datetime-local" bind:value={startsAt} /></label>
+        <label>Ends at<input type="datetime-local" bind:value={endsAt} min={startsAt || undefined} /></label>
+        <label class="rated-toggle"><input type="checkbox" bind:checked={rated} /> Rated</label>
         <button class="primary create-button" type="submit" disabled={busy || name.trim().length < 3}>{busy ? "Creating…" : "Create"}</button>
       </div>
     </form>
@@ -102,7 +119,7 @@
     <div class="event-list">
       {#each tournaments as tournament (tournament.id)}
         <a class="event" href={`#/tournament/${tournament.id}`}>
-          <span class="event-name">{tournament.name}<small>{formatClock(tournament)} · {tournament.variant === "chess960" ? "Chess960" : "Standard"}</small></span>
+          <span class="event-name">{tournament.name}<small>{formatStart(tournament)} · {formatClock(tournament)} · {tournament.variant === "chess960" ? "Chess960" : "Standard"}{tournament.rated ? " · Rated" : ""}</small></span>
           <span class="event-meta"><strong class:open={tournament.status === "open"} class:running={tournament.status === "running"}>{tournament.status}</strong>{tournament.participantCount}/{tournament.maxPlayers} players · {tournament.gameCount} games</span>
           {#if tournament.joined}<span class="joined">Joined</span>{/if}
         </a>
@@ -122,8 +139,10 @@
   .create-heading { display:flex; align-items:baseline; gap:.75rem; margin-bottom:.8rem; }
   label { display:grid; gap:.35rem; color:var(--muted); font-size:.8rem; }
   input,select { width:100%; min-width:0; }
-  .name-field { max-width:34rem; margin-bottom:.75rem; }
-  .settings { display:grid; grid-template-columns:repeat(4,minmax(110px,1fr)) auto; gap:.7rem; align-items:end; }
+  .name-field,.description-field { max-width:34rem; margin-bottom:.75rem; }
+  .settings { display:grid; grid-template-columns:repeat(4,minmax(110px,1fr)); gap:.7rem; align-items:end; }
+  .rated-toggle { display:flex; align-items:center; gap:.45rem; min-height:42px; }
+  .rated-toggle input { width:1rem; height:1rem; accent-color:var(--green); }
   .create-button { min-height:42px; }
   .event-list { border-top:1px solid var(--border); }
   .event { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:1.2rem; align-items:center; padding:.9rem .4rem; color:var(--text); border-bottom:1px solid var(--border); }

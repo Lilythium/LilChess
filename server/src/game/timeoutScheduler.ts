@@ -5,6 +5,8 @@ import {
 } from "../db/repositories/games.js";
 import { deadlineBus } from "./deadlineBus.js";
 import { sendWebhook } from "../notifications/webhook.js";
+import { getNextTournamentStartAt, startScheduledTournaments } from "../tournaments/service.js";
+import { notifyTournamentStarting } from "../notifications/dispatch.js";
 import { logger } from "../logger.js";
 const log = logger.child({ mod: "timeouts" });
 
@@ -47,8 +49,13 @@ function tick(): void {
   let delay = IDLE_POLL_MS;
   try {
     settleExpired();
-    const deadline = getEarliestActiveDeadline();
-    if (deadline !== undefined) delay = delayFor(deadline - Date.now());
+    const now = Date.now();
+    for (const tournamentId of startScheduledTournaments(now)) {
+      notifyTournamentStarting(tournamentId);
+    }
+    const deadlines = [getEarliestActiveDeadline(), getNextTournamentStartAt(now)]
+      .filter((deadline): deadline is number => deadline !== undefined);
+    if (deadlines.length) delay = delayFor(Math.min(...deadlines) - now);
   } catch (err) {
     log.error({ err }, "scheduler tick failed, retrying in 1s");
     delay = 1_000;

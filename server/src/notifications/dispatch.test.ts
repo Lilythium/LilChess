@@ -9,7 +9,7 @@ vi.mock("./mailer.js", () => ({
 import { config } from "../config.js";
 import { closeDb, getDb, openDb } from "../db/connection.js";
 import { insertGame } from "../db/repositories/games.js";
-import { notifyChallengeAccepted, notifyChallengeReceived, notifyGameOver, notifyYourTurn } from "./dispatch.js";
+import { notifyChallengeAccepted, notifyChallengeReceived, notifyGameOver, notifyTournamentStarting, notifyYourTurn } from "./dispatch.js";
 import { sendMail } from "./mailer.js";
 import { setPrefs } from "./queries.js";
 
@@ -133,5 +133,25 @@ describe("challenges", () => {
     seed("g1", LIVE);
     notifyChallengeAccepted("g1", 2);
     expect(sent).not.toHaveBeenCalled();
+  });
+});
+
+describe("tournament starting", () => {
+  it("emails registered participants with a tournament link once each", () => {
+    getDb().prepare(`
+      INSERT INTO tournaments (id, created_by, name, mode, initial_ms, increment_ms, variant, max_players, created_at)
+      VALUES ('tournament01', 1, 'Friday Cup', 'live', 60000, 0, 'standard', 4, 0)
+    `).run();
+    getDb().prepare(`
+      INSERT INTO tournament_participants (tournament_id, user_id, joined_at) VALUES
+        ('tournament01', 1, 0), ('tournament01', 2, 0), ('tournament01', 3, 0)
+    `).run();
+
+    notifyTournamentStarting("tournament01");
+    notifyTournamentStarting("tournament01");
+
+    expect(sent).toHaveBeenCalledTimes(2);
+    expect(sent.mock.calls.map((call) => call[0].to).sort()).toEqual(["alice@example.com", "bob@example.com"]);
+    expect(sent.mock.calls[0]![0].text).toContain("https://chess.test/#/tournament/tournament01");
   });
 });
