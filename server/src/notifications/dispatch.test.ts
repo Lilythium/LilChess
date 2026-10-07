@@ -109,13 +109,16 @@ describe("game completed", () => {
 });
 
 describe("challenges", () => {
-  it("emails a targeted challenge once per sender per hour", () => {
-    const o = { fromId: 1, fromName: "alice", toId: 2, clock: CORR };
+  it("emails each targeted challenge once, without suppressing later challenges", () => {
+    const o = { challengeId: "challenge-1", fromName: "alice", toId: 2, clock: CORR };
     notifyChallengeReceived(o);
     notifyChallengeReceived(o);
     expect(sent).toHaveBeenCalledTimes(1);
     expect(sent.mock.calls[0]![0]).toMatchObject({ to: "bob@example.com" });
     expect(sent.mock.calls[0]![0].subject).toContain("3 days per move");
+
+    notifyChallengeReceived({ ...o, challengeId: "challenge-2" });
+    expect(sent).toHaveBeenCalledTimes(2);
   });
 
   it("tells the challenger when a correspondence challenge is accepted", () => {

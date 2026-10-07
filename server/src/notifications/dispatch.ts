@@ -6,7 +6,6 @@ import { claimNotification, recipientFor, type Recipient } from "./queries.js";
 import * as t from "./templates.js";
 
 const log = logger.child({ mod: "notify" });
-const HOUR_MS = 3_600_000;
 
 // The one door every email goes through (Phase 4's "tournament starting" will use it too).
 // Call it AFTER the database transaction has committed. It never throws and never awaits the send.
@@ -52,11 +51,15 @@ function gameSeats(gameId: string): GameSeats | undefined {
   };
 }
 
-// Targeted challenges only (open ones have no recipient). One email per sender per hour, so
-// re-sending a challenge can't be used to flood someone.
-export function notifyChallengeReceived(o: { fromId: number; fromName: string; toId: number; clock: ClockConfig }): void {
-  const bucket = Math.floor(Date.now() / HOUR_MS);
-  notifyUser(o.toId, "challenge_received", `challenge:${o.fromId}:${bucket}`, () =>
+// Targeted challenges only (open ones have no recipient). The challenge ID prevents duplicate
+// sends without suppressing notifications for separate challenges from the same sender.
+export function notifyChallengeReceived(o: {
+  challengeId: string;
+  fromName: string;
+  toId: number;
+  clock: ClockConfig;
+}): void {
+  notifyUser(o.toId, "challenge_received", `challenge:${o.challengeId}`, () =>
     t.challengeReceived(o.fromName, o.clock),
   );
 }

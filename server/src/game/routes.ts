@@ -90,7 +90,7 @@ const challengeId = createChallenge({
 
 if (toUser !== undefined) {
       notifyChallengeReceived({
-        fromId: req.user!.id,
+  challengeId,
         fromName: req.user!.username,
         toId: toUser,
         clock:
