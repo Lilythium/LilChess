@@ -17,6 +17,8 @@
   import Forgot from "./routes/Forgot.svelte";
   import ResetPassword from "./routes/ResetPassword.svelte";
   import Unsubscribe from "./routes/Unsubscribe.svelte";
+  import Tournaments from "./routes/Tournaments.svelte";
+  import TournamentDetail from "./routes/TournamentDetail.svelte";
 
   onMount(loadMe);
 
@@ -25,9 +27,11 @@
   const invite = $derived(matchRoute(route.path, "/c/:id"));
   const reset = $derived(matchRoute(route.path, "/reset/:token"));
   const unsub = $derived(matchRoute(route.path, "/unsubscribe/:token"));
+  const tournament = $derived(matchRoute(route.path, "/tournament/:id"));
   const forgot = $derived(route.path === "/forgot");
   // Reachable without logging in (the user is locked out, or clicked a link in an email).
   const publicPage = $derived(forgot || !!reset || !!unsub);
+  const autoOpenedTournaments = new Set<string>();
 
   $effect(() => {
     if (!auth.ready) return;
@@ -62,6 +66,38 @@
     resumeDone = false;
     void resume().finally(() => (resumeDone = true));
   });
+
+  $effect(() => {
+    if (!auth.ready || !auth.user) return;
+    const userId = auth.user.id;
+    let checking = false;
+
+    async function checkTournamentStarts() {
+      if (checking) return;
+      checking = true;
+      try {
+        const result = await api<{ tournaments: {
+          id: string; status: string; joined: number; nextGameId: string | null;
+        }[] }>("/api/tournaments");
+        const started = result.tournaments.find((item) => {
+          const key = `${userId}:${item.id}`;
+          return item.joined && item.status === "running" && item.nextGameId && !autoOpenedTournaments.has(key);
+        });
+        if (started?.nextGameId) {
+          autoOpenedTournaments.add(`${userId}:${started.id}`);
+          navigate(`/game/${started.nextGameId}`);
+        }
+      } catch {
+        // transient; the next poll will retry
+      } finally {
+        checking = false;
+      }
+    }
+
+    void checkTournamentStarts();
+    const timer = setInterval(checkTournamentStarts, 3_000);
+    return () => clearInterval(timer);
+  });
 </script>
 
 {#snippet publicPages()}
@@ -91,6 +127,8 @@
     {:else if route.path === "/settings"}<Settings />
     {:else if route.path === "/local"}<LocalGame />
     {:else if route.path === "/watch"}<Watch />
+    {:else if route.path === "/tournaments"}<Tournaments />
+    {:else if tournament}{#key tournament.id}<TournamentDetail id={tournament.id} />{/key}
     {:else}<Lobby />{/if}
   </main>
 {/if}
