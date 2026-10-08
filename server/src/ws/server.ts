@@ -7,6 +7,7 @@ import { getParticipants } from "../db/repositories/games.js";
 import { RateWindow } from "../security/rateWindow.js";
 import { clientIp } from "../security/clientIp.js";
 import { logger } from "../logger.js";
+import { handleUserConnection } from "./userSocket.js";
 
 const log = logger.child({ mod: "ws" });
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -15,6 +16,8 @@ const MAX_PAYLOAD_BYTES = 1024; // moves are ~40 bytes; ws defaults to 100 MiB
 const UPGRADES_PER_MINUTE = 120;
 const CLOSE_GRACE_MS = 2_000;
 export const MAX_SOCKETS_PER_USER = 20;
+
+const USER_WS_PATH = "/ws/me";
 
 function reject(socket: Duplex, status: number, text: string): void {
   socket.write(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
@@ -38,9 +41,9 @@ export function attachWebSocketServer(app: FastifyInstance): void {
       if (!isAllowedOrigin(req)) return reject(socket, 403, "Forbidden");
 
       const path = (req.url ?? "").split("?")[0] ?? "";
-      const match = GAME_WS_PATH.exec(path);
-      if (!match) return reject(socket, 404, "Not Found");
-      const gameId = match[1]!;
+            const match = GAME_WS_PATH.exec(path);
+      const userChannel = path === USER_WS_PATH;
+      if (!match && !userChannel) return reject(socket, 404, "Not Found");
 
       const user = authenticateUpgrade(req);
       if (!user) return reject(socket, 401, "Unauthorized");
@@ -49,17 +52,31 @@ export function attachWebSocketServer(app: FastifyInstance): void {
         return reject(socket, 429, "Too Many Requests");
       }
 
-      const p = getParticipants(gameId);
-      if (!p) return reject(socket, 404, "Not Found");
-      // Any logged-in user may watch; only the two players may send moves.
-      const isPlayer = p.whiteId === user.id || p.blackId === user.id;
-      wss.handleUpgrade(req, socket, head, (ws) => {
+      // Counts the socket against the per-user cap until it closes.
+      const track = (ws: WebSocket) => {
         socketsPerUser.set(user.id, (socketsPerUser.get(user.id) ?? 0) + 1);
         ws.once("close", () => {
           const left = (socketsPerUser.get(user.id) ?? 1) - 1;
           if (left <= 0) socketsPerUser.delete(user.id);
           else socketsPerUser.set(user.id, left);
         });
+      };
+
+      if (userChannel) {
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          track(ws);
+          handleUserConnection(ws as WebSocket & { isAlive?: boolean }, user);
+        });
+        return;
+      }
+
+      const gameId = match![1]!;
+      const p = getParticipants(gameId);
+      if (!p) return reject(socket, 404, "Not Found");
+      // Any logged-in user may watch; only the two players may send moves.
+      const isPlayer = p.whiteId === user.id || p.blackId === user.id;
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        track(ws);
         handleGameConnection(ws as WebSocket & { isAlive?: boolean }, gameId, user, isPlayer);
       });
     } catch (err) {

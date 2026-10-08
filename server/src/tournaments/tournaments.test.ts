@@ -107,7 +107,7 @@ describe("tournament lifecycle", () => {
     const id = created.json().tournamentId as string;
     await app.inject({ method: "POST", url: `/api/tournaments/${id}/join`, cookies: { sessionId: bob } });
     expect((await app.inject({ method: "POST", url: `/api/tournaments/${id}/start`, cookies: { sessionId: alice } })).statusCode).toBe(409);
-    expect(startScheduledTournaments(startsAt)).toEqual([id]);
+    expect(startScheduledTournaments(startsAt)).toEqual({ started: [id], cancelled: [] });
     expect(getDb().prepare(`SELECT rated, mode FROM games`).get()).toEqual({ rated: 1, mode: "live" });
 
     const invalid = await app.inject({

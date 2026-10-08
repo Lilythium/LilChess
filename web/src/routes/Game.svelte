@@ -128,6 +128,7 @@
       <NameCard
         players={p}
         clock={g.clock as any}
+        variant={g.variant}
         {orientation}
       />
     </div>

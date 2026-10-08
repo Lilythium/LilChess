@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { GameEvent } from "../ws/events.js";
+import type { GameEvent, UserEvent } from "../ws/events.js";
 
 const Color = z.enum(["white", "black"]);
 const GameResult = z.enum(["1-0", "0-1", "1/2-1/2"]);
@@ -45,3 +45,17 @@ const _schemaToType = (e: z.infer<typeof GameEventSchema>): GameEvent => e;
 const _typeToSchema = (e: GameEvent): z.infer<typeof GameEventSchema> => e;
 void _schemaToType;
 void _typeToSchema;
+
+export const UserEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("pairing_ready"),
+    tournamentId: z.string(),
+    gameId: z.string(),
+    round: z.number().int().min(1),
+  }),
+]);
+
+const _userSchemaToType = (e: z.infer<typeof UserEventSchema>): UserEvent => e;
+const _userTypeToSchema = (e: UserEvent): z.infer<typeof UserEventSchema> => e;
+void _userSchemaToType;
+void _userTypeToSchema;

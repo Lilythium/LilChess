@@ -5,11 +5,13 @@ import {
 } from "../db/repositories/games.js";
 import { deadlineBus } from "./deadlineBus.js";
 import { sendWebhook } from "../notifications/webhook.js";
-import { getNextTournamentStartAt, startScheduledTournaments } from "../tournaments/service.js";
-import { notifyTournamentStarting } from "../notifications/dispatch.js";
+import { getNextTournamentStartAt, repairStalledTournaments, startScheduledTournaments } from "../tournaments/service.js";
+import { notifyTournamentCancelled, notifyTournamentStarting } from "../notifications/dispatch.js";
 import { logger } from "../logger.js";
 const log = logger.child({ mod: "timeouts" });
 
+const TOURNAMENT_REPAIR_EVERY_MS = 30_000;
+let lastTournamentRepair = 0;
 
 const IDLE_POLL_MS = 60_000; 
 const MIN_DELAY_MS = 50;
@@ -50,9 +52,15 @@ function tick(): void {
   try {
     settleExpired();
     const now = Date.now();
-    for (const tournamentId of startScheduledTournaments(now)) {
-      notifyTournamentStarting(tournamentId);
+    const { started, cancelled } = startScheduledTournaments(now);
+    for (const tournamentId of started) notifyTournamentStarting(tournamentId);
+    for (const tournamentId of cancelled) notifyTournamentCancelled(tournamentId);
+
+    if (now - lastTournamentRepair >= TOURNAMENT_REPAIR_EVERY_MS) {
+      lastTournamentRepair = now;
+      repairStalledTournaments();
     }
+
     const deadlines = [getEarliestActiveDeadline(), getNextTournamentStartAt(now)]
       .filter((deadline): deadline is number => deadline !== undefined);
     if (deadlines.length) delay = delayFor(Math.min(...deadlines) - now);

@@ -19,6 +19,7 @@
   import Unsubscribe from "./routes/Unsubscribe.svelte";
   import Tournaments from "./routes/Tournaments.svelte";
   import TournamentDetail from "./routes/TournamentDetail.svelte";
+  import { connectUserSocket } from "./lib/ws/userSocket";
 
   onMount(loadMe);
 
@@ -31,7 +32,6 @@
   const forgot = $derived(route.path === "/forgot");
   // Reachable without logging in (the user is locked out, or clicked a link in an email).
   const publicPage = $derived(forgot || !!reset || !!unsub);
-  const autoOpenedTournaments = new Set<string>();
 
   $effect(() => {
     if (!auth.ready) return;
@@ -67,36 +67,37 @@
     void resume().finally(() => (resumeDone = true));
   });
 
+  // Tournament games open themselves: the server pushes "pairing_ready" when a live round starts.
+  // The list is also checked on every (re)connect, because events sent while offline are lost.
   $effect(() => {
     if (!auth.ready || !auth.user) return;
-    const userId = auth.user.id;
+    const opened = new Set<string>(); // game ids already auto-opened, so nothing opens twice
     let checking = false;
-
-    async function checkTournamentStarts() {
+    function open(gameId: string) {
+      if (opened.has(gameId)) return;
+      opened.add(gameId);
+      navigate(`/game/${gameId}`);
+    }
+    async function catchUp() {
       if (checking) return;
       checking = true;
       try {
         const result = await api<{ tournaments: {
-          id: string; status: string; joined: number; nextGameId: string | null;
+          status: string; joined: number; nextGameId: string | null;
         }[] }>("/api/tournaments");
-        const started = result.tournaments.find((item) => {
-          const key = `${userId}:${item.id}`;
-          return item.joined && item.status === "running" && item.nextGameId && !autoOpenedTournaments.has(key);
-        });
-        if (started?.nextGameId) {
-          autoOpenedTournaments.add(`${userId}:${started.id}`);
-          navigate(`/game/${started.nextGameId}`);
-        }
+        const waiting = result.tournaments.find((item) => item.joined && item.status === "running" && item.nextGameId);
+        if (waiting?.nextGameId) open(waiting.nextGameId);
       } catch {
-        // transient; the next poll will retry
+        // transient; the next reconnect will check again
       } finally {
         checking = false;
       }
     }
-
-    void checkTournamentStarts();
-    const timer = setInterval(checkTournamentStarts, 3_000);
-    return () => clearInterval(timer);
+    const socket = connectUserSocket({
+      onEvent: (event) => { if (event.type === "pairing_ready") open(event.gameId); },
+      onOpen: () => void catchUp(),
+    });
+    return () => socket.close();
   });
 </script>
 

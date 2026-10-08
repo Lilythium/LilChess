@@ -1,7 +1,20 @@
 import { randomBytes } from "node:crypto";
-import { createGame, roundRobinPairings, type ClockConfig, type RoundRobinPairing, type Variant } from "@lilchess/shared";
+import { createGame, roundRobinPairings, type ClockConfig, type RoundRobinPairing, type UserEvent, type Variant } from "@lilchess/shared";
 import { getDb } from "../db/connection.js";
-import { insertGame } from "../db/repositories/games.js";
+import { insertGame } from "../db/repositories/insertGame.js";
+import { logger } from "../logger.js";
+import { broadcastUserEvent } from "../ws/hub.js";
+
+const log = logger.child({ mod: "tournaments" });
+
+export const MAX_ACTIVE_TOURNAMENTS_PER_USER = 3;
+
+// WebSocket pushes are queued while a transaction is open and sent only after it commits.
+const pendingUserEvents: { userId: number; event: UserEvent }[] = [];
+
+export function flushTournamentEvents(): void {
+  for (const { userId, event } of pendingUserEvents.splice(0)) broadcastUserEvent(userId, event);
+}
 
 export class TournamentError extends Error {
   constructor(message: string, readonly status: number) {
@@ -29,6 +42,12 @@ export function createTournament(creatorId: number, config: TournamentConfig): s
   const id = randomBytes(8).toString("hex");
   const now = Date.now();
   db.transaction(() => {
+    const active = db.prepare(`
+      SELECT COUNT(*) AS n FROM tournaments WHERE created_by = ? AND status IN ('open', 'running')
+    `).get(creatorId) as { n: number };
+    if (active.n >= MAX_ACTIVE_TOURNAMENTS_PER_USER) {
+      throw new TournamentError(`You can have at most ${MAX_ACTIVE_TOURNAMENTS_PER_USER} active tournaments`, 409);
+    }
     db.prepare(`
       INSERT INTO tournaments (
         id, created_by, name, description, mode, initial_ms, increment_ms, days_per_move,
@@ -44,7 +63,7 @@ export function createTournament(creatorId: number, config: TournamentConfig): s
     );
     db.prepare(`INSERT INTO tournament_participants (tournament_id, user_id, joined_at) VALUES (?, ?, ?)`)
       .run(id, creatorId, now);
-  })();
+  }).immediate();
   return id;
 }
 
@@ -100,6 +119,21 @@ export function withdrawTournament(tournamentId: string, userId: number): void {
   if (result.changes === 0) throw new TournamentError("Not registered", 404);
 }
 
+// Lets a paused player back into the pairings from the next round on.
+export function resumeTournament(tournamentId: string, userId: number): void {
+  const db = getDb();
+  db.transaction(() => {
+    const tournament = db.prepare(`SELECT status FROM tournaments WHERE id = ?`).get(tournamentId) as
+      { status: string } | undefined;
+    if (!tournament) throw new TournamentError("Tournament not found", 404);
+    if (tournament.status !== "running") throw new TournamentError("Tournament is not running", 409);
+    const result = db.prepare(`
+      UPDATE tournament_participants SET paused = 0 WHERE tournament_id = ? AND user_id = ? AND paused = 1
+    `).run(tournamentId, userId);
+    if (result.changes === 0) throw new TournamentError("You are not paused in this tournament", 409);
+  }).immediate();
+}
+
 interface TournamentRow {
   id: string;
   created_by: number;
@@ -111,6 +145,7 @@ interface TournamentRow {
   variant: Variant;
   rated: number;
   starts_at: number | null;
+  current_round: number;
 }
 
 function gameClock(tournament: TournamentRow): ClockConfig {
@@ -129,6 +164,11 @@ function createPairingGame(tournament: TournamentRow, pairing: RoundRobinPairing
     UPDATE tournament_pairings SET game_id = ?
     WHERE tournament_id = ? AND round_number = ? AND board_number = ? AND game_id IS NULL
   `).run(gameId, tournament.id, pairing.round, pairing.board);
+
+  if (tournament.mode === "live") {
+    const event: UserEvent = { type: "pairing_ready", tournamentId: tournament.id, gameId, round: pairing.round };
+    pendingUserEvents.push({ userId: pairing.whiteId, event }, { userId: pairing.blackId, event });
+  }
 }
 
 function startTournamentInTransaction(tournamentId: string, organizerId: number | null, now: number): number {
@@ -169,25 +209,39 @@ function startTournamentInTransaction(tournamentId: string, organizerId: number 
 }
 
 export function startTournament(tournamentId: string, organizerId: number, now = Date.now()): number {
-  return getDb().transaction(() => startTournamentInTransaction(tournamentId, organizerId, now)).immediate();
+  try {
+    const count = getDb().transaction(() => startTournamentInTransaction(tournamentId, organizerId, now)).immediate();
+    flushTournamentEvents();
+    return count;
+  } catch (error) {
+    pendingUserEvents.length = 0; // nothing was committed
+    throw error;
+  }
 }
 
-export function startScheduledTournaments(now = Date.now()): string[] {
+export function startScheduledTournaments(now = Date.now()): { started: string[]; cancelled: string[] } {
   const db = getDb();
   const due = db.prepare(`
     SELECT id FROM tournaments WHERE status = 'open' AND starts_at IS NOT NULL AND starts_at <= ? ORDER BY starts_at
   `).all(now) as { id: string }[];
   const started: string[] = [];
+  const cancelled: string[] = [];
   for (const { id } of due) {
     try {
       db.transaction(() => startTournamentInTransaction(id, null, now)).immediate();
       started.push(id);
     } catch (error) {
-      if (!(error instanceof TournamentError) || error.message !== "At least two players are required") throw error;
-      db.prepare(`UPDATE tournaments SET status = 'cancelled' WHERE id = ? AND status = 'open'`).run(id);
+      pendingUserEvents.length = 0; // nothing from the failed start was committed
+      if (!(error instanceof TournamentError)) {
+        log.error({ err: error, tournamentId: id }, "scheduled tournament failed to start");
+      }
+      // Cancel rather than retry: a tournament that can't start must not block the ones behind it.
+      const result = db.prepare(`UPDATE tournaments SET status = 'cancelled' WHERE id = ? AND status = 'open'`).run(id);
+      if (result.changes) cancelled.push(id);
     }
   }
-  return started;
+  flushTournamentEvents();
+  return { started, cancelled };
 }
 
 export function getNextTournamentStartAt(now = Date.now()): number | undefined {
@@ -198,8 +252,54 @@ export function getNextTournamentStartAt(now = Date.now()): number | undefined {
   return row.startsAt ?? undefined;
 }
 
-// Called inside the transaction that writes the terminal game state.
-export function advanceTournamentAfterGame(gameId: string): boolean {
+function startRoundsAfter(tournament: TournamentRow, afterRound: number): boolean {
+  const db = getDb();
+  let round = afterRound;
+  for (;;) {
+    const next = db.prepare(`
+      SELECT MIN(round_number) AS round FROM tournament_pairings WHERE tournament_id = ? AND round_number > ?
+    `).get(tournament.id, round) as { round: number | null };
+    if (next.round === null) {
+      db.prepare(`UPDATE tournaments SET status = 'completed' WHERE id = ?`).run(tournament.id);
+      return false;
+    }
+    round = next.round;
+    db.prepare(`UPDATE tournaments SET current_round = ? WHERE id = ?`).run(round, tournament.id);
+
+    const paused = new Set(
+      (db.prepare(`SELECT user_id FROM tournament_participants WHERE tournament_id = ? AND paused = 1`)
+        .all(tournament.id) as { user_id: number }[]).map((row) => row.user_id),
+    );
+    const pairings = db.prepare(`
+      SELECT round_number AS round, board_number AS board, white_id AS whiteId, black_id AS blackId
+      FROM tournament_pairings
+      WHERE tournament_id = ? AND round_number = ? AND game_id IS NULL AND forfeit_by IS NULL AND voided = 0
+      ORDER BY board_number
+    `).all(tournament.id, round) as RoundRobinPairing[];
+
+    let created = 0;
+    for (const pairing of pairings) {
+      const whitePaused = paused.has(pairing.whiteId);
+      const blackPaused = paused.has(pairing.blackId);
+      if (!whitePaused && !blackPaused) {
+        createPairingGame(tournament, pairing, Date.now());
+        created++;
+        continue;
+      }
+      db.prepare(`
+        UPDATE tournament_pairings SET forfeit_by = ?, voided = ?
+        WHERE tournament_id = ? AND round_number = ? AND board_number = ?
+      `).run(
+        whitePaused && blackPaused ? null : whitePaused ? pairing.whiteId : pairing.blackId,
+        whitePaused && blackPaused ? 1 : 0,
+        tournament.id, pairing.round, pairing.board,
+      );
+    }
+    if (created > 0) return true;
+  }
+}
+
+export function advanceTournamentAfterGame(gameId: string, noShowId: number | null = null): boolean {
   const db = getDb();
   const pairing = db.prepare(`
     SELECT p.tournament_id AS tournamentId, p.round_number AS round, t.mode, t.status,
@@ -209,6 +309,17 @@ export function advanceTournamentAfterGame(gameId: string): boolean {
   `).get(gameId) as { tournamentId: string; round: number; mode: "live" | "correspondence";
     status: string; currentRound: number } | undefined;
   if (!pairing || pairing.status !== "running") return false;
+
+  if (noShowId !== null) {
+    const forfeited = db.prepare(`
+      UPDATE tournament_pairings SET forfeit_by = ?
+      WHERE game_id = ? AND (white_id = ? OR black_id = ?)
+    `).run(noShowId, gameId, noShowId, noShowId).changes;
+    if (forfeited && pairing.mode === "live") {
+      db.prepare(`UPDATE tournament_participants SET paused = 1 WHERE tournament_id = ? AND user_id = ?`)
+        .run(pairing.tournamentId, noShowId);
+    }
+  }
 
   if (pairing.mode === "correspondence") {
     const remaining = db.prepare(`
@@ -226,24 +337,45 @@ export function advanceTournamentAfterGame(gameId: string): boolean {
   `).get(pairing.tournamentId, pairing.round);
   if (remaining) return false;
 
-  const nextRound = db.prepare(`
-    SELECT MIN(round_number) AS round FROM tournament_pairings
-    WHERE tournament_id = ? AND round_number > ?
-  `).get(pairing.tournamentId, pairing.round) as { round: number | null };
-  if (nextRound.round === null) {
-    db.prepare(`UPDATE tournaments SET status = 'completed' WHERE id = ?`).run(pairing.tournamentId);
-    return false;
-  }
-
-  db.prepare(`UPDATE tournaments SET current_round = ? WHERE id = ?`).run(nextRound.round, pairing.tournamentId);
   const tournament = db.prepare(`SELECT * FROM tournaments WHERE id = ?`).get(pairing.tournamentId) as TournamentRow;
-  const pairings = db.prepare(`
-    SELECT round_number AS round, board_number AS board, white_id AS whiteId, black_id AS blackId
-    FROM tournament_pairings WHERE tournament_id = ? AND round_number = ? AND game_id IS NULL
-    ORDER BY board_number
-  `).all(pairing.tournamentId, nextRound.round) as RoundRobinPairing[];
-  for (const next of pairings) createPairingGame(tournament, next, Date.now());
-  return pairings.length > 0;
+  return startRoundsAfter(tournament, pairing.round);
+}
+
+export function advanceTournamentSafely(gameId: string, noShowId: number | null): void {
+  const mark = pendingUserEvents.length;
+  try {
+    getDb().transaction(() => advanceTournamentAfterGame(gameId, noShowId))();
+  } catch (err) {
+    pendingUserEvents.length = mark;
+    log.error({ err, gameId }, "could not advance tournament after game");
+  }
+}
+
+export function repairStalledTournaments(): string[] {
+  const db = getDb();
+  const stalled = db.prepare(`
+    SELECT t.id FROM tournaments t
+    WHERE t.status = 'running' AND t.mode = 'live'
+      AND NOT EXISTS (
+        SELECT 1 FROM tournament_pairings p JOIN games g ON g.id = p.game_id
+        WHERE p.tournament_id = t.id AND g.status = 'started'
+      )
+  `).all() as { id: string }[];
+  const repaired: string[] = [];
+  for (const { id } of stalled) {
+    try {
+      db.transaction(() => {
+        const tournament = db.prepare(`SELECT * FROM tournaments WHERE id = ?`).get(id) as TournamentRow | undefined;
+        if (tournament && startRoundsAfter(tournament, tournament.current_round - 1)) {
+          repaired.push(id);
+        }
+      })();
+    } catch (err) {
+      log.error({ err, tournamentId: id }, "could not repair stalled tournament");
+    }
+  }
+  flushTournamentEvents();
+  return repaired;
 }
 
 export function cancelTournament(tournamentId: string, organizerId: number): void {
@@ -266,10 +398,10 @@ export function getTournament(tournamentId: string, viewerId: number) {
   if (!tournament) return undefined;
 
   const participants = db.prepare(`
-    SELECT u.id, u.username, p.joined_at AS joinedAt
+    SELECT u.id, u.username, p.joined_at AS joinedAt, p.paused
     FROM tournament_participants p JOIN users u ON u.id = p.user_id
     WHERE p.tournament_id = ?
-  `).all(tournamentId) as { id: number; username: string; joinedAt: number }[];
+  `).all(tournamentId) as { id: number; username: string; joinedAt: number; paused: number }[];
   const games = db.prepare(`
         SELECT p.round_number AS round, g.id, g.status, g.result, g.termination, g.ended_at AS endedAt,
           g.white_id AS whiteId, wu.username AS whiteName, g.black_id AS blackId, bu.username AS blackName
@@ -279,20 +411,47 @@ export function getTournament(tournamentId: string, viewerId: number) {
   `).all(tournamentId) as { round: number; id: string; status: string; result: string | null;
     whiteId: number; whiteName: string; blackId: number; blackName: string }[];
 
+  const pairings = db.prepare(`
+    SELECT round_number AS round, game_id AS gameId, white_id AS whiteId, black_id AS blackId,
+           forfeit_by AS forfeitBy, voided
+    FROM tournament_pairings WHERE tournament_id = ?
+    ORDER BY round_number, board_number
+  `).all(tournamentId) as { round: number; gameId: string | null; whiteId: number; blackId: number;
+    forfeitBy: number | null; voided: number }[];
+
   const standings = participants.map((participant) => {
-    const played = games.filter((game) => game.status === "finished" &&
-      (game.whiteId === participant.id || game.blackId === participant.id));
-    const points = played.reduce((total, game) => {
-      if (game.result === "1/2-1/2") return total + 0.5;
-      if ((game.result === "1-0" && game.whiteId === participant.id) ||
-          (game.result === "0-1" && game.blackId === participant.id)) return total + 1;
+    const played = pairings.filter((pairing) => !pairing.voided &&
+      (pairing.whiteId === participant.id || pairing.blackId === participant.id) &&
+      (pairing.forfeitBy !== null || games.some((game) => game.status === "finished" &&
+        game.whiteId === pairing.whiteId && game.blackId === pairing.blackId)));
+    const resultFor = (pairing: typeof pairings[number]) => {
+      if (pairing.forfeitBy === pairing.whiteId) return "0-1";
+      if (pairing.forfeitBy === pairing.blackId) return "1-0";
+      return games.find((game) => game.whiteId === pairing.whiteId && game.blackId === pairing.blackId)?.result;
+    };
+    const points = played.reduce((total, pairing) => {
+      const result = resultFor(pairing);
+      if (result === "1/2-1/2") return total + 0.5;
+      if ((result === "1-0" && pairing.whiteId === participant.id) ||
+          (result === "0-1" && pairing.blackId === participant.id)) return total + 1;
       return total;
     }, 0);
-    const wins = played.filter((game) =>
-      (game.result === "1-0" && game.whiteId === participant.id) ||
-      (game.result === "0-1" && game.blackId === participant.id)).length;
+    const wins = played.filter((pairing) =>
+      (resultFor(pairing) === "1-0" && pairing.whiteId === participant.id) ||
+      (resultFor(pairing) === "0-1" && pairing.blackId === participant.id)).length;
     return { ...participant, points, wins, gamesPlayed: played.length };
   }).sort((a, b) => b.points - a.points || b.wins - a.wins || a.username.localeCompare(b.username));
+
+  const skipped = pairings.filter((pairing) => pairing.gameId === null &&
+    (pairing.forfeitBy !== null || pairing.voided))
+    .map((pairing) => ({
+      round: pairing.round,
+      whiteId: pairing.whiteId,
+      blackId: pairing.blackId,
+      forfeitBy: pairing.forfeitBy,
+      voided: Boolean(pairing.voided),
+      result: pairing.voided ? null : pairing.forfeitBy === pairing.whiteId ? "0-1" : "1-0",
+    }));
 
   return {
     tournament: {
@@ -303,9 +462,11 @@ export function getTournament(tournamentId: string, viewerId: number) {
       startsAt: tournament.starts_at, endsAt: tournament.ends_at,
       organizer: tournament.organizer, createdAt: tournament.created_at, startedAt: tournament.started_at,
       joined: participants.some((p) => p.id === viewerId), isOrganizer: tournament.created_by === viewerId,
+      paused: participants.some((p) => p.id === viewerId && p.paused === 1),
     },
-    participants,
+    participants: participants.map(({ paused: _paused, ...participant }) => participant),
     standings,
     games,
+    skipped,
   };
 }

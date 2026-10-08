@@ -16,5 +16,4 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm test
-      # add once `npm run check -w web` passes locally:
-      # - run: npm run check -w web
+      - run: npm run check -w web

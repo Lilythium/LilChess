@@ -47,3 +47,10 @@ export type GameEvent =
     };
 
 export type ClientMessage = { type: "move"; ply: number; uci: string };
+
+export type UserEvent = {
+  type: "pairing_ready";
+  tournamentId: string;
+  gameId: string;
+  round: number;
+};

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../app.js";
 import { closeDb, getDb, openDb } from "../db/connection.js";
 import { registerUser } from "../testing/helpers.js";
+import { NOTIFICATION_KINDS } from "@lilchess/shared";
 
 describe("notification settings", () => {
   let app: FastifyInstance;
@@ -26,7 +27,7 @@ describe("notification settings", () => {
     const body = (await get()).json();
     expect(body.email).toBeNull();
     expect(body.emailAvailable).toBe(false);
-    expect(Object.values(body.prefs)).toEqual([true, true, true, true, true]);
+    expect(Object.values(body.prefs)).toEqual(NOTIFICATION_KINDS.map(() => true));
   });
 
   it("stores a lowercased email, shows it on /api/me, and removes it again", async () => {
@@ -69,7 +70,7 @@ describe("notification settings", () => {
     const post = (token: string) => app.inject({ method: "POST", url: "/api/unsubscribe", payload: { token } });
 
     expect((await post(unsubscribe_token)).statusCode).toBe(200);
-    expect(Object.values((await get()).json().prefs)).toEqual([false, false, false, false, false]);
+    expect(Object.values((await get()).json().prefs)).toEqual(NOTIFICATION_KINDS.map(() => false));
     expect((await post("0".repeat(32))).statusCode).toBe(404);
     expect((await post("nope")).statusCode).toBe(400);
   });

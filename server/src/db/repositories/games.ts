@@ -22,28 +22,12 @@ import { sendWebhook } from "../../notifications/webhook.js";
 import { notifyDeadlineChanged } from "../../game/deadlineBus.js";
 import { settleRatings } from "./ratings.js";
 import { notifyGameOver, notifyYourTurn } from "../../notifications/dispatch.js";
-import { advanceTournamentAfterGame } from "../../tournaments/service.js";
+import { advanceTournamentSafely, flushTournamentEvents } from "../../tournaments/service.js";
+export { insertGame } from "./insertGame.js";
 
-export function insertGame(id: string, whiteId: number, blackId: number, game: GameState): void {
-  const row = gameStateToRow(game);
-  const fen = fenAfterMoves(game.initialFen, game.moves) ?? game.initialFen;
-  getDb()
-    .prepare(
-      `INSERT INTO games (
-        id, white_id, black_id, variant, rated, mode,
-        initial_ms, increment_ms, days_per_move,
-        status, result, termination,
-        initial_fen, fen, last_move, ply, white_ms, black_ms,
-        turn_started_at, deadline_at, draw_offered_by, created_at
-      ) VALUES (
-        @id, @whiteId, @blackId, @variant, @rated, @mode,
-        @initialMs, @incrementMs, @daysPerMove,
-        @status, @result, @termination,
-        @initialFen, @fen, @lastMove, @ply, @whiteMs, @blackMs,
-        @turnStartedAt, @deadlineAt, @drawOfferedBy, @createdAt
-      )`,
-    )
-    .run({ id, whiteId, blackId, ...row, fen, lastMove: game.moves.at(-1) ?? null, createdAt: Date.now() });
+function afterCommit(): void {
+  notifyDeadlineChanged();
+  flushTournamentEvents();
 }
 
 export function getGame(id: string): GameState | undefined {
@@ -74,7 +58,7 @@ export function getGameWithSans(id: string): { game: GameState; sans: string[] }
 }
 
 // Single choke point for writing game state: the stored position always matches the moves
-function updateGameState(id: string, game: GameState): void {
+function updateGameState(id: string, game: GameState, actorId: number | null = null): void {
   const row = gameStateToRow(game);
   const fen = fenAfterMoves(game.initialFen, game.moves);
   if (fen === null) throw new Error(`game ${id}: moves do not replay from initial_fen`);
@@ -91,8 +75,17 @@ function updateGameState(id: string, game: GameState): void {
     )
     .run({ id, ...row, fen, lastMove: game.moves.at(-1) ?? null, endedAt: Date.now() });
 
-  if (game.status !== "started") advanceTournamentAfterGame(id);
+  if (game.status !== "started") {
+    advanceTournamentSafely(id, game.status === "aborted" ? abortFaultId(id, game, actorId) : null);
+  }
   if (game.status === "finished" && game.rated) settleRatings(id);
+}
+
+function abortFaultId(gameId: string, game: GameState, actorId: number | null): number | null {
+  if (actorId !== null) return actorId;
+  const p = getParticipants(gameId);
+  if (!p) return null;
+  return game.turn === "white" ? p.whiteId : p.blackId;
 }
 
 function appendMove(gameId: string, ply: number, uci: string, san: string): void {
@@ -221,7 +214,7 @@ function broadcastMoveOutcome(
 
 export function applyMoveAndPersist(id: string, uci: string, now: number) {
   const outcome = getDb().transaction(() => applyMoveCore(id, uci, now)).immediate();
-  if (outcome.ok && (outcome.movePlayed || outcome.state.status !== "started")) notifyDeadlineChanged();
+  if (outcome.ok && (outcome.movePlayed || outcome.state.status !== "started")) afterCommit();
   if (outcome.ok) broadcastMoveOutcome(id, uci, outcome.state, outcome.san, outcome.movePlayed);
   return outcome;
 }
@@ -243,7 +236,7 @@ export function submitMove(
     return applyMoveCore(gameId, uci, Date.now());
   }).immediate();
 
-  if (outcome.ok && (outcome.movePlayed || outcome.state.status !== "started")) notifyDeadlineChanged();
+  if (outcome.ok && (outcome.movePlayed || outcome.state.status !== "started")) afterCommit();
   if (outcome.ok) {
     broadcastMoveOutcome(gameId, uci, outcome.state, outcome.san, outcome.movePlayed, userId);
   }
@@ -268,7 +261,7 @@ function actAndPersist(
     const result = action(game, color);
     if (result.ok) {
       beforeWrite?.(result.state);
-      updateGameState(gameId, result.state);
+      updateGameState(gameId, result.state, userId);
     }
     return result;
   }).immediate();

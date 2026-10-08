@@ -8,17 +8,29 @@
   type GameRow = {
     round: number; id: string; status: string; result: string | null; termination: string | null;
     whiteId: number; whiteName: string; blackId: number; blackName: string;
+    forfeit: boolean;
   };
+
+  type SkippedRow = {
+    round: number;
+    result: string | null;
+    voided: boolean;
+    whiteName: string;
+    blackName: string;
+  };
+
   type Detail = {
     tournament: {
       id: string; name: string; description: string | null; rated: boolean; status: string; mode: "live" | "correspondence";
       initialMs: number | null; incrementMs: number | null; daysPerMove: number | null;
       variant: string; maxPlayers: number; organizer: string; joined: boolean; isOrganizer: boolean;
       startsAt: number | null; endsAt: number | null;
+      paused: boolean;
     };
-    participants: { id: number; username: string }[];
+    participants: { id: number; username: string; paused?: boolean }[];
     standings: { id: number; username: string; points: number; wins: number; gamesPlayed: number }[];
     games: GameRow[];
+    skipped: SkippedRow[];
   };
 
   let data = $state<Detail | null>(null);
@@ -40,14 +52,18 @@
     return () => clearInterval(timer);
   });
 
-  async function act(action: "join" | "start" | "cancel" | "withdraw") {
+  async function act(action: "join" | "start" | "cancel" | "withdraw" | "resume") {
     if (!data || busy) return;
     busy = true;
     error = null;
     try {
-      await api(`/api/tournaments/${id}/${action === "withdraw" ? "join" : action}`, {
-        method: action === "withdraw" ? "DELETE" : "POST",
-      });
+      if (action === "resume") {
+        await api(`/api/tournaments/${id}/resume`, { method: "POST" });
+      } else {
+        await api(`/api/tournaments/${id}/${action === "withdraw" ? "join" : action}`, {
+          method: action === "withdraw" ? "DELETE" : "POST",
+        });
+      }
       await refresh();
     } catch (err) { error = err instanceof Error ? err.message : String(err); }
     finally { busy = false; }
@@ -76,6 +92,9 @@
         {#if tournament.startsAt}<p class="schedule">Starts {new Date(tournament.startsAt).toLocaleString()}{#if tournament.endsAt} · Ends {new Date(tournament.endsAt).toLocaleString()}{/if}</p>{/if}
       </div>
       <div class="actions">
+        {#if tournament.status === "running" && tournament.paused}
+          <button class="primary" disabled={busy} onclick={() => act("resume")}>Resume playing</button>
+        {/if}
         {#if tournament.status === "open" && !tournament.joined}
           <button class="primary" disabled={busy} onclick={() => act("join")}>Join</button>
         {:else if tournament.status === "open" && tournament.joined && !tournament.isOrganizer}
@@ -89,12 +108,20 @@
     </header>
     {#if tournament.description}<p class="description">{tournament.description}</p>{/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}
+    {#if tournament.status === "running" && tournament.paused}
+      <p class="notice" role="status">You are paused: a game of yours was aborted, so you forfeited it and will not be paired in the next rounds until you resume.</p>
+    {/if}
 
     <section class="participants">
       <div class="section-title"><h2>Players</h2><span>{data.participants.length} / {tournament.maxPlayers}</span></div>
       <div class="player-list">
         {#each data.participants as player, index (player.id)}
-          <a href={`#/u/${encodeURIComponent(player.username)}`}><span class="seed">{String(index + 1).padStart(2, "0")}</span>{displayName(player.username)}{#if player.username === tournament.organizer}<small>Organizer</small>{/if}</a>
+          <a href={`#/u/${encodeURIComponent(player.username)}`}>
+            <span class="seed">{String(index + 1).padStart(2, "0")}</span>
+            {displayName(player.username)}
+            {#if player.username === tournament.organizer}<small>Organizer</small>{/if}
+            {#if player.paused}<small>Paused</small>{/if}
+          </a>
         {/each}
       </div>
     </section>
@@ -113,16 +140,28 @@
       </section>
 
       <section>
-        <div class="section-title"><h2>Games</h2><span>{data.games.length}</span></div>
-        {#if data.games.length}
+        <div class="section-title"><h2>Games</h2><span>{data.games.length + (data.skipped?.length ?? 0)}</span></div>
+        {#if data.games.length || (data.skipped && data.skipped.length)}
           <div class="games">
             {#each data.games as game (game.id)}
               <a class="game-row" href={`#/game/${game.id}`}>
                 <span class="round">R{game.round}</span>
                 <span class="players">{displayName(game.whiteName)} <small>vs</small> {displayName(game.blackName)}</span>
-                <strong class:active={game.status === "started"}>{game.status === "started" ? "Play" : game.result ?? game.status}</strong>
+                <strong class:active={game.status === "started"}>
+                  {game.status === "started" ? "Play" : `${game.result ?? game.status}${game.forfeit ? " (forfeit)" : ""}`}
+                </strong>
               </a>
             {/each}
+
+            {#if data.skipped}
+              {#each data.skipped as skipped}
+                <div class="game-row skipped">
+                  <span class="round">R{skipped.round}</span>
+                  <span class="players">{displayName(skipped.whiteName)} <small>vs</small> {displayName(skipped.blackName)}</span>
+                  <strong>{skipped.voided ? "void" : `${skipped.result} (forfeit)`}</strong>
+                </div>
+              {/each}
+            {/if}
           </div>
         {:else}<p class="muted">Games appear here when the organizer starts the tournament.</p>{/if}
       </section>
@@ -156,12 +195,14 @@
   td:first-child { color:var(--muted); width:2rem; }
   .points { color:var(--text-hi); font-weight:700; }
   .games { border-top:1px solid var(--border); }
-  .game-row { display:grid; grid-template-columns:2.3rem minmax(0,1fr) auto; gap:.5rem; align-items:center; padding:.65rem .2rem; border-bottom:1px solid var(--border); color:var(--text-hi); font-size:.88rem; }
+  .game-row { display:grid; grid-template-columns:2.3rem minmax(0,1fr) auto; gap:.5rem; align-items:center; padding:.65rem .2rem; border-bottom:1px solid var(--border); color:var(--text-hi); font-size:.88rem; text-decoration: none; }
   .game-row:hover { background:rgba(255,255,255,.035); }
   .round { color:var(--muted); font-size:.78rem; }
   .players { overflow-wrap:anywhere; }
   .players small { color:var(--muted); }
   .game-row strong { text-align:right; font-size:.8rem; font-weight:500; color:var(--muted); text-transform:capitalize; }
   .game-row strong.active { color:#a4ca80; }
+  .notice { background:var(--panel); border:1px solid var(--border); border-radius:4px; padding:.6rem .8rem; margin:0 0 1rem; font-size:.9rem; }
+  .skipped { opacity:.7; }
   @media(max-width:720px) { .event-header { align-items:flex-start; flex-direction:column; } .actions { justify-content:start; } .columns { grid-template-columns:1fr; gap:1.5rem; } }
 </style>

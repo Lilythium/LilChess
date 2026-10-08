@@ -6,7 +6,7 @@ import { notifyDeadlineChanged } from "../game/deadlineBus.js";
 import { notifyTournamentStarting } from "../notifications/dispatch.js";
 import {
   cancelTournament, createTournament, getTournament, joinTournament, listTournaments,
-  startTournament, TournamentError, withdrawTournament,
+  startTournament, TournamentError, withdrawTournament, resumeTournament,
 } from "./service.js";
 
 const CreateBody = z.object({
@@ -25,8 +25,10 @@ const CreateBody = z.object({
   ? body.initialMs !== undefined && body.daysPerMove === undefined
   : body.daysPerMove !== undefined && body.initialMs === undefined && body.incrementMs === undefined,
 { message: "Provide time settings for the selected mode" })
-  .refine((body) => body.startsAt === undefined || body.endsAt === undefined || body.endsAt > body.startsAt,
-    { message: "End time must be after start time" });
+  .refine((body) => body.startsAt === undefined || body.startsAt > Date.now(),
+    { message: "Start time must be in the future" })
+  .refine((body) => body.endsAt === undefined || body.startsAt === undefined || body.endsAt > body.startsAt,
+    { message: "End time must be after the start time" });
 
 async function handleTournamentError(reply: import("fastify").FastifyReply, error: unknown) {
   if (error instanceof TournamentError) return reply.code(error.status).send({ error: error.message });
@@ -43,7 +45,9 @@ export async function tournamentRoutes(app: FastifyInstance) {
     if (req.user!.is_guest) return reply.code(403).send({ error: "Register an account to create tournaments" });
     const body = parse(CreateBody, req.body, reply);
     if (!body) return reply;
-    return { ok: true, tournamentId: createTournament(req.user!.id, body) };
+    try {
+      return { ok: true, tournamentId: createTournament(req.user!.id, body) };
+    } catch (error) { return handleTournamentError(reply, error); }
   });
 
   app.get("/api/tournaments/:id", { preHandler: requireAuth }, async (req, reply) => {
@@ -81,6 +85,16 @@ export async function tournamentRoutes(app: FastifyInstance) {
       notifyDeadlineChanged();
       notifyTournamentStarting(params.id);
       return { ok: true, gameCount };
+    } catch (error) { return handleTournamentError(reply, error); }
+  });
+
+  // A player who aborted a game is paused; this puts them back into the pairings from the next round.
+  app.post("/api/tournaments/:id/resume", { preHandler: requireAuth }, async (req, reply) => {
+    const params = parse(IdParams, req.params, reply);
+    if (!params) return reply;
+    try {
+      resumeTournament(params.id, req.user!.id);
+      return { ok: true };
     } catch (error) { return handleTournamentError(reply, error); }
   });
 

@@ -63,6 +63,11 @@ export const tournamentStarting = (name: string, tournamentId: string): Message 
   text: `The tournament "${name}" has started.\n\nOpen the tournament: ${link("/tournament/" + tournamentId)}\n`,
 });
 
+export const tournamentCancelled = (name: string, tournamentId: string): Message => ({
+  subject: `${name} was cancelled`,
+  text: `The tournament "${name}" was cancelled because fewer than two players had joined when it was due to start.\n\nSee it here: ${link("/tournament/" + tournamentId)}\n`,
+});
+
 export const passwordReset = (username: string, token: string): Message => ({
   subject: "Reset your LilChess password",
   text:
