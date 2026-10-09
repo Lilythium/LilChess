@@ -4,7 +4,6 @@
   import { auth, playAsGuest } from "../lib/auth.svelte";
   import { navigate } from "../lib/router.svelte";
   import { displayName, timeControl } from "../lib/format";
-  import { pendingInvite } from "../lib/invite.svelte";
   import Login from "./Login.svelte";
 
   interface InviteInfo {
@@ -20,6 +19,8 @@
   let error = $state<string | null>(null);
   let busy = $state(false);
   let showLogin = $state(false);
+  let autoAccepting = $state(false);
+  let autoAcceptAttempted = false;
 
   async function accept() {
     busy = true;
@@ -31,6 +32,7 @@
       error = err instanceof Error ? err.message : String(err);
     } finally {
       busy = false;
+      autoAccepting = false;
     }
   }
 
@@ -38,7 +40,7 @@
     busy = true;
     error = null;
     try {
-      await playAsGuest(id); // App.svelte remounts this page; the pending flag triggers accept()
+      await playAsGuest(id);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       busy = false;
@@ -53,23 +55,21 @@
         guestsAllowed = r.guestsAllowed;
       } catch (err) {
         error = err instanceof Error ? err.message : String(err);
-        return;
-      }
-      if (!auth.user) {
-        pendingInvite.id = id;                 // they will authenticate on this page
-      } else if (pendingInvite.id === id) {
-        pendingInvite.id = null;               // they just authenticated here: accept for them
-        void accept();
       }
     })();
-    // Leaving while still logged out cancels the intent. The remount after login does not (auth.user is set).
-    return () => { if (!auth.user) pendingInvite.id = null; };
   });
 
   const yourColor = $derived(
     invite?.color_pref ? (invite.color_pref === "white" ? "black" : "white") : null,
   );
   const isOwn = $derived(!!invite && auth.user?.username === invite.from_name);
+
+  $effect(() => {
+    if (!invite || !auth.user || isOwn || autoAcceptAttempted) return;
+    autoAcceptAttempted = true;
+    autoAccepting = true;
+    void accept();
+  });
 </script>
 
 <div class="panel card">
@@ -92,6 +92,8 @@
       {#if isOwn}
         <p class="muted">This is your own invite link. Send it to your opponent.</p>
         <a href="#/">Back to lobby</a>
+      {:else if autoAccepting}
+        <p class="muted">Accepting challenge…</p>
       {:else}
         <button class="primary" disabled={busy} onclick={accept}>Accept challenge</button>
       {/if}
