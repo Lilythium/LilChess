@@ -2,20 +2,31 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { auth } from "../lib/auth.svelte";
-  import { timeControl } from "../lib/format";
 
+  type Format = "round_robin" | "swiss" | "knockout" | "arena";
   type TournamentRow = {
-    id: string; name: string; description: string | null; status: string; mode: "live" | "correspondence";
+    id: string; name: string; description: string | null; status: string; format: Format; mode: "live" | "correspondence";
     variant: string; rated: number; startsAt: number | null; endsAt: number | null;
     maxPlayers: number; participantCount: number; gameCount: number; joined: number;
+    durationMs: number | null; rounds: number | null; currentRound: number;
   };
+
+  const FORMAT_LABELS: Record<Format, string> = {
+    round_robin: "Round robin", swiss: "Swiss", knockout: "Knockout", arena: "Arena",
+  };
+  const MAX_PLAYERS: Record<Format, number> = { round_robin: 16, swiss: 64, knockout: 64, arena: 64 };
+  const PLAYER_COUNTS = [2, 4, 6, 8, 10, 12, 16, 24, 32, 48, 64];
 
   let tournaments = $state<TournamentRow[] | null>(null);
   let error = $state<string | null>(null);
   let busy = $state(false);
   let name = $state("");
   let description = $state("");
+  let format = $state<Format>("round_robin");
   let mode = $state<"live" | "correspondence">("live");
+  let rounds = $state(0); // swiss only; 0 = automatic
+  let durationMinutes = $state(60); // arena only
+  let streakBonus = $state(true); // arena only
   let clockPreset = $state("300000:2000");
   let daysPerMove = $state(3);
   let maxPlayers = $state(8);
@@ -23,6 +34,10 @@
   let rated = $state(false);
   let startsAt = $state("");
   let endsAt = $state("");
+
+  // Arenas are live-only, and the player count has to fit the format.
+  $effect(() => { if (format === "arena") mode = "live"; });
+  $effect(() => { if (maxPlayers > MAX_PLAYERS[format]) maxPlayers = MAX_PLAYERS[format]; });
 
   async function refresh() {
     try {
@@ -47,13 +62,16 @@
         body: {
           name,
           description: description.trim() || undefined,
+          format,
           mode,
           ...(mode === "live" ? { initialMs, incrementMs } : { daysPerMove }),
           maxPlayers,
           variant,
           rated,
+          ...(format === "swiss" && rounds > 0 ? { rounds } : {}),
+          ...(format === "arena" ? { durationMinutes, streakBonus } : {}),
           startsAt: startsAt ? new Date(startsAt).getTime() : undefined,
-          endsAt: endsAt ? new Date(endsAt).getTime() : undefined,
+          endsAt: format !== "arena" && endsAt ? new Date(endsAt).getTime() : undefined,
         },
       });
       name = "";
@@ -67,6 +85,9 @@
 
   const formatClock = (t: TournamentRow) => t.mode === "live" ? "Live" : "Correspondence";
   const formatStart = (t: TournamentRow) => t.startsAt ? new Date(t.startsAt).toLocaleString() : "Start when ready";
+  const progress = (t: TournamentRow) =>
+    t.format === "arena" ? (t.durationMs ? `${Math.round(t.durationMs / 60_000)} min` : "")
+    : t.status === "running" && t.rounds ? `round ${t.currentRound}/${t.rounds}` : `${t.gameCount} games`;
 </script>
 
 <svelte:head><title>Tournaments | LilChess</title></svelte:head>
@@ -82,12 +103,17 @@
 
   {#if !auth.user?.is_guest}
     <form class="create" onsubmit={(event) => { event.preventDefault(); void create(); }}>
-      <div class="create-heading"><h2>Host a tournament</h2><span>Round robin</span></div>
+      <div class="create-heading"><h2>Host a tournament</h2><span>{FORMAT_LABELS[format]}</span></div>
       <label class="name-field">Name<input bind:value={name} minlength="3" maxlength="60" placeholder="Friday club night" required /></label>
       <label class="description-field">Description<input bind:value={description} maxlength="500" placeholder="Optional event details" /></label>
       <div class="settings">
+        <label>Format
+          <select bind:value={format}>
+            {#each Object.entries(FORMAT_LABELS) as [value, label]}<option {value}>{label}</option>{/each}
+          </select>
+        </label>
         <label>Time mode
-          <select bind:value={mode}><option value="live">Live</option><option value="correspondence">Correspondence</option></select>
+          <select bind:value={mode} disabled={format === "arena"}><option value="live">Live</option><option value="correspondence">Correspondence</option></select>
         </label>
         {#if mode === "live"}
           <label>Clock
@@ -100,10 +126,16 @@
         {:else}
           <label>Days per move<select bind:value={daysPerMove}><option value={1}>1 day</option><option value={3}>3 days</option><option value={7}>7 days</option><option value={14}>14 days</option></select></label>
         {/if}
-        <label>Players<select bind:value={maxPlayers}>{#each [2, 4, 6, 8, 10, 12, 16] as count}<option value={count}>{count}</option>{/each}</select></label>
+        <label>Max players<select bind:value={maxPlayers}>{#each PLAYER_COUNTS.filter((count) => count <= MAX_PLAYERS[format]) as count}<option value={count}>{count}</option>{/each}</select></label>
+        {#if format === "swiss"}
+          <label>Rounds<select bind:value={rounds}><option value={0}>Automatic</option>{#each [2, 3, 4, 5, 6, 7, 8, 9, 10] as count}<option value={count}>{count}</option>{/each}</select></label>
+        {:else if format === "arena"}
+          <label>Duration<select bind:value={durationMinutes}>{#each [10, 30, 60, 90, 120, 180] as minutes}<option value={minutes}>{minutes} min</option>{/each}</select></label>
+          <label class="rated-toggle"><input type="checkbox" bind:checked={streakBonus} /> Streak bonus</label>
+        {/if}
         <label>Variant<select bind:value={variant}><option value="standard">Standard</option><option value="chess960">Chess960</option></select></label>
         <label>Starts at<input type="datetime-local" bind:value={startsAt} /></label>
-        <label>Ends at<input type="datetime-local" bind:value={endsAt} min={startsAt || undefined} /></label>
+        {#if format !== "arena"}<label>Planned end<input type="datetime-local" bind:value={endsAt} min={startsAt || undefined} /></label>{/if}
         <label class="rated-toggle"><input type="checkbox" bind:checked={rated} /> Rated</label>
         <button class="primary create-button" type="submit" disabled={busy || name.trim().length < 3}>{busy ? "Creating…" : "Create"}</button>
       </div>
@@ -119,8 +151,8 @@
     <div class="event-list">
       {#each tournaments as tournament (tournament.id)}
         <a class="event" href={`#/tournament/${tournament.id}`}>
-          <span class="event-name">{tournament.name}<small>{formatStart(tournament)} · {formatClock(tournament)} · {tournament.variant === "chess960" ? "Chess960" : "Standard"}{tournament.rated ? " · Rated" : ""}</small></span>
-          <span class="event-meta"><strong class:open={tournament.status === "open"} class:running={tournament.status === "running"}>{tournament.status}</strong>{tournament.participantCount}/{tournament.maxPlayers} players · {tournament.gameCount} games</span>
+          <span class="event-name">{tournament.name}<small>{FORMAT_LABELS[tournament.format]} · {formatStart(tournament)} · {formatClock(tournament)} · {tournament.variant === "chess960" ? "Chess960" : "Standard"}{tournament.rated ? " · Rated" : ""}</small></span>
+          <span class="event-meta"><strong class:open={tournament.status === "open"} class:running={tournament.status === "running"}>{tournament.status}</strong>{tournament.participantCount}/{tournament.maxPlayers} players · {progress(tournament)}</span>
           {#if tournament.joined}<span class="joined">Joined</span>{/if}
         </a>
       {/each}

@@ -78,4 +78,46 @@ describe("migrate", () => {
       .toEqual({ rated: 0, current_round: 1 });
     expect(db.pragma("foreign_key_check")).toEqual([]);
   });
+
+  it("keeps existing tournaments and pairings when upgrading to v13 (formats)", () => {
+    const db = open();
+    migrate(db, 12);
+    db.exec(`
+      INSERT INTO users (id, username, password_hash, created_at) VALUES (1,'alice','x',0),(2,'bob','x',0);
+      INSERT INTO tournaments (id, created_by, name, mode, initial_ms, increment_ms, variant, max_players, created_at, status, current_round)
+        VALUES ('event0001',1,'Old Cup','live',60000,0,'standard',4,0,'running',1);
+      INSERT INTO tournament_participants (tournament_id, user_id, joined_at, paused) VALUES ('event0001',1,0,0),('event0001',2,0,1);
+      INSERT INTO tournament_pairings (tournament_id, round_number, board_number, white_id, black_id, forfeit_by)
+        VALUES ('event0001',1,1,1,2,2);
+    `);
+
+    migrate(db);
+
+    expect(db.prepare(`SELECT format, rounds, duration_ms, streak_bonus, status FROM tournaments WHERE id = 'event0001'`).get())
+      .toEqual({ format: "round_robin", rounds: 1, duration_ms: null, streak_bonus: 1, status: "running" });
+    expect(db.prepare(`SELECT white_id, black_id, forfeit_by, is_bye, match_number, leg FROM tournament_pairings`).get())
+      .toEqual({ white_id: 1, black_id: 2, forfeit_by: 2, is_bye: 0, match_number: null, leg: 1 });
+    expect(db.prepare(`SELECT user_id, paused, seed FROM tournament_participants ORDER BY user_id`).all())
+      .toEqual([{ user_id: 1, paused: 0, seed: null }, { user_id: 2, paused: 1, seed: null }]);
+    expect(db.pragma("foreign_key_check")).toEqual([]);
+
+    // New formats are allowed, arenas need a duration, byes carry no opponent or game.
+    const insert = (format: string, extra = "NULL") => db.prepare(`
+      INSERT INTO tournaments (id, created_by, name, format, mode, initial_ms, increment_ms, max_players, created_at, duration_ms)
+      VALUES (?, 1, 'x', ?, 'live', 60000, 0, 8, 0, ${extra})
+    `).run(`t-${format}-${extra}`, format);
+    expect(() => insert("swiss")).not.toThrow();
+    expect(() => insert("knockout")).not.toThrow();
+    expect(() => insert("arena", "1800000")).not.toThrow();
+    expect(() => insert("arena")).toThrow();
+    expect(() => insert("ladder")).toThrow();
+    expect(() => db.prepare(`
+      INSERT INTO tournament_pairings (tournament_id, round_number, board_number, white_id, black_id, is_bye)
+      VALUES ('event0001', 2, 1, 1, 2, 1)
+    `).run()).toThrow();
+    expect(() => db.prepare(`
+      INSERT INTO tournament_pairings (tournament_id, round_number, board_number, white_id, is_bye)
+      VALUES ('event0001', 2, 1, 1, 1)
+    `).run()).not.toThrow();
+  });
 });

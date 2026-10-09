@@ -6,6 +6,7 @@ import {
 import { deadlineBus } from "./deadlineBus.js";
 import { sendWebhook } from "../notifications/webhook.js";
 import { getNextTournamentStartAt, repairStalledTournaments, startScheduledTournaments } from "../tournaments/service.js";
+import { ARENA_TICK_MS, finishDueArenas, getNextArenaEnd, hasRunningArena, runArenaPairing } from "../tournaments/arena.js";
 import { notifyTournamentCancelled, notifyTournamentStarting } from "../notifications/dispatch.js";
 import { logger } from "../logger.js";
 const log = logger.child({ mod: "timeouts" });
@@ -61,9 +62,14 @@ function tick(): void {
       repairStalledTournaments();
     }
 
-    const deadlines = [getEarliestActiveDeadline(), getNextTournamentStartAt(now)]
+    // Arenas pair players as they become free, so they are checked every couple of seconds while running.
+    runArenaPairing(now);
+    finishDueArenas(now);
+
+    const deadlines = [getEarliestActiveDeadline(), getNextTournamentStartAt(now), getNextArenaEnd()]
       .filter((deadline): deadline is number => deadline !== undefined);
     if (deadlines.length) delay = delayFor(Math.min(...deadlines) - now);
+    if (hasRunningArena()) delay = Math.min(delay, ARENA_TICK_MS);
   } catch (err) {
     log.error({ err }, "scheduler tick failed, retrying in 1s");
     delay = 1_000;

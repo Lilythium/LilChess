@@ -1,31 +1,29 @@
 import { randomBytes } from "node:crypto";
-import { createGame, roundRobinPairings, type ClockConfig, type RoundRobinPairing, type UserEvent, type Variant } from "@lilchess/shared";
+import {
+  computeStandings, knockoutRoundCount, matchOutcome, roundRobinPairings,
+  type Leg, type StandingRow, type TournamentFormat, type Variant,
+} from "@lilchess/shared";
 import { getDb } from "../db/connection.js";
-import { insertGame } from "../db/repositories/insertGame.js";
 import { logger } from "../logger.js";
-import { broadcastUserEvent } from "../ws/hub.js";
+import {
+  assignSeeds, completeTournament, flushTournamentEvents, hasStartedGame, loadParticipants, loadScoredGames,
+  loadTournament, pendingUserEvents, startPairingGame, TournamentError, type TournamentRow,
+} from "./shared.js";
+import {
+  repairRound, startKnockoutFirstRound, startNextRound, startSwissRound, swissTotalRounds,
+} from "./rounds.js";
+
+export { flushTournamentEvents, TournamentError } from "./shared.js";
 
 const log = logger.child({ mod: "tournaments" });
 
 export const MAX_ACTIVE_TOURNAMENTS_PER_USER = 3;
-
-// WebSocket pushes are queued while a transaction is open and sent only after it commits.
-const pendingUserEvents: { userId: number; event: UserEvent }[] = [];
-
-export function flushTournamentEvents(): void {
-  for (const { userId, event } of pendingUserEvents.splice(0)) broadcastUserEvent(userId, event);
-}
-
-export class TournamentError extends Error {
-  constructor(message: string, readonly status: number) {
-    super(message);
-    this.name = "TournamentError";
-  }
-}
+export const MAX_PLAYERS: Record<TournamentFormat, number> = { round_robin: 16, swiss: 64, knockout: 64, arena: 64 };
 
 export interface TournamentConfig {
   name: string;
   description?: string;
+  format?: TournamentFormat;
   mode: "live" | "correspondence";
   initialMs?: number;
   incrementMs?: number;
@@ -35,10 +33,23 @@ export interface TournamentConfig {
   maxPlayers: number;
   startsAt?: number;
   endsAt?: number;
+  /** Swiss: number of rounds (default ceil(log2 n)). */
+  rounds?: number;
+  /** Arena: how long it runs once started. */
+  durationMs?: number;
+  /** Arena: two wins in a row make the next game worth double. */
+  streakBonus?: boolean;
 }
 
 export function createTournament(creatorId: number, config: TournamentConfig): string {
   const db = getDb();
+  const format = config.format ?? "round_robin";
+  if (config.maxPlayers > MAX_PLAYERS[format]) {
+    throw new TournamentError(`A ${format.replace("_", " ")} can have at most ${MAX_PLAYERS[format]} players`, 400);
+  }
+  if (format === "arena" && (config.mode !== "live" || !config.durationMs)) {
+    throw new TournamentError("Arenas are live-only and need a duration", 400);
+  }
   const id = randomBytes(8).toString("hex");
   const now = Date.now();
   db.transaction(() => {
@@ -50,16 +61,22 @@ export function createTournament(creatorId: number, config: TournamentConfig): s
     }
     db.prepare(`
       INSERT INTO tournaments (
-        id, created_by, name, description, mode, initial_ms, increment_ms, days_per_move,
-        variant, rated, max_players, starts_at, ends_at, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, created_by, name, description, format, mode, initial_ms, increment_ms, days_per_move,
+        variant, rated, max_players, rounds, duration_ms, streak_bonus, starts_at, ends_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id, creatorId, config.name, config.description?.trim() || null, config.mode,
+      id, creatorId, config.name, config.description?.trim() || null, format, config.mode,
       config.mode === "live" ? config.initialMs : null,
       config.mode === "live" ? config.incrementMs ?? 0 : null,
       config.mode === "correspondence" ? config.daysPerMove : null,
       config.variant, config.rated ? 1 : 0, config.maxPlayers,
-      config.startsAt ?? null, config.endsAt ?? null, now,
+      format === "swiss" ? config.rounds ?? null : null,
+      format === "arena" ? config.durationMs : null,
+      config.streakBonus === false ? 0 : 1,
+      config.startsAt ?? null,
+      // Arenas get their end time when they start; the other formats just show the planned end.
+      format === "arena" ? null : config.endsAt ?? null,
+      now,
     );
     db.prepare(`INSERT INTO tournament_participants (tournament_id, user_id, joined_at) VALUES (?, ?, ?)`)
       .run(id, creatorId, now);
@@ -68,50 +85,48 @@ export function createTournament(creatorId: number, config: TournamentConfig): s
 }
 
 export function listTournaments(viewerId: number) {
-  const db = getDb();
-  return db.prepare(`
-        SELECT t.id, t.name, t.description, t.status, t.format, t.mode, t.variant, t.rated,
-          t.starts_at AS startsAt, t.ends_at AS endsAt, t.max_players AS maxPlayers,
-           t.created_at AS createdAt, COUNT(DISTINCT p.user_id) AS participantCount,
-          COUNT(DISTINCT tp.game_id) AS gameCount,
-           MAX(CASE WHEN p.user_id = ? THEN 1 ELSE 0 END) AS joined,
+  return getDb().prepare(`
+    SELECT t.id, t.name, t.description, t.status, t.format, t.mode, t.variant, t.rated,
+           t.starts_at AS startsAt, t.ends_at AS endsAt, t.max_players AS maxPlayers,
+           t.created_at AS createdAt, t.duration_ms AS durationMs, t.rounds, t.current_round AS currentRound,
+           (SELECT COUNT(*) FROM tournament_participants p WHERE p.tournament_id = t.id) AS participantCount,
+           (SELECT COUNT(*) FROM tournament_pairings tp WHERE tp.tournament_id = t.id AND tp.game_id IS NOT NULL) AS gameCount,
+           EXISTS (SELECT 1 FROM tournament_participants p WHERE p.tournament_id = t.id AND p.user_id = @viewer) AS joined,
            CASE WHEN t.mode = 'live' AND t.status = 'running' THEN (
              SELECT tp.game_id FROM tournament_pairings tp JOIN games g ON g.id = tp.game_id
              WHERE tp.tournament_id = t.id AND g.status = 'started'
-               AND (g.white_id = ? OR g.black_id = ?)
+               AND (g.white_id = @viewer OR g.black_id = @viewer)
              ORDER BY tp.round_number, tp.board_number LIMIT 1
            ) END AS nextGameId
     FROM tournaments t
-    LEFT JOIN tournament_participants p ON p.tournament_id = t.id
-    LEFT JOIN tournament_pairings tp ON tp.tournament_id = t.id
-    GROUP BY t.id
-    ORDER BY CASE t.status WHEN 'open' THEN 0 WHEN 'running' THEN 1 ELSE 2 END, t.created_at DESC
+    ORDER BY CASE t.status WHEN 'running' THEN 0 WHEN 'open' THEN 1 ELSE 2 END, COALESCE(t.starts_at, t.created_at) DESC
     LIMIT 100
-  `).all(viewerId, viewerId, viewerId);
+  `).all({ viewer: viewerId });
 }
 
-export function joinTournament(tournamentId: string, userId: number): void {
+export function joinTournament(tournamentId: string, userId: number, now = Date.now()): void {
   const db = getDb();
   db.transaction(() => {
-    const tournament = db.prepare(`SELECT status, max_players FROM tournaments WHERE id = ?`)
-      .get(tournamentId) as { status: string; max_players: number } | undefined;
+    const tournament = loadTournament(tournamentId);
     if (!tournament) throw new TournamentError("Tournament not found", 404);
-    if (tournament.status !== "open") throw new TournamentError("Registration is closed", 409);
+    // Arenas stay open for joining until they end; every other format closes at the start.
+    const lateJoin = tournament.format === "arena" && tournament.status === "running" && (tournament.ends_at ?? 0) > now;
+    if (tournament.status !== "open" && !lateJoin) throw new TournamentError("Registration is closed", 409);
     const joined = db.prepare(`SELECT 1 FROM tournament_participants WHERE tournament_id = ? AND user_id = ?`)
       .get(tournamentId, userId);
     if (joined) throw new TournamentError("Already registered", 409);
-    const count = db.prepare(`SELECT COUNT(*) AS count FROM tournament_participants WHERE tournament_id = ?`)
-      .get(tournamentId) as { count: number };
-    if (count.count >= tournament.max_players) throw new TournamentError("Tournament is full", 409);
-    db.prepare(`INSERT INTO tournament_participants (tournament_id, user_id, joined_at) VALUES (?, ?, ?)`)
-      .run(tournamentId, userId, Date.now());
+    const count = db.prepare(`SELECT COUNT(*) AS count, COALESCE(MAX(seed), 0) AS maxSeed FROM tournament_participants WHERE tournament_id = ?`)
+      .get(tournamentId) as { count: number; maxSeed: number };
+    const max = (db.prepare(`SELECT max_players FROM tournaments WHERE id = ?`).get(tournamentId) as { max_players: number }).max_players;
+    if (count.count >= max) throw new TournamentError("Tournament is full", 409);
+    db.prepare(`INSERT INTO tournament_participants (tournament_id, user_id, joined_at, seed) VALUES (?, ?, ?, ?)`)
+      .run(tournamentId, userId, now, lateJoin ? count.maxSeed + 1 : null);
   }).immediate();
 }
 
 export function withdrawTournament(tournamentId: string, userId: number): void {
   const db = getDb();
-  const tournament = db.prepare(`SELECT status FROM tournaments WHERE id = ?`).get(tournamentId) as
-    { status: string } | undefined;
+  const tournament = loadTournament(tournamentId);
   if (!tournament) throw new TournamentError("Tournament not found", 404);
   if (tournament.status !== "open") throw new TournamentError("Registration is closed", 409);
   const result = db.prepare(`DELETE FROM tournament_participants WHERE tournament_id = ? AND user_id = ?`)
@@ -119,12 +134,28 @@ export function withdrawTournament(tournamentId: string, userId: number): void {
   if (result.changes === 0) throw new TournamentError("Not registered", 404);
 }
 
-// Lets a paused player back into the pairings from the next round on.
+/** Sit out: an arena stops pairing you after your current game, a swiss skips you from the next round. */
+export function pauseTournament(tournamentId: string, userId: number): void {
+  const db = getDb();
+  db.transaction(() => {
+    const tournament = loadTournament(tournamentId);
+    if (!tournament) throw new TournamentError("Tournament not found", 404);
+    if (tournament.status !== "running") throw new TournamentError("Tournament is not running", 409);
+    if (tournament.format !== "arena" && tournament.format !== "swiss") {
+      throw new TournamentError("You can only pause in arena and swiss tournaments", 409);
+    }
+    const result = db.prepare(`
+      UPDATE tournament_participants SET paused = 1 WHERE tournament_id = ? AND user_id = ? AND paused = 0
+    `).run(tournamentId, userId);
+    if (result.changes === 0) throw new TournamentError("You are not playing in this tournament", 409);
+  }).immediate();
+}
+
+// Lets a paused player back into the pairings from the next round (or, in an arena, straight away).
 export function resumeTournament(tournamentId: string, userId: number): void {
   const db = getDb();
   db.transaction(() => {
-    const tournament = db.prepare(`SELECT status FROM tournaments WHERE id = ?`).get(tournamentId) as
-      { status: string } | undefined;
+    const tournament = loadTournament(tournamentId);
     if (!tournament) throw new TournamentError("Tournament not found", 404);
     if (tournament.status !== "running") throw new TournamentError("Tournament is not running", 409);
     const result = db.prepare(`
@@ -134,46 +165,9 @@ export function resumeTournament(tournamentId: string, userId: number): void {
   }).immediate();
 }
 
-interface TournamentRow {
-  id: string;
-  created_by: number;
-  status: string;
-  mode: "live" | "correspondence";
-  initial_ms: number | null;
-  increment_ms: number | null;
-  days_per_move: number | null;
-  variant: Variant;
-  rated: number;
-  starts_at: number | null;
-  current_round: number;
-}
-
-function gameClock(tournament: TournamentRow): ClockConfig {
-  return tournament.mode === "live"
-    ? { mode: "live", initialMs: tournament.initial_ms!, incrementMs: tournament.increment_ms ?? 0 }
-    : { mode: "correspondence", daysPerMove: tournament.days_per_move! };
-}
-
-function createPairingGame(tournament: TournamentRow, pairing: RoundRobinPairing, now: number): void {
-  const db = getDb();
-  const gameId = randomBytes(5).toString("hex");
-  insertGame(gameId, pairing.whiteId, pairing.blackId, createGame({
-    clock: gameClock(tournament), now, variant: tournament.variant, rated: tournament.rated === 1,
-  }));
-  db.prepare(`
-    UPDATE tournament_pairings SET game_id = ?
-    WHERE tournament_id = ? AND round_number = ? AND board_number = ? AND game_id IS NULL
-  `).run(gameId, tournament.id, pairing.round, pairing.board);
-
-  if (tournament.mode === "live") {
-    const event: UserEvent = { type: "pairing_ready", tournamentId: tournament.id, gameId, round: pairing.round };
-    pendingUserEvents.push({ userId: pairing.whiteId, event }, { userId: pairing.blackId, event });
-  }
-}
-
 function startTournamentInTransaction(tournamentId: string, organizerId: number | null, now: number): number {
   const db = getDb();
-  const tournament = db.prepare(`SELECT * FROM tournaments WHERE id = ?`).get(tournamentId) as TournamentRow | undefined;
+  const tournament = loadTournament(tournamentId);
   if (!tournament) throw new TournamentError("Tournament not found", 404);
   if (organizerId !== null && tournament.created_by !== organizerId) {
     throw new TournamentError("Only the organizer can start this tournament", 403);
@@ -183,29 +177,66 @@ function startTournamentInTransaction(tournamentId: string, organizerId: number 
     throw new TournamentError("Tournament is scheduled to start later", 409);
   }
 
-  const participants = db.prepare(`
-    SELECT p.user_id AS id, u.is_guest AS isGuest FROM tournament_participants p
-    JOIN users u ON u.id = p.user_id WHERE p.tournament_id = ? ORDER BY p.joined_at, p.user_id
-  `).all(tournamentId) as { id: number; isGuest: number }[];
-  if (participants.length < 2) throw new TournamentError("At least two players are required", 409);
-  if (tournament.rated && participants.some((player) => player.isGuest)) {
+  const guests = db.prepare(`
+    SELECT COUNT(*) AS n FROM tournament_participants p JOIN users u ON u.id = p.user_id
+    WHERE p.tournament_id = ? AND u.is_guest = 1
+  `).get(tournamentId) as { n: number };
+  const count = db.prepare(`SELECT COUNT(*) AS n FROM tournament_participants WHERE tournament_id = ?`).get(tournamentId) as { n: number };
+  if (count.n < (tournament.format === "arena" ? 1 : 2)) {
+    throw new TournamentError(tournament.format === "arena" ? "At least one player is required" : "At least two players are required", 409);
+  }
+  if (tournament.rated && guests.n > 0) {
     throw new TournamentError("Rated tournaments cannot include guest accounts", 403);
   }
 
-  const pairings = roundRobinPairings(participants.map((player) => player.id));
-  db.prepare(`UPDATE tournaments SET status = 'running', started_at = ?, current_round = 1 WHERE id = ?`)
-    .run(now, tournamentId);
-  for (const pairing of pairings) {
+  const seeded = assignSeeds(tournament);
+  const idsBySeed = seeded.map((player) => player.id);
+  const markRunning = (rounds: number | null, endsAt: number | null) =>
     db.prepare(`
-      INSERT INTO tournament_pairings (tournament_id, round_number, board_number, white_id, black_id)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(tournamentId, pairing.round, pairing.board, pairing.whiteId, pairing.blackId);
-  }
+      UPDATE tournaments SET status = 'running', started_at = ?, current_round = 1, rounds = ?, ends_at = COALESCE(?, ends_at)
+      WHERE id = ?
+    `).run(now, rounds, endsAt, tournamentId);
+  const running = () => ({ ...tournament, status: "running", started_at: now } as TournamentRow);
 
-  const firstRound = pairings.filter((pairing) => pairing.round === 1);
-  const openingPairings = tournament.mode === "live" ? firstRound : pairings;
-  for (const pairing of openingPairings) createPairingGame(tournament, pairing, now);
-  return openingPairings.length;
+  switch (tournament.format) {
+    case "arena":
+      // Games are paired by the scheduler as players become free.
+      markRunning(null, now + tournament.duration_ms!);
+      return 0;
+
+    case "swiss": {
+      const rounds = swissTotalRounds(tournament.rounds, idsBySeed.length);
+      markRunning(rounds, null);
+      return startSwissRound({ ...running(), rounds }, 1);
+    }
+
+    case "knockout": {
+      const rounds = knockoutRoundCount(idsBySeed.length);
+      markRunning(rounds, null);
+      return startKnockoutFirstRound({ ...running(), rounds }, idsBySeed);
+    }
+
+    case "round_robin": {
+      const pairings = roundRobinPairings(idsBySeed);
+      markRunning(Math.max(...pairings.map((pairing) => pairing.round)), null);
+      for (const pairing of pairings) {
+        db.prepare(`
+          INSERT INTO tournament_pairings (tournament_id, round_number, board_number, white_id, black_id)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(tournamentId, pairing.round, pairing.board, pairing.whiteId, pairing.blackId);
+      }
+      // Live: round 1 now, the rest as rounds finish. Correspondence: every game at once.
+      const opening = tournament.mode === "live" ? pairings.filter((pairing) => pairing.round === 1) : pairings;
+      for (const pairing of opening) {
+        const gameId = startPairingGame(tournament, pairing.whiteId, pairing.blackId, pairing.round, now);
+        db.prepare(`
+          UPDATE tournament_pairings SET game_id = ?
+          WHERE tournament_id = ? AND round_number = ? AND board_number = ? AND game_id IS NULL
+        `).run(gameId, tournamentId, pairing.round, pairing.board);
+      }
+      return opening.length;
+    }
+  }
 }
 
 export function startTournament(tournamentId: string, organizerId: number, now = Date.now()): number {
@@ -252,93 +283,42 @@ export function getNextTournamentStartAt(now = Date.now()): number | undefined {
   return row.startsAt ?? undefined;
 }
 
-function startRoundsAfter(tournament: TournamentRow, afterRound: number): boolean {
-  const db = getDb();
-  let round = afterRound;
-  for (;;) {
-    const next = db.prepare(`
-      SELECT MIN(round_number) AS round FROM tournament_pairings WHERE tournament_id = ? AND round_number > ?
-    `).get(tournament.id, round) as { round: number | null };
-    if (next.round === null) {
-      db.prepare(`UPDATE tournaments SET status = 'completed' WHERE id = ?`).run(tournament.id);
-      return false;
-    }
-    round = next.round;
-    db.prepare(`UPDATE tournaments SET current_round = ? WHERE id = ?`).run(round, tournament.id);
-
-    const paused = new Set(
-      (db.prepare(`SELECT user_id FROM tournament_participants WHERE tournament_id = ? AND paused = 1`)
-        .all(tournament.id) as { user_id: number }[]).map((row) => row.user_id),
-    );
-    const pairings = db.prepare(`
-      SELECT round_number AS round, board_number AS board, white_id AS whiteId, black_id AS blackId
-      FROM tournament_pairings
-      WHERE tournament_id = ? AND round_number = ? AND game_id IS NULL AND forfeit_by IS NULL AND voided = 0
-      ORDER BY board_number
-    `).all(tournament.id, round) as RoundRobinPairing[];
-
-    let created = 0;
-    for (const pairing of pairings) {
-      const whitePaused = paused.has(pairing.whiteId);
-      const blackPaused = paused.has(pairing.blackId);
-      if (!whitePaused && !blackPaused) {
-        createPairingGame(tournament, pairing, Date.now());
-        created++;
-        continue;
-      }
-      db.prepare(`
-        UPDATE tournament_pairings SET forfeit_by = ?, voided = ?
-        WHERE tournament_id = ? AND round_number = ? AND board_number = ?
-      `).run(
-        whitePaused && blackPaused ? null : whitePaused ? pairing.whiteId : pairing.blackId,
-        whitePaused && blackPaused ? 1 : 0,
-        tournament.id, pairing.round, pairing.board,
-      );
-    }
-    if (created > 0) return true;
-  }
-}
-
-export function advanceTournamentAfterGame(gameId: string, noShowId: number | null = null): boolean {
+export function advanceTournamentAfterGame(gameId: string, noShowId: number | null = null, now = Date.now()): boolean {
   const db = getDb();
   const pairing = db.prepare(`
-    SELECT p.tournament_id AS tournamentId, p.round_number AS round, t.mode, t.status,
-           t.current_round AS currentRound
-    FROM tournament_pairings p JOIN tournaments t ON t.id = p.tournament_id
-    WHERE p.game_id = ?
-  `).get(gameId) as { tournamentId: string; round: number; mode: "live" | "correspondence";
-    status: string; currentRound: number } | undefined;
-  if (!pairing || pairing.status !== "running") return false;
+    SELECT p.tournament_id AS tournamentId, p.round_number AS round FROM tournament_pairings p WHERE p.game_id = ?
+  `).get(gameId) as { tournamentId: string; round: number } | undefined;
+  if (!pairing) return false;
+  const tournament = loadTournament(pairing.tournamentId);
+  if (!tournament || tournament.status !== "running") return false;
 
   if (noShowId !== null) {
     const forfeited = db.prepare(`
       UPDATE tournament_pairings SET forfeit_by = ?
       WHERE game_id = ? AND (white_id = ? OR black_id = ?)
     `).run(noShowId, gameId, noShowId, noShowId).changes;
-    if (forfeited && pairing.mode === "live") {
+    // Live players who never showed up are paused so they stop being paired (they can resume).
+    if (forfeited && tournament.mode === "live") {
       db.prepare(`UPDATE tournament_participants SET paused = 1 WHERE tournament_id = ? AND user_id = ?`)
-        .run(pairing.tournamentId, noShowId);
+        .run(tournament.id, noShowId);
     }
   }
 
-  if (pairing.mode === "correspondence") {
-    const remaining = db.prepare(`
-      SELECT 1 FROM tournament_pairings p JOIN games g ON g.id = p.game_id
-      WHERE p.tournament_id = ? AND g.status = 'started' LIMIT 1
-    `).get(pairing.tournamentId);
-    if (!remaining) db.prepare(`UPDATE tournaments SET status = 'completed' WHERE id = ?`).run(pairing.tournamentId);
+  if (tournament.format === "arena") {
+    // New pairings come from the scheduler; here we only close the arena if time is already up.
+    if (tournament.ends_at !== null && now >= tournament.ends_at && !hasStartedGame(tournament.id)) completeTournament(tournament.id);
     return false;
   }
 
-  if (pairing.round !== pairing.currentRound) return false;
-  const remaining = db.prepare(`
-    SELECT 1 FROM tournament_pairings p JOIN games g ON g.id = p.game_id
-    WHERE p.tournament_id = ? AND p.round_number = ? AND g.status = 'started' LIMIT 1
-  `).get(pairing.tournamentId, pairing.round);
-  if (remaining) return false;
+  // Round robin by post: every game exists from the start, so it is over when none are left.
+  if (tournament.format === "round_robin" && tournament.mode === "correspondence") {
+    if (!hasStartedGame(tournament.id)) completeTournament(tournament.id);
+    return false;
+  }
 
-  const tournament = db.prepare(`SELECT * FROM tournaments WHERE id = ?`).get(pairing.tournamentId) as TournamentRow;
-  return startRoundsAfter(tournament, pairing.round);
+  if (pairing.round !== tournament.current_round) return false;
+  if (hasStartedGame(tournament.id, pairing.round)) return false;
+  return startNextRound(tournament, pairing.round);
 }
 
 export function advanceTournamentSafely(gameId: string, noShowId: number | null): void {
@@ -351,11 +331,13 @@ export function advanceTournamentSafely(gameId: string, noShowId: number | null)
   }
 }
 
+/** Gets tournaments moving again when a round finished but nothing created the next one. */
 export function repairStalledTournaments(): string[] {
   const db = getDb();
   const stalled = db.prepare(`
     SELECT t.id FROM tournaments t
-    WHERE t.status = 'running' AND t.mode = 'live'
+    WHERE t.status = 'running' AND t.format <> 'arena'
+      AND (t.mode = 'live' OR t.format IN ('swiss', 'knockout'))
       AND NOT EXISTS (
         SELECT 1 FROM tournament_pairings p JOIN games g ON g.id = p.game_id
         WHERE p.tournament_id = t.id AND g.status = 'started'
@@ -365,12 +347,11 @@ export function repairStalledTournaments(): string[] {
   for (const { id } of stalled) {
     try {
       db.transaction(() => {
-        const tournament = db.prepare(`SELECT * FROM tournaments WHERE id = ?`).get(id) as TournamentRow | undefined;
-        if (tournament && startRoundsAfter(tournament, tournament.current_round - 1)) {
-          repaired.push(id);
-        }
+        const tournament = loadTournament(id);
+        if (tournament && repairRound(tournament)) repaired.push(id);
       })();
     } catch (err) {
+      pendingUserEvents.length = 0;
       log.error({ err, tournamentId: id }, "could not repair stalled tournament");
     }
   }
@@ -391,82 +372,147 @@ export function cancelTournament(tournamentId: string, organizerId: number): voi
   throw new TournamentError("Only open tournaments can be cancelled", 409);
 }
 
+// ---------------------------------------------------------------- reading
+
+interface PairingDetail {
+  round: number; board: number; match: number | null; leg: number;
+  whiteId: number; blackId: number | null; isBye: number; forfeitBy: number | null; voided: number;
+  gameId: string | null; status: string | null; result: string | null; termination: string | null; endedAt: number | null;
+}
+
+const ARENA_GAME_LIST_LIMIT = 60;
+
 export function getTournament(tournamentId: string, viewerId: number) {
   const db = getDb();
   const tournament = db.prepare(`SELECT t.*, u.username AS organizer FROM tournaments t JOIN users u ON u.id = t.created_by WHERE t.id = ?`)
-    .get(tournamentId) as Record<string, any> | undefined;
+    .get(tournamentId) as (TournamentRow & { organizer: string; name: string; description: string | null; max_players: number; created_at: number }) | undefined;
   if (!tournament) return undefined;
 
-  const participants = db.prepare(`
-    SELECT u.id, u.username, p.joined_at AS joinedAt, p.paused
-    FROM tournament_participants p JOIN users u ON u.id = p.user_id
-    WHERE p.tournament_id = ?
-  `).all(tournamentId) as { id: number; username: string; joinedAt: number; paused: number }[];
-  const games = db.prepare(`
-        SELECT p.round_number AS round, g.id, g.status, g.result, g.termination, g.ended_at AS endedAt,
-          g.white_id AS whiteId, wu.username AS whiteName, g.black_id AS blackId, bu.username AS blackName
-        FROM tournament_pairings p JOIN games g ON g.id = p.game_id
-    JOIN users wu ON wu.id = g.white_id JOIN users bu ON bu.id = g.black_id
-        WHERE p.tournament_id = ? ORDER BY p.round_number, p.board_number
-  `).all(tournamentId) as { round: number; id: string; status: string; result: string | null;
-    whiteId: number; whiteName: string; blackId: number; blackName: string }[];
+  const participants = loadParticipants(tournamentId);
+  const nameOf = new Map(participants.map((p) => [p.id, p.username]));
+  const seedOf = new Map(participants.map((p) => [p.id, p.seed]));
+  const name = (id: number | null) => (id === null ? null : nameOf.get(id) ?? "?");
 
-  const pairings = db.prepare(`
-    SELECT round_number AS round, game_id AS gameId, white_id AS whiteId, black_id AS blackId,
-           forfeit_by AS forfeitBy, voided
-    FROM tournament_pairings WHERE tournament_id = ?
-    ORDER BY round_number, board_number
-  `).all(tournamentId) as { round: number; gameId: string | null; whiteId: number; blackId: number;
-    forfeitBy: number | null; voided: number }[];
+  const rows = db.prepare(`
+    SELECT p.round_number AS round, p.board_number AS board, p.match_number AS match, p.leg,
+           p.white_id AS whiteId, p.black_id AS blackId, p.is_bye AS isBye, p.forfeit_by AS forfeitBy, p.voided,
+           p.game_id AS gameId, g.status, g.result, g.termination, g.ended_at AS endedAt
+    FROM tournament_pairings p LEFT JOIN games g ON g.id = p.game_id
+    WHERE p.tournament_id = ? ORDER BY p.round_number, p.board_number
+  `).all(tournamentId) as PairingDetail[];
 
-  const standings = participants.map((participant) => {
-    const played = pairings.filter((pairing) => !pairing.voided &&
-      (pairing.whiteId === participant.id || pairing.blackId === participant.id) &&
-      (pairing.forfeitBy !== null || games.some((game) => game.status === "finished" &&
-        game.whiteId === pairing.whiteId && game.blackId === pairing.blackId)));
-    const resultFor = (pairing: typeof pairings[number]) => {
-      if (pairing.forfeitBy === pairing.whiteId) return "0-1";
-      if (pairing.forfeitBy === pairing.blackId) return "1-0";
-      return games.find((game) => game.whiteId === pairing.whiteId && game.blackId === pairing.blackId)?.result;
-    };
-    const points = played.reduce((total, pairing) => {
-      const result = resultFor(pairing);
-      if (result === "1/2-1/2") return total + 0.5;
-      if ((result === "1-0" && pairing.whiteId === participant.id) ||
-          (result === "0-1" && pairing.blackId === participant.id)) return total + 1;
-      return total;
-    }, 0);
-    const wins = played.filter((pairing) =>
-      (resultFor(pairing) === "1-0" && pairing.whiteId === participant.id) ||
-      (resultFor(pairing) === "0-1" && pairing.blackId === participant.id)).length;
-    return { ...participant, points, wins, gamesPlayed: played.length };
-  }).sort((a, b) => b.points - a.points || b.wins - a.wins || a.username.localeCompare(b.username));
+  const toGame = (row: PairingDetail) => ({
+    round: row.round, board: row.board, match: row.match, leg: row.leg,
+    id: row.gameId!, status: row.status!, result: row.result, termination: row.termination, endedAt: row.endedAt,
+    whiteId: row.whiteId, whiteName: name(row.whiteId)!, blackId: row.blackId!, blackName: name(row.blackId)!,
+    forfeit: row.forfeitBy !== null,
+  });
+  let games = rows.filter((row) => row.gameId !== null).map(toGame);
+  if (tournament.format === "arena") games = games.reverse().slice(0, ARENA_GAME_LIST_LIMIT); // newest first
 
-  const skipped = pairings.filter((pairing) => pairing.gameId === null &&
-    (pairing.forfeitBy !== null || pairing.voided))
-    .map((pairing) => ({
-      round: pairing.round,
-      whiteId: pairing.whiteId,
-      blackId: pairing.blackId,
-      forfeitBy: pairing.forfeitBy,
-      voided: Boolean(pairing.voided),
-      result: pairing.voided ? null : pairing.forfeitBy === pairing.whiteId ? "0-1" : "1-0",
-    }));
+  const skipped = rows.filter((row) => row.gameId === null && !row.isBye && (row.forfeitBy !== null || row.voided)).map((row) => ({
+    round: row.round, whiteId: row.whiteId, whiteName: name(row.whiteId)!, blackId: row.blackId!, blackName: name(row.blackId)!,
+    forfeitBy: row.forfeitBy, voided: Boolean(row.voided),
+    result: row.voided ? null : row.forfeitBy === row.whiteId ? "0-1" : "1-0",
+  }));
+  const byes = rows.filter((row) => row.isBye).map((row) => ({ round: row.round, playerId: row.whiteId, name: name(row.whiteId)! }));
 
+  const standingRows: (StandingRow & { username: string })[] = [];
+  let bracket: ReturnType<typeof buildBracket> | undefined;
+  if (tournament.format === "knockout") {
+    bracket = buildBracket(rows, seedOf, name);
+    const placed = knockoutStandings(participants, bracket);
+    standingRows.push(...placed.map((row) => ({ ...row, username: nameOf.get(row.id)! })));
+  } else {
+    const table = computeStandings(tournament.format, participants, loadScoredGames(tournamentId), {
+      streakBonus: tournament.streak_bonus === 1,
+    });
+    standingRows.push(...table.map((row) => ({ ...row, username: nameOf.get(row.id)! })));
+  }
+
+  const me = participants.find((p) => p.id === viewerId);
   return {
     tournament: {
       id: tournament.id, name: tournament.name, description: tournament.description,
       status: tournament.status, format: tournament.format, rated: Boolean(tournament.rated),
       mode: tournament.mode, initialMs: tournament.initial_ms, incrementMs: tournament.increment_ms,
       daysPerMove: tournament.days_per_move, variant: tournament.variant, maxPlayers: tournament.max_players,
+      rounds: tournament.rounds, currentRound: tournament.current_round,
+      durationMs: tournament.duration_ms, streakBonus: tournament.streak_bonus === 1,
       startsAt: tournament.starts_at, endsAt: tournament.ends_at,
       organizer: tournament.organizer, createdAt: tournament.created_at, startedAt: tournament.started_at,
-      joined: participants.some((p) => p.id === viewerId), isOrganizer: tournament.created_by === viewerId,
-      paused: participants.some((p) => p.id === viewerId && p.paused === 1),
+      joined: me !== undefined, isOrganizer: tournament.created_by === viewerId, paused: me?.paused ?? false,
+      canJoinLate: tournament.format === "arena" && tournament.status === "running" && (tournament.ends_at ?? 0) > Date.now(),
     },
-    participants: participants.map(({ paused: _paused, ...participant }) => participant),
-    standings,
+    participants: participants.map((p) => ({ id: p.id, username: p.username, seed: p.seed, paused: p.paused })),
+    standings: standingRows,
     games,
     skipped,
+    byes,
+    bracket,
   };
 }
+
+function buildBracket(rows: PairingDetail[], seedOf: Map<number, number>, name: (id: number | null) => string | null) {
+  const seed = (id: number) => seedOf.get(id) ?? Number.MAX_SAFE_INTEGER;
+  const rounds = new Map<number, Map<number, PairingDetail[]>>();
+  for (const row of rows) {
+    if (row.match === null) continue;
+    const matches = rounds.get(row.round) ?? new Map<number, PairingDetail[]>();
+    matches.set(row.match, [...(matches.get(row.match) ?? []), row]);
+    rounds.set(row.round, matches);
+  }
+  return [...rounds.entries()].sort(([a], [b]) => a - b).map(([round, matches]) => ({
+    round,
+    matches: [...matches.entries()].sort(([a], [b]) => a - b).map(([match, legs]) => {
+      const first = legs[0]!;
+      if (first.isBye) {
+        return { match, bye: true, highId: first.whiteId, highName: name(first.whiteId)!, lowId: null, lowName: null, winnerId: first.whiteId, bySeed: false, legs: [] };
+      }
+      const [a, b] = [first.whiteId, first.blackId!];
+      const [highId, lowId] = seed(a) <= seed(b) ? [a, b] : [b, a];
+      const outcome = matchOutcome(highId, lowId, legs.map((leg): Leg => ({
+        whiteId: leg.whiteId, blackId: leg.blackId!, forfeitBy: leg.forfeitBy,
+        ...(leg.status === "finished" && leg.result ? { result: leg.result as Leg["result"] } : {}),
+      })), seed);
+      return {
+        match, bye: false, highId, highName: name(highId)!, lowId, lowName: name(lowId)!,
+        winnerId: outcome.status === "decided" ? outcome.winnerId : null,
+        bySeed: outcome.status === "decided" && outcome.bySeed,
+        legs: legs.map((leg) => ({
+          gameId: leg.gameId, leg: leg.leg, status: leg.status, result: leg.result, forfeit: leg.forfeitBy !== null,
+          whiteId: leg.whiteId,
+        })),
+      };
+    }),
+  }));
+}
+
+/** Knockout placing: champion first, then by how late a player went out, then seed. Points = matches won. */
+function knockoutStandings(
+  participants: { id: number; seed: number }[],
+  bracket: ReturnType<typeof buildBracket>,
+): StandingRow[] {
+  const rows = new Map<number, StandingRow>(participants.map((p) => [p.id, {
+    id: p.id, seed: p.seed, points: 0, wins: 0, draws: 0, losses: 0, gamesPlayed: 0,
+    buchholz: 0, sonnebornBerger: 0, streak: 0, onFire: false, eliminatedIn: null,
+  }]));
+  for (const { round, matches } of bracket) {
+    for (const match of matches) {
+      if (match.winnerId === null) continue;
+      const winner = rows.get(match.winnerId);
+      if (winner) { winner.wins += 1; winner.points += 1; winner.gamesPlayed += 1; }
+      if (match.lowId !== null) {
+        const loserId = match.winnerId === match.highId ? match.lowId : match.highId;
+        const loser = rows.get(loserId);
+        if (loser) { loser.losses += 1; loser.gamesPlayed += 1; loser.eliminatedIn = round; }
+      }
+    }
+  }
+  return [...rows.values()].sort((a, b) => {
+    const left = a.eliminatedIn ?? Number.MAX_SAFE_INTEGER;
+    const right = b.eliminatedIn ?? Number.MAX_SAFE_INTEGER;
+    return right - left || b.wins - a.wins || a.seed - b.seed;
+  });
+}
+
