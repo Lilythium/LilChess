@@ -119,6 +119,8 @@ LilChess can be configured with environment variables.
 | `BACKUP_DIR`      | `$DATA_DIR/backups` | Backup location                               |
 | `BACKUP_KEEP`     | `7`                 | Number of backups to retain                   |
 | `BACKUP_HOUR_UTC` | `3`                 | Daily backup hour in UTC                      |
+| `LEADERBOARD_MIN_GAMES` | `5`           | Minimum rated games required for leaderboard eligibility |
+| `LEADERBOARD_INACTIVE_DAYS` | `30`      | Hide inactive players from the rating leaderboard after this many days; `0` disables hiding |
 | `WEBHOOK_URL`     | —                   | Optional notification webhook                 |
 | `WEBHOOK_KIND`    | —                   | Webhook type, such as `ntfy` or `discord`     |
 | `ALLOW_GUESTS`    | `true`              | Let invite-link visitors play as guests       |

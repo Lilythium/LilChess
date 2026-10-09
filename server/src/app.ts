@@ -13,6 +13,7 @@ import { resetRoutes } from "./auth/resetRoutes.js";
 import { gameRoutes } from "./game/routes.js";
 import { notificationRoutes } from "./notifications/routes.js";
 import { tournamentRoutes } from "./tournaments/routes.js";
+import { leaderboardRoutes } from "./leaderboard/routes.js";
 
 type TrustProxy = boolean | string | ((address: string, hop: number) => boolean);
 
@@ -58,6 +59,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(gameRoutes);
   await app.register(notificationRoutes);
   await app.register(tournamentRoutes);
+  await app.register(leaderboardRoutes);
   app.get("/api/health", { config: { rateLimit: false } }, async () => ({ ok: true }));
 
   // Static assets (web/dist) + SPA fallback

@@ -19,6 +19,7 @@
   import Unsubscribe from "./routes/Unsubscribe.svelte";
   import Tournaments from "./routes/Tournaments.svelte";
   import TournamentDetail from "./routes/TournamentDetail.svelte";
+  import Leaderboard from "./routes/Leaderboard.svelte";  
   import { connectUserSocket } from "./lib/ws/userSocket";
 
   onMount(loadMe);
@@ -29,6 +30,7 @@
   const reset = $derived(matchRoute(route.path, "/reset/:token"));
   const unsub = $derived(matchRoute(route.path, "/unsubscribe/:token"));
   const tournament = $derived(matchRoute(route.path, "/tournament/:id"));
+  const leaderboard = $derived(matchRoute(route.path, "/leaderboard/:variant"));
   const forgot = $derived(route.path === "/forgot");
   // Reachable without logging in (the user is locked out, or clicked a link in an email).
   const publicPage = $derived(forgot || !!reset || !!unsub);
@@ -129,6 +131,8 @@
     {:else if route.path === "/local"}<LocalGame />
     {:else if route.path === "/watch"}<Watch />
     {:else if route.path === "/tournaments"}<Tournaments />
+    {:else if route.path === "/leaderboard"}<Leaderboard /> 
+    {:else if leaderboard}<Leaderboard variant={leaderboard.variant} />  
     {:else if tournament}{#key tournament.id}<TournamentDetail id={tournament.id} />{/key}
     {:else}<Lobby />{/if}
   </main>

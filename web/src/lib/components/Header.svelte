@@ -70,6 +70,7 @@
     </a>
     <a href="#/watch" class="nav-item" onclick={closeMenu}>WATCH</a>
     <a href="#/tournaments" class="nav-item" onclick={closeMenu}>TOURNAMENTS</a>
+    <a href="#/leaderboard" class="nav-item" onclick={closeMenu}>LEADERBOARD</a>
     <a href={profileHref} class="nav-item" onclick={closeMenu}>{displayName(auth.user?.username ?? "").toUpperCase()}</a>
     {#if !auth.user?.is_guest}
       <a href="#/settings" class="nav-item" onclick={closeMenu}>SETTINGS</a>

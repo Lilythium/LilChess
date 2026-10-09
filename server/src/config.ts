@@ -19,6 +19,8 @@ const Env = z.object({
   BACKUP_KEEP: z.coerce.number().int().min(0).max(365).default(7), // 0 disables backups
   BACKUP_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(3),
   ALLOW_GUESTS: z.stringbool().default(true),
+  LEADERBOARD_MIN_GAMES: z.coerce.number().int().min(0).max(1000).default(5),
+  LEADERBOARD_INACTIVE_DAYS: z.coerce.number().int().min(0).max(3650).default(30), // 0 = never hide inactive players
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
   SMTP_SECURE: z.stringbool().default(false), // true for implicit TLS (port 465)
@@ -51,6 +53,8 @@ export interface Config {
   backupKeep: number;
   backupHourUtc: number;
   allowGuests: boolean;
+  leaderboardMinGames: number;
+  leaderboardInactiveDays: number;
   smtp: SmtpConfig | undefined;
 }
 
@@ -98,6 +102,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     backupKeep: e.BACKUP_KEEP,
     backupHourUtc: e.BACKUP_HOUR_UTC,
     allowGuests: e.ALLOW_GUESTS,
+    leaderboardMinGames: e.LEADERBOARD_MIN_GAMES,
+    leaderboardInactiveDays: e.LEADERBOARD_INACTIVE_DAYS,
     smtp: e.SMTP_HOST ? {
       host: e.SMTP_HOST ?? "localhost",
       port: e.SMTP_PORT,
