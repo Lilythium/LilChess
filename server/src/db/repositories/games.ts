@@ -23,11 +23,15 @@ import { notifyDeadlineChanged } from "../../game/deadlineBus.js";
 import { settleRatings } from "./ratings.js";
 import { notifyGameOver, notifyYourTurn } from "../../notifications/dispatch.js";
 import { advanceTournamentSafely, flushTournamentEvents } from "../../tournaments/service.js";
+import { flushSimulEvents, queueSimulBoard } from "../../simuls/events.js";
+import { simulIdForGame } from "../../simuls/lookup.js";
+
 export { insertGame } from "./insertGame.js";
 
 function afterCommit(): void {
   notifyDeadlineChanged();
   flushTournamentEvents();
+  flushSimulEvents();
 }
 
 export function getGame(id: string): GameState | undefined {
@@ -74,6 +78,8 @@ function updateGameState(id: string, game: GameState, actorId: number | null = n
       WHERE id=@id`,
     )
     .run({ id, ...row, fen, lastMove: game.moves.at(-1) ?? null, endedAt: Date.now() });
+
+    queueSimulBoard(id);
 
   if (game.status !== "started") {
     advanceTournamentSafely(id, game.status === "aborted" ? abortFaultId(id, game, actorId) : null);
@@ -265,6 +271,9 @@ function actAndPersist(
     }
     return result;
   }).immediate();
+  if (result.ok) flushSimulEvents(); 
+  if (result.ok && result.state.status !== "started") notifyDeadlineChanged();
+
   if (result.ok && result.state.status !== "started") notifyDeadlineChanged();
   return result;
 }
@@ -329,7 +338,8 @@ export function abortAndPersist(gameId: string, userId: number) {
 }
 
 export function offerTakebackAndPersist(gameId: string, userId: number) {
-  const r = actAndPersist(gameId, userId, offerTakeback);
+  const r = actAndPersist(gameId, userId, (game, color) =>
+    simulIdForGame(gameId) ? { ok: false, error: "takebacks_disabled" } : offerTakeback(game, color));
   if (r.ok) {
     broadcastGameEvent(gameId, { type: "takeback_offer", gameId, by: r.state.takebackOfferedBy ?? null });
   }
@@ -382,6 +392,7 @@ export function claimTimeoutAndPersist(gameId: string, now: number) {
     notifyDeadlineChanged();
     broadcastGameOver(gameId, outcome.state);
     notifyGameOver(gameId, outcome.state, null);
+    flushSimulEvents();
   }
   return outcome;
 }

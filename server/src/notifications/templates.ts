@@ -75,3 +75,8 @@ export const passwordReset = (username: string, token: string): Message => ({
     `Choose a new one here (valid for 1 hour, works once): ${link("/reset/" + token)}\n\n` +
     `If that wasn't you, ignore this email and nothing changes.\n`,
 });
+
+export const simulInvited = (host: string, name: string, simulId: string): Message => ({
+  subject: `${cap(host)} invited you to a simul`,
+  text: `${cap(host)} invited you to play in "${name}", a simultaneous exhibition.\n\nAccept or decline: ${link("/simul/" + simulId)}\n`,
+});

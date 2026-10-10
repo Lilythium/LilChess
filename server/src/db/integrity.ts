@@ -43,6 +43,26 @@ export function checkIntegrity(db: Database.Database, opts: { deep?: boolean } =
     add("variant", `game ${g.id} has unknown variant '${g.variant}'`);
   }
 
+  for (const r of db.prepare(`
+    SELECT sp.simul_id AS simulId, sp.user_id AS userId FROM simul_players sp JOIN simuls s ON s.id = sp.simul_id
+    WHERE s.status IN ('running', 'completed') AND sp.status = 'accepted' AND sp.game_id IS NULL
+  `).all() as { simulId: string; userId: number }[]) {
+    add("simul", `simul ${r.simulId}: accepted player ${r.userId} has no board`);
+  }
+  for (const r of db.prepare(`
+    SELECT s.id AS simulId, g.id AS gameId FROM simul_players sp
+    JOIN simuls s ON s.id = sp.simul_id JOIN games g ON g.id = sp.game_id
+    WHERE g.white_id <> s.host_id AND g.black_id <> s.host_id
+  `).all() as { simulId: string; gameId: string }[]) {
+    add("simul", `simul ${r.simulId}: game ${r.gameId} does not include the host`);
+  }
+  for (const r of db.prepare(`
+    SELECT s.id FROM simuls s WHERE s.status = 'running' AND NOT EXISTS (
+      SELECT 1 FROM simul_players sp JOIN games g ON g.id = sp.game_id WHERE sp.simul_id = s.id AND g.status = 'started')
+  `).all() as { id: string }[]) {
+    add("simul", `simul ${r.id} is running but has no game in progress`);
+  }
+
   if (opts.deep) {
     const games = db.prepare(`SELECT id, initial_fen, fen, last_move FROM games`).all() as
       { id: string; initial_fen: string; fen: string | null; last_move: string | null }[];

@@ -133,3 +133,7 @@ export function notifyTournamentCancelled(tournamentId: string): void {
     );
   }
 }
+
+export function notifySimulInvited(o: { simulId: string; simulName: string; hostName: string; toId: number }): void {
+  notifyUser(o.toId, "simul_invited", `simul-invite:${o.simulId}`, () => t.simulInvited(o.hostName, o.simulName, o.simulId));
+}

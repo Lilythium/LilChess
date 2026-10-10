@@ -32,6 +32,14 @@
 - Plan: generalise hub keys to channel strings in Phase 4; add a per-user multiplexed
   socket for simuls in Phase 8. No change in Phase 0/1.
 
+## Simuls
+
+- **Game Association:** Each accepted player receives one ordinary game, linked back through `simul_players.game_id`.
+- **Completion Logic:** Automatically managed via the `simuls_complete_after_game` trigger.
+- **Host & Timing:** Live simuls are host-White only, utilizing an extended first-move window defined by `simulFirstMoveWindowMs`.
+- **Real-time Communication:** Overview updates flow through `/ws/simuls/:id`, whereas individual board play leverages the existing `/ws/games/:id` game sockets.
+- **Event Sinks:** Events are rebuilt from committed rows and flushed only after the transaction commits.
+
 ## Performance
 
 ┌─────────┬───────────┬─────────┬─────────────┬─────────────┬─────────────┬─────────────┐

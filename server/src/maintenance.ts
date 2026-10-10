@@ -9,7 +9,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Expired sessions and challenges are already ignored by queries; this just stops the tables growing forever.
 export function purgeExpired(now = Date.now()): {
-  sessions: number; challenges: number; guests: number; resets: number; notifications: number;
+  sessions: number; challenges: number; guests: number; resets: number; notifications: number; simuls: number;
 } {
   const db = getDb();
   const sessions = db.prepare(`DELETE FROM sessions WHERE expires_at <= ?`).run(now).changes;
@@ -25,7 +25,9 @@ export function purgeExpired(now = Date.now()): {
       AND NOT EXISTS (SELECT 1 FROM games g WHERE g.white_id = users.id OR g.black_id = users.id)
       AND NOT EXISTS (SELECT 1 FROM challenges c WHERE c.from_user = users.id OR c.to_user = users.id)
   `).run().changes;
-  return { sessions, challenges, guests, resets, notifications };
+  const simuls = db.prepare(`UPDATE simuls SET status = 'cancelled', ended_at = ? WHERE status = 'open' AND created_at < ?`)
+    .run(now, now - 2 * DAY_MS).changes;
+  return { sessions, challenges, guests, resets, notifications, simuls };
 }
 
 function run(): void {

@@ -4,13 +4,16 @@
   import { displayName, timeControl } from "../lib/format";
   import GameCard from "../lib/components/GameCard.svelte";
   import type { LiveGameRow } from "../lib/types";
+  import type { SimulLists, SimulSummary } from "../lib/simul/types";
 
   let games = $state<LiveGameRow[] | null>(null);
+  let simuls = $state<SimulSummary[]>([]);
   let error = $state<string | null>(null);
 
   async function load() {
     try {
       games = (await api<{ games: LiveGameRow[] }>("/api/games/live")).games;
+      simuls = (await api<SimulLists>("/api/simuls")).running;
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -29,6 +32,15 @@
 {:else if !games}
   <p class="muted">Loading…</p>
 {:else}
+  {#if simuls.length}
+    <div class="panel">
+      <h2>Live simuls</h2>
+      {#each simuls as s (s.id)}
+        <p><a href={"#/simul/" + s.id}>{s.name}</a> <span class="muted">· {displayName(s.hostName)} · {s.boardsLeft} boards left</span></p>
+      {/each}
+    </div>
+  {/if}
+
   <div class="panel">
     <h2>Watch live</h2>
     {#if games.length === 0}

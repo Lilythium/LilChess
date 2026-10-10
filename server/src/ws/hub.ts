@@ -1,10 +1,12 @@
 import type { WebSocket } from "ws";
-import type { GameEvent, UserEvent } from "@lilchess/shared";
+import type { GameEvent, SimulEvent, UserEvent } from "@lilchess/shared";
 
 const MAX_BUFFERED_BYTES = 1024 * 1024; // a client this far behind is dead or hopeless
 
 const gameSockets = new Map<string, Set<WebSocket>>();
 const userSockets = new Map<number, Set<WebSocket>>();
+
+const simulSockets = new Map<string, Set<WebSocket>>();
 
 function fanOut(set: Set<WebSocket>, payload: string): void {
   for (const socket of set) {
@@ -79,6 +81,35 @@ export function broadcastUserEvent(userId: number, event: UserEvent): void {
   if (set.size === 0) userSockets.delete(userId);
 }
 
+// --- Simul overview subscriptions ---
+
+export function subscribeSimul(simulId: string, socket: WebSocket): void {
+  let set = simulSockets.get(simulId);
+  if (!set) {
+    set = new Set();
+    simulSockets.set(simulId, set);
+  }
+  set.add(socket);
+}
+
+export function unsubscribeSimul(simulId: string, socket: WebSocket): void {
+  const set = simulSockets.get(simulId);
+  if (!set) return;
+  set.delete(socket);
+  if (set.size === 0) simulSockets.delete(simulId);
+}
+
+export function simulSocketCount(simulId: string): number {
+  return simulSockets.get(simulId)?.size ?? 0;
+}
+
+export function broadcastSimulEvent(simulId: string, event: SimulEvent): void {
+  const set = simulSockets.get(simulId);
+  if (!set || set.size === 0) return;
+  fanOut(set, JSON.stringify(event));
+  if (set.size === 0) simulSockets.delete(simulId);
+}
+
 /** Clean up all subscriptions for a disconnected socket across both games and users. */
 export function cleanupSocket(socket: WebSocket): void {
   for (const [gameId, set] of gameSockets.entries()) {
@@ -88,5 +119,9 @@ export function cleanupSocket(socket: WebSocket): void {
   for (const [userId, set] of userSockets.entries()) {
     set.delete(socket);
     if (set.size === 0) userSockets.delete(userId);
+  }
+  for (const [simulId, set] of simulSockets.entries()) {
+    set.delete(socket);
+    if (set.size === 0) simulSockets.delete(simulId);
   }
 }

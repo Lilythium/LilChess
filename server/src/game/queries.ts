@@ -114,7 +114,10 @@ export function acceptChallengeTx(challengeId: string, acceptingUserId: number) 
 const GAME_ROW_COLUMNS = `
   g.id, g.white_id, g.black_id, wu.username AS white_name, bu.username AS black_name,
   g.mode, g.initial_ms, g.increment_ms, g.days_per_move, g.status, g.result, g.termination,
-  g.ply, g.deadline_at, g.ended_at, g.fen, g.last_move`;
+  g.ply, g.deadline_at, g.ended_at, g.fen, g.last_move,
+  (SELECT sp.simul_id FROM simul_players sp WHERE sp.game_id = g.id) AS simul_id,
+  (SELECT s.host_id FROM simul_players sp JOIN simuls s ON s.id = sp.simul_id
+    WHERE sp.game_id = g.id) AS simul_host_id`;
 
 const GAME_ROW_FROM = `
   FROM games g
@@ -242,6 +245,7 @@ export function getLiveGames(limit = 20) {
     JOIN users wu ON wu.id = g.white_id
     JOIN users bu ON bu.id = g.black_id
     WHERE g.status = 'started'
+      AND NOT EXISTS (SELECT 1 FROM simul_players sp WHERE sp.game_id = g.id)
     ORDER BY (g.mode = 'live') DESC, g.created_at DESC
     LIMIT ?
   `).all(limit) as any[];

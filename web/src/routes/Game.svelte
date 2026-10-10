@@ -18,6 +18,7 @@
   import GameAlerts from "../lib/components/GameAlerts.svelte";
   import GameResult from "../lib/components/GameResult.svelte";
   import { keepAwake } from "../lib/wakeLock";
+  import SimulBar from "../lib/components/SimulBar.svelte";
 
   let { id }: { id: string } = $props();
 
@@ -107,8 +108,16 @@
   const side = (c: Color) => {
     const p = view.players;
     return c === "white"
-      ? { name: p?.whiteName ?? "", rating: p?.whiteRating ?? null }
-      : { name: p?.blackName ?? "", rating: p?.blackRating ?? null };
+      ? {
+          name: p?.whiteName ?? "",
+          rating: p?.whiteRating?.rating ?? null,
+          provisional: p?.whiteRating?.provisional ?? false,
+        }
+      : {
+          name: p?.blackName ?? "",
+          rating: p?.blackRating?.rating ?? null,
+          provisional: p?.blackRating?.provisional ?? false,
+        };
   };
 
   // Keep the screen on during my own live games (needs HTTPS; a no-op elsewhere).
@@ -140,6 +149,12 @@
 
 <svelte:window onkeydown={onKey} />
 
+<svelte:head>
+  {#if view.game && view.players}
+    <title>{gameTitle(view.game.clock, view.game.variant)}</title>
+  {/if}
+</svelte:head>
+
 {#if view.status === "loading"}
   <p class="muted">Loading…</p>
 {:else if view.status === "error"}
@@ -148,41 +163,120 @@
   {@const g = view.game}
   {@const p = view.players}
 
-  <div class="game">
-    <div class="name-area">
-      <NameCard
-        players={p}
-        clock={g.clock as any}
-        variant={g.variant}
-        {orientation}
-      />
-    </div>
+  {#if viewport.mobile}
+    <div class="game-mobile" style:--simul-h={view.simul ? "56px" : "0px"}>
+      {#if view.simul}
+        <div class="simul-area">
+          <SimulBar
+            simulId={view.simul.id}
+            gameId={id}
+            name={view.simul.name}
+            hostName={view.simul.hostName}
+            isHost={view.simul.hostId === auth.user?.id}
+          />
+        </div>
+      {/if}
 
-    <div class="board-area">
-      <Board
+      <PlayerStrip
+        color={topColor}
+        {...side(topColor)}
         game={g}
-        {myColor}
-        {orientation}
-        {resetKey}
-        viewPly={viewPly ?? g.ply}
-        onMove={sendMove}
-        onCancel={() => resetKey++}
+        offset={view.serverOffset}
       />
-    </div>
 
-    <div class="sidebar-area">
-      <GameSidebar
+      <div class="board-area">
+        <Board
+          game={g}
+          {myColor}
+          {orientation}
+          {resetKey}
+          viewPly={viewPly ?? g.ply}
+          onMove={sendMove}
+          onCancel={() => resetKey++}
+        />
+      </div>
+
+      <PlayerStrip
+        color={bottomColor}
+        {...side(bottomColor)}
         game={g}
-        players={p}
-        {myColor}
+        offset={view.serverOffset}
+      />
+
+      <MoveStrip
         sanByPly={view.sanByPly}
+        ply={g.ply}
         {viewPly}
-        serverOffset={view.serverOffset}
-        {id}
         onNav={nav}
         onSelect={(ply: number) => (viewPly = selectPly(ply, g.ply))}
+      />
+
+      <GameAlerts
+        game={g}
+        {myColor}
+        {id}
+        offset={view.serverOffset}
         onDone={store.resync}
       />
+
+      <GameActions
+        game={g}
+        {id}
+        {myColor}
+        onDone={store.resync}
+      />
+
+      <GameResult game={g} />
     </div>
-  </div>
+  {:else}
+    {#if view.simul}
+      <div class="simul-area">
+        <SimulBar
+          simulId={view.simul.id}
+          gameId={id}
+          name={view.simul.name}
+          hostName={view.simul.hostName}
+          isHost={view.simul.hostId === auth.user?.id}
+        />
+      </div>
+    {/if}
+
+    <div class="game">
+      <div class="name-area">
+        <NameCard
+          players={p}
+          clock={g.clock as any}
+          variant={g.variant}
+          {orientation}
+        />
+      </div>
+
+      <div class="board-area">
+        <Board
+          game={g}
+          {myColor}
+          {orientation}
+          {resetKey}
+          viewPly={viewPly ?? g.ply}
+          onMove={sendMove}
+          onCancel={() => resetKey++}
+        />
+      </div>
+
+      <div class="sidebar-area">
+        <GameSidebar
+          game={g}
+          players={p}
+          {myColor}
+          sanByPly={view.sanByPly}
+          {viewPly}
+          serverOffset={view.serverOffset}
+          {id}
+          onNav={nav}
+          onSelect={(ply: number) => (viewPly = selectPly(ply, g.ply))}
+          onDone={store.resync}
+        />
+      </div>
+    </div>
+  {/if}
 {/if}

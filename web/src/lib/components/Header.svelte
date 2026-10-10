@@ -8,12 +8,15 @@
 
   let yourTurn = $state(0);
   let menuOpen = $state(false);
+  let simulInvites = $state(0);
 
   async function poll() {
     if (document.hidden) return;
     try {
       const g = await api<MyGames>("/api/games/my-games");
       yourTurn = g.myTurn.length;
+      const s = await api<import("../simul/types").SimulLists>("/api/simuls");
+      simulInvites = s.invitations.filter((i) => i.myStatus === "invited").length;
     } catch { }
   }
 
@@ -66,6 +69,7 @@
     <a href="#/games" class="nav-item">MY GAMES{#if yourTurn > 0} <span class="badge">{yourTurn}</span>{/if}</a>
     <a href="#/watch" class="nav-item">WATCH</a>
     <a href="#/tournaments" class="nav-item">TOURNAMENTS</a>
+    <a href="#/simuls" class="nav-item">SIMULS{#if simulInvites > 0} <span class="badge">{simulInvites}</span>{/if}</a>
     <a href="#/leaderboard" class="nav-item">LEADERBOARD</a>
     <a href={profileHref} class="nav-item">{displayName(auth.user?.username ?? "").toUpperCase()}</a>
     {#if !auth.user?.is_guest}<a href="#/settings" class="nav-item">SETTINGS</a>{/if}

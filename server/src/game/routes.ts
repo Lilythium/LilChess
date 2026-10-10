@@ -32,6 +32,7 @@ import { getUserByUsername } from "../auth/queries.js";
 import { notifyDeadlineChanged } from "./deadlineBus.js";
 import { ChallengeBody, IdParams, MoveBody, UsernameParams, parse } from "../validation.js";
 import { notifyChallengeAccepted, notifyChallengeReceived } from "../notifications/dispatch.js";
+import { simulInfoForGame } from "../simuls/lookup.js";
 
 const STATUS: Record<string, number> = {
 not_found: 404,
@@ -40,6 +41,7 @@ not_your_turn: 409,
 ply_mismatch: 409,
 game_not_active: 409,
 deadline_passed: 409,
+takebacks_disabled: 409,
 };
 
 const fail = (reply: FastifyReply, error: string) =>
@@ -205,6 +207,7 @@ return {
   sans: getMoveSans(id),
   players,
   h2h,
+  simul: simulInfoForGame(id),
   serverNow: Date.now(),
 };
 

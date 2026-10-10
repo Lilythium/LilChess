@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { GameEvent, UserEvent } from "../ws/events.js";
+import type { GameEvent, SimulEvent, UserEvent } from "../ws/events.js";
 
 const Color = z.enum(["white", "black"]);
 const GameResult = z.enum(["1-0", "0-1", "1/2-1/2"]);
@@ -53,9 +53,29 @@ export const UserEventSchema = z.discriminatedUnion("type", [
     gameId: z.string(),
     round: z.number().int().min(1),
   }),
+  z.object({ type: z.literal("simul_invite"), simulId: z.string(), name: z.string(), hostName: z.string() }),
+  z.object({ type: z.literal("simul_started"), simulId: z.string(), gameId: z.string() }),
 ]);
 
 const _userSchemaToType = (e: z.infer<typeof UserEventSchema>): UserEvent => e;
 const _userTypeToSchema = (e: UserEvent): z.infer<typeof UserEventSchema> => e;
 void _userSchemaToType;
 void _userTypeToSchema;
+
+const simulId = z.string();
+
+export const SimulEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("simul_board"), simulId, gameId, ply: z.number().int().min(0), turn: Color,
+    fen: z.string(), lastMove: z.string().nullable(), status: z.enum(["started", "finished", "aborted"]),
+    result: GameResult.optional(), termination: Termination.optional(),
+    whiteMs: ms, blackMs: ms, deadlineAt: ms, drawOfferedBy: Color.nullable(),
+  }),
+  z.object({ type: z.literal("simul_state"), simulId, status: z.enum(["open", "running", "completed", "cancelled"]) }),
+  z.object({ type: z.literal("simul_roster"), simulId }),
+]);
+
+const _simulSchemaToType = (e: z.infer<typeof SimulEventSchema>): SimulEvent => e;
+const _simulTypeToSchema = (e: SimulEvent): z.infer<typeof SimulEventSchema> => e;
+void _simulSchemaToType;
+void _simulTypeToSchema;

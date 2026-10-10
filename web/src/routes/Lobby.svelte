@@ -58,7 +58,7 @@
 
       challenges = c;
 
-      const started = [...g.myTurn, ...g.theirTurn].map((r) => r.id);
+      const started = [...g.myTurn, ...g.theirTurn].filter((r) => !r.simul_id).map((r) => r.id);
 
       if (known === null) {
         known = new Set(started);

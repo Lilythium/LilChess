@@ -5,6 +5,7 @@ export const NOTIFICATION_KINDS = [
   "game_completed",
   "tournament_starting",
   "tournament_cancelled",
+  "simul_invited",
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
@@ -16,4 +17,5 @@ export const NOTIFICATION_LABELS: Record<NotificationKind, string> = {
   game_completed: "A correspondence game ends (when I didn't make the last move)",
   tournament_starting: "A tournament I joined starts",
   tournament_cancelled: "A tournament I joined is cancelled",
+  simul_invited: "Someone invites me to a simul",
 };

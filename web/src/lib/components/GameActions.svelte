@@ -3,11 +3,12 @@
   import { canOfferTakeback, type Color, type GameState } from "@lilchess/shared";
   import { postGameAction } from "../game/gameAction";
 
-  let { game, myColor, id, onDone }: {
+  let { game, myColor, id, onDone, noTakebacks = false }: {
     game: GameState;
     myColor: Color | null;
     id: string;
     onDone: () => Promise<void>;
+    noTakebacks?: boolean;
   } = $props();
 
   let confirmResign = $state(false);
@@ -45,7 +46,7 @@
     <button title="Offer draw" aria-label="Offer draw" disabled={busy || drawPending} onclick={() => act("draw/offer")}>
       <span class="ico">½</span><span class="lbl">Draw</span>
     </button>
-    <button title="Ask for takeback" aria-label="Ask for takeback" disabled={busy || !takebackAllowed} onclick={() => act("takeback/offer")}>
+    <button title={noTakebacks ? "Takebacks are off in simuls" : "Ask for takeback"} aria-label="Ask for takeback" disabled={busy || !takebackAllowed || noTakebacks} onclick={() => act("takeback/offer")}>
       <span class="ico">↶</span><span class="lbl">Takeback</span>
     </button>
     <!-- Always rendered so Resign never moves; the server only allows abort before move 2 anyway. -->

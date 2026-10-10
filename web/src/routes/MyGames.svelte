@@ -9,10 +9,14 @@
   let data = $state<MyGames | null>(null);
   let error = $state<string | null>(null);
   let now = $state(Date.now());
-
+  let hostedBoards = $state(0);
+  
   async function load() {
     try {
-      data = await api<MyGames>("/api/games/my-games");
+      const all = await api<MyGames>("/api/games/my-games");
+      const mineOnly = (rows: GameRow[]) => rows.filter((g) => g.simul_host_id !== auth.user?.id);
+      hostedBoards = [...all.myTurn, ...all.theirTurn].length - [...mineOnly(all.myTurn), ...mineOnly(all.theirTurn)].length;
+      data = { myTurn: mineOnly(all.myTurn), theirTurn: mineOnly(all.theirTurn), finished: mineOnly(all.finished) };
       now = Date.now();
       error = null;
     } catch (err) {
@@ -71,6 +75,7 @@
 {:else if !data}
   <p class="muted">Loading…</p>
 {:else}
+  {#if hostedBoards > 0}  <div class="panel"><a href="#/simuls">Your simul: {hostedBoards} {hostedBoards === 1 ? "board" : "boards"} in progress →</a></div>{/if}
   <div class="stack">
     {@render section("Your turn", data.myTurn, "active")}
     {@render section("Their turn", data.theirTurn, "active")}

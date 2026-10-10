@@ -19,6 +19,20 @@ export function connectWs(
   return ws;
 }
 
+export function connectSimulWs(
+  port: number,
+  simulId: string,
+  opts: { sid?: string; origin?: string } = {},
+): WebSocket {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/simuls/${simulId}`, {
+    headers: opts.sid ? { Cookie: `sessionId=${opts.sid}` } : {},
+    origin: opts.origin,
+    perMessageDeflate: false,
+  });
+  ws.on("error", () => {});
+  return ws;
+}
+
 export const opened = (ws: WebSocket) =>
   new Promise<void>((resolve, reject) => {
     ws.once("open", () => resolve());

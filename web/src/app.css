@@ -185,14 +185,25 @@ html:has(.game-mobile) { overscroll-behavior-y: contain; } /* no pull-to-refresh
 /* Short landscape phones: board on the left, everything else stacked on the right. */
 @media (orientation: landscape) and (max-height: 500px) {
   .game-mobile {
-    --board: min(calc(100dvh - var(--header-h)), 60cqw);
-    grid-template-columns: var(--board) minmax(0, 1fr);
-    grid-template-rows: auto auto 1fr auto;
-    grid-template-areas: "board top" "board moves" "board dock" "board bottom";
-    column-gap: 0.5rem;
-    justify-content: stretch;
-    padding-left: env(safe-area-inset-left, 0px);
-    padding-right: env(safe-area-inset-right, 0px);
+    --simul-h: 0px;
+    --strip-h: 46px;
+    --move-h: 44px;
+    --dock-h: 56px;
+    --board: min(100cqw, 640px, max(260px, calc(100dvh - var(--header-h) - 2 * var(--strip-h)
+              - var(--move-h) - var(--dock-h) - var(--simul-h) - env(safe-area-inset-bottom, 0px))));
+    display: grid;
+    grid-template-columns: var(--board);
+    grid-template-areas: "simul" "top" "board" "bottom" "moves" "dock";
+    justify-content: center;
   }
-  .game-mobile > .dock { position: static; align-self: start; }
+
+  .game-mobile > .simul-area { grid-area: simul; }
+  .game-mobile > .strip-top { grid-area: top; }
+  .game-mobile > .board-area { grid-area: board; }
+  .game-mobile > .strip-bottom { grid-area: bottom; }
+  .game-mobile > .move-strip-area { grid-area: moves; }
+  .game-mobile > .dock {
+    grid-area: dock; position: sticky; bottom: 0; z-index: 20;
+    background: var(--panel); padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 }

@@ -1,4 +1,5 @@
 import type { Color, GameResult, Termination } from "../core/types.js";
+import type { SimulStatus } from "../simuls/simul.js";
 
 export type GameEvent =
   | {
@@ -48,9 +49,28 @@ export type GameEvent =
 
 export type ClientMessage = { type: "move"; ply: number; uci: string };
 
-export type UserEvent = {
-  type: "pairing_ready";
-  tournamentId: string;
-  gameId: string;
-  round: number;
-};
+export type UserEvent =
+  | { type: "pairing_ready"; tournamentId: string; gameId: string; round: number }
+  | { type: "simul_invite"; simulId: string; name: string; hostName: string }
+  | { type: "simul_started"; simulId: string; gameId: string };
+
+// Pushed to everyone watching a simul's overview (players, host, spectators).
+export type SimulEvent =
+  | {
+      type: "simul_board";
+      simulId: string;
+      gameId: string;
+      ply: number;
+      turn: Color;
+      fen: string;
+      lastMove: string | null;
+      status: "started" | "finished" | "aborted";
+      result?: GameResult;
+      termination?: Termination;
+      whiteMs: number;
+      blackMs: number;
+      deadlineAt: number;
+      drawOfferedBy: Color | null;
+    }
+  | { type: "simul_state"; simulId: string; status: SimulStatus }
+  | { type: "simul_roster"; simulId: string }; // someone accepted/declined: refetch

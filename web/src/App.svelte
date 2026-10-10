@@ -21,6 +21,9 @@
   import TournamentDetail from "./routes/TournamentDetail.svelte";
   import Leaderboard from "./routes/Leaderboard.svelte";  
   import { connectUserSocket } from "./lib/ws/userSocket";
+  import Simuls from "./routes/Simuls.svelte";
+  import SimulDetail from "./routes/SimulDetail.svelte";
+  import type { SimulLists } from "./lib/simul/types";
 
   onMount(loadMe);
 
@@ -30,6 +33,7 @@
   const reset = $derived(matchRoute(route.path, "/reset/:token"));
   const unsub = $derived(matchRoute(route.path, "/unsubscribe/:token"));
   const tournament = $derived(matchRoute(route.path, "/tournament/:id"));
+  const simul = $derived(matchRoute(route.path, "/simul/:id"));
   const leaderboard = $derived(matchRoute(route.path, "/leaderboard/:variant"));
   const forgot = $derived(route.path === "/forgot");
   // Reachable without logging in (the user is locked out, or clicked a link in an email).
@@ -49,6 +53,9 @@
   async function resume() {
     const atHome = () => route.path === "/" || route.path === "/login";
     if (!atHome()) return; // deep links (#/games, #/u/bob, #/game/x, #/c/x) are left alone
+    const simuls = await api<SimulLists>("/api/simuls");
+    if (!atHome()) return;
+    if (simuls.hosting?.status === "running") { navigate(`/simul/${simuls.hosting.id}`); return; } // not a random board
     try {
       const g = await api<MyGamesData>("/api/games/my-games");
       if (!atHome()) return;
@@ -89,6 +96,9 @@
         }[] }>("/api/tournaments");
         const waiting = result.tournaments.find((item) => item.joined && item.status === "running" && item.nextGameId);
         if (waiting?.nextGameId) open(waiting.nextGameId);
+        const simuls = await api<SimulLists>("/api/simuls");
+        const mine = simuls.running.find((s) => s.mode === "live" && s.viewerGameId);
+        if (mine?.viewerGameId) open(mine.viewerGameId);
       } catch {
         // transient; the next reconnect will check again
       } finally {
@@ -96,7 +106,9 @@
       }
     }
     const socket = connectUserSocket({
-      onEvent: (event) => { if (event.type === "pairing_ready") open(event.gameId); },
+      onEvent: (event) => {
+        if (event.type === "pairing_ready" || event.type === "simul_started") open(event.gameId);
+      },
       onOpen: () => void catchUp(),
     });
     return () => socket.close();
@@ -131,6 +143,8 @@
     {:else if route.path === "/local"}<LocalGame />
     {:else if route.path === "/watch"}<Watch />
     {:else if route.path === "/tournaments"}<Tournaments />
+    {:else if route.path === "/simuls"}<Simuls />
+    {:else if simul}{#key simul.id}<SimulDetail id={simul.id} />{/key}
     {:else if route.path === "/leaderboard"}<Leaderboard /> 
     {:else if leaderboard}<Leaderboard variant={leaderboard.variant} />  
     {:else if tournament}{#key tournament.id}<TournamentDetail id={tournament.id} />{/key}

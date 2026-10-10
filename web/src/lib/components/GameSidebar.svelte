@@ -18,6 +18,7 @@
     onNav,
     onSelect,
     onDone,
+    noTakebacks = false,
   }: {
     game: GameState;
     players: Players;
@@ -26,9 +27,11 @@
     viewPly: number | null;
     serverOffset: number;
     id: string;
+    
     onNav: (action: "prev" | "next" | "first" | "last") => void;
     onSelect: (ply: number) => void;
     onDone: () => Promise<void>;
+    noTakebacks?: boolean;
   } = $props();
 
   const opponentColor = $derived.by(() => {
@@ -63,7 +66,7 @@
       <div class="player-name">{playerName}</div>
     </div>
 
-    <GameActions {game} {myColor} {id} {onDone} />
+    <GameActions {game} {myColor} {id} {onDone} {...({ noTakebacks } as any)} />
 
     <div class="slot clock-slot">
       <Clock {game} side={playerColor} offset={serverOffset} />

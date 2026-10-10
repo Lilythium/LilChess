@@ -12,3 +12,4 @@ export * from "./tournaments/swiss.js";
 export * from "./tournaments/knockout.js";
 export * from "./tournaments/arena.js";
 export * from "./ratings/glicko2.js";
+export * from "./simuls/simul.js";

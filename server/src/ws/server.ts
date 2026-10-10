@@ -8,10 +8,13 @@ import { RateWindow } from "../security/rateWindow.js";
 import { clientIp } from "../security/clientIp.js";
 import { logger } from "../logger.js";
 import { handleUserConnection } from "./userSocket.js";
+import { handleSimulConnection } from "./simulSocket.js";
+import { canViewSimul } from "../simuls/lookup.js";
 
 const log = logger.child({ mod: "ws" });
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const GAME_WS_PATH = /^\/ws\/games\/([0-9a-f]{8,16})$/i;
+const SIMUL_WS_PATH = /^\/ws\/simuls\/([0-9a-f]{8,16})$/i;
 const MAX_PAYLOAD_BYTES = 1024; // moves are ~40 bytes; ws defaults to 100 MiB
 const UPGRADES_PER_MINUTE = 120;
 const CLOSE_GRACE_MS = 2_000;
@@ -42,8 +45,9 @@ export function attachWebSocketServer(app: FastifyInstance): void {
 
       const path = (req.url ?? "").split("?")[0] ?? "";
             const match = GAME_WS_PATH.exec(path);
+      const simulMatch = SIMUL_WS_PATH.exec(path);
       const userChannel = path === USER_WS_PATH;
-      if (!match && !userChannel) return reject(socket, 404, "Not Found");
+      if (!match && !simulMatch && !userChannel) return reject(socket, 404, "Not Found");
 
       const user = authenticateUpgrade(req);
       if (!user) return reject(socket, 401, "Unauthorized");
@@ -66,6 +70,17 @@ export function attachWebSocketServer(app: FastifyInstance): void {
         wss.handleUpgrade(req, socket, head, (ws) => {
           track(ws);
           handleUserConnection(ws as WebSocket & { isAlive?: boolean }, user);
+        });
+        return;
+      }
+
+      if (simulMatch) {
+        const simulId = simulMatch[1]!;
+        // Open simuls are private to the host and invitees; running and finished ones can be watched by anyone.
+        if (!canViewSimul(simulId, user.id)) return reject(socket, 404, "Not Found");
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          track(ws);
+          handleSimulConnection(ws as WebSocket & { isAlive?: boolean }, simulId);
         });
         return;
       }
