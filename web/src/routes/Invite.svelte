@@ -114,6 +114,6 @@
 </div>
 
 <style>
-  .card { max-width: 420px; margin: 3rem auto; }
+  .card { max-width: 420px; margin: clamp(1rem, 8vh, 4rem) auto; }
   .stack { display: flex; flex-direction: column; gap: 0.75rem; }
 </style>

@@ -117,7 +117,7 @@
   {:else if publicPage}
     <main class="page">{@render publicPages()}</main>
   {:else}
-    <Login />
+    <main class="page"><Login /></main>
   {/if}
 {:else}
   <Header />

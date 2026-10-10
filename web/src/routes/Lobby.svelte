@@ -77,11 +77,17 @@
 
   onMount(() => {
     void refresh();
-
-    const t = setInterval(refresh, 3000);
-
-    return () => clearInterval(t);
+    const t = setInterval(() => { if (!document.hidden) void refresh(); }, 3000);
+    const onVisible = () => { if (!document.hidden) void refresh(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onVisible); };
   });
+
+  // Web Share needs HTTPS; over plain http it falls back to Copy link.
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  async function shareLink(id: string) {
+    try { await navigator.share({ title: "Play me on LilChess", url: linkFor(id) }); } catch { /* dismissed */ }
+  }
 
   async function create(asLink = false) {
     busy = true;

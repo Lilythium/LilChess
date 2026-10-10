@@ -17,17 +17,32 @@
   } = $props();
 
   let isOpen = $state(false);
+
+  // Hover-open only suits a real pointer. On touch, iOS fires mouseenter just before the
+  // tap's click, so the menu opened and the <summary> click closed it again.
+  const canHover = typeof matchMedia !== "undefined" && matchMedia("(hover: hover)").matches;
+  let root: HTMLDetailsElement | undefined;
+
+  function onOutside(e: PointerEvent) {
+    if (isOpen && root && !root.contains(e.target as Node)) isOpen = false;
+  }
   const selectedLabel = $derived(
     options.find((option) => option.value === value)?.label ?? label,
   );
 </script>
 
+<svelte:window
+  onpointerdown={onOutside}
+  onkeydown={(e) => { if (e.key === "Escape") isOpen = false; }}
+/>
+
 <details
+  bind:this={root}
   class="hover-dropdown"
   style:--dropdown-width={width}
   bind:open={isOpen}
-  onmouseenter={() => (isOpen = true)}
-  onmouseleave={() => (isOpen = false)}
+  onmouseenter={() => { if (canHover) isOpen = true; }}
+  onmouseleave={() => { if (canHover) isOpen = false; }}
 >
   <summary aria-label={label}>
     {selectedLabel}
@@ -129,5 +144,9 @@
 
   .options button.selected:hover {
     background: var(--green-hi);
+  }
+
+  @media (max-width: 600px) {
+  .hover-dropdown { width: 100%; flex: 1 1 100%; }
   }
 </style>

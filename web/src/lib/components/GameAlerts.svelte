@@ -84,8 +84,6 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
   }
 
-  /* On phones the sidebar is the last thing on the page, so let alerts flow normally. */
-  @media (max-width: 800px) {
-    .alerts { position: static; margin-top: 0.5rem; }
-  }
+  /* In the phone dock, alerts sit in normal flow above the action bar. */
+  :global(.game-mobile) .alerts { position: static; padding: 0.5rem 0.5rem 0; }
 </style>

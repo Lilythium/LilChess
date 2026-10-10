@@ -26,6 +26,10 @@
   import MoveNav from "../lib/components/MoveNav.svelte";
   import { playSound } from "../lib/audio/audio";
   import { resultText } from "../lib/format";
+  import { viewport } from "../lib/viewport.svelte";
+  import { gameTitle } from "../lib/format";
+  import PlayerStrip from "../lib/components/PlayerStrip.svelte";
+  import MoveStrip from "../lib/components/MoveStrip.svelte";
 
   let save = $state<LocalSave | null>(loadLocalGame());
   let resetKey = $state(0);
@@ -169,130 +173,123 @@
 {#if save}
   {@const g = save.game}
 
-  <div class="game">
-    <div class="name-area">
-      <div class="name-card">
-        <div class="title">
-          {#if
-            g.clock.mode === "live" &&
-            g.clock.initialMs !== undefined &&
-            g.clock.incrementMs !== undefined &&
-            save.timed
-          }
-            {Math.floor(g.clock.initialMs / 60000)}+{Math.floor(g.clock.incrementMs / 1000)}
-            {g.variant !== "standard" ? " · " + g.variant : ""}
-          {:else}
-            Untimed
-          {/if}
-        </div>
+  {#snippet controls()}
+    {#if g.status === "started"}
+      <div class="bar">
+        <button title="Draw by agreement" aria-label="Draw by agreement" onclick={() => act(drawByAgreement)}><span>½</span><span class="lbl">Draw</span></button>
+        {#if g.ply <= 1}
+          <button title="Abort game" aria-label="Abort game" onclick={() => act(abort)}><span>✕</span><span class="lbl">Abort</span></button>
+        {/if}
+        <button title="Flip board" aria-label="Flip board" disabled={autoFlip} onclick={() => (flipped = !flipped)}><span>⇅</span><span class="lbl">Flip</span></button>
+        <button class="danger" title="White resigns" aria-label="White resigns" onclick={() => act((x) => resign(x, "white"))}><span>⚐ W</span><span class="lbl">Resign</span></button>
+        <button class="danger" title="Black resigns" aria-label="Black resigns" onclick={() => act((x) => resign(x, "black"))}><span>⚑ B</span><span class="lbl">Resign</span></button>
+      </div>
+      <label class="opt"><input type="checkbox" bind:checked={autoFlip} /> Auto-flip board each move</label>
+    {:else}
+      <div class="finished">
+        <p class="result">{resultText(g)}</p>
+        <div class="row"><button class="primary" onclick={rematch}>Rematch</button><a href="#/">Back to lobby</a></div>
+      </div>
+    {/if}
+  {/snippet}
 
-        <div class="players">
-          <div class="player">
-            <span>{orientation === "white" ? "⚫" : "⚪"}</span>
-            <span>{label(opponentColor)}</span>
+  {#if viewport.mobile}
+    <div class="game-mobile">
+      <div class="strip-top">
+        <PlayerStrip color={opponentColor} name={label(opponentColor)} game={g} offset={0}
+          showClock={save.timed} meta={save.timed ? gameTitle(g.clock, g.variant) : "Untimed"} />
+      </div>
+      <div class="board-area">
+        <Board game={g} myColor={g.turn} {orientation} {resetKey} viewPly={viewPly ?? g.ply} {onMove} onCancel={() => resetKey++} />
+      </div>
+      <div class="strip-bottom">
+        <PlayerStrip color={playerColor} name={label(playerColor)} game={g} offset={0} showClock={save.timed} />
+      </div>
+      <div class="move-strip-area">
+        <MoveStrip {sanByPly} ply={g.ply} {viewPly} onNav={nav} onSelect={selectPly} />
+      </div>
+      <div class="dock">{@render controls()}</div>
+    </div>
+  {:else}
+    <div class="game">
+      <div class="name-area">
+        <div class="name-card">
+          <div class="title">
+            {#if
+              g.clock.mode === "live" &&
+              g.clock.initialMs !== undefined &&
+              g.clock.incrementMs !== undefined &&
+              save.timed
+            }
+              {Math.floor(g.clock.initialMs / 60000)}+{Math.floor(g.clock.incrementMs / 1000)}
+              {g.variant !== "standard" ? " · " + g.variant : ""}
+            {:else}
+              Untimed
+            {/if}
           </div>
 
-          <div class="player">
-            <span>{orientation === "white" ? "⚪" : "⚫"}</span>
-            <span>{label(playerColor)}</span>
+          <div class="players">
+            <div class="player">
+              <span>{orientation === "white" ? "⚫" : "⚪"}</span>
+              <span>{label(opponentColor)}</span>
+            </div>
+
+            <div class="player">
+              <span>{orientation === "white" ? "⚪" : "⚫"}</span>
+              <span>{label(playerColor)}</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="board-area">
-      <Board
-        game={g}
-        myColor={g.turn}
-        {orientation}
-        {resetKey}
-        viewPly={viewPly ?? g.ply}
-        {onMove}
-        onCancel={() => resetKey++}
-      />
-    </div>
+      <div class="board-area">
+        <Board
+          game={g}
+          myColor={g.turn}
+          {orientation}
+          {resetKey}
+          viewPly={viewPly ?? g.ply}
+          {onMove}
+          onCancel={() => resetKey++}
+        />
+      </div>
 
-    <div class="sidebar-area">
-      <aside class="sidebar">
-        {#if save.timed}
-          <div class="slot clock-slot">
-            <Clock game={g} side={opponentColor} offset={0} />
-          </div>
-        {/if}
-
-        <div class="slot nav-slot">
-          <MoveNav {viewPly} total={g.ply} onNav={nav} />
-        </div>
-
-        <div class="moves-box">
-          <div class="player-name">{label(opponentColor)}</div>
-
-          <MoveList
-            {sanByPly}
-            ply={g.ply}
-            selected={viewPly}
-            onSelect={selectPly}
-          />
-
-          <div class="player-name">{label(playerColor)}</div>
-        </div>
-
-        {#if g.status === "started"}
-          <div class="bar">
-            <button
-              title="Draw by agreement"
-              aria-label="Draw by agreement"
-              onclick={() => act(drawByAgreement)}>½</button>
-
-            {#if g.ply <= 1}
-              <button
-                title="Abort game"
-                aria-label="Abort game"
-                onclick={() => act(abort)}>✕</button>
-            {/if}
-
-            <button
-              title="Flip board"
-              aria-label="Flip board"
-              disabled={autoFlip}
-              onclick={() => (flipped = !flipped)}>⇅</button>
-
-            <button
-              class="danger"
-              title="White resigns"
-              aria-label="White resigns"
-              onclick={() => act((x) => resign(x, "white"))}>⚐ W</button>
-
-            <button
-              class="danger"
-              title="Black resigns"
-              aria-label="Black resigns"
-              onclick={() => act((x) => resign(x, "black"))}>⚑ B</button>
-          </div>
-
-          <label class="opt">
-            <input type="checkbox" bind:checked={autoFlip} />
-            Auto-flip board each move
-          </label>
-        {:else}
-          <div class="finished">
-            <p class="result">{resultText(g)}</p>
-
-            <div class="row">
-              <button class="primary" onclick={rematch}>Rematch</button>
-              <a href="#/">Back to lobby</a>
+      <div class="sidebar-area">
+        <aside class="sidebar">
+          {#if save.timed}
+            <div class="slot clock-slot">
+              <Clock game={g} side={opponentColor} offset={0} />
             </div>
-          </div>
-        {/if}
+          {/if}
 
-        {#if save.timed}
-          <div class="slot clock-slot">
-            <Clock game={g} side={playerColor} offset={0} />
+          <div class="slot nav-slot">
+            <MoveNav {viewPly} total={g.ply} onNav={nav} />
           </div>
-        {/if}
-      </aside>
+
+          <div class="moves-box">
+            <div class="player-name">{label(opponentColor)}</div>
+
+            <MoveList
+              {sanByPly}
+              ply={g.ply}
+              selected={viewPly}
+              onSelect={selectPly}
+            />
+
+            <div class="player-name">{label(playerColor)}</div>
+          </div>
+
+          {@render controls()}
+
+          {#if save.timed}
+            <div class="slot clock-slot">
+              <Clock game={g} side={playerColor} offset={0} />
+            </div>
+          {/if}
+        </aside>
+      </div>
     </div>
-  </div>
+  {/if}
 {/if}
 
 <style>
@@ -361,9 +358,25 @@
     border-radius: 0;
     font-size: 1rem;
     line-height: 1.2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.1rem;
   }
-  .bar button:hover:not(:disabled) { background: #3a3835; }
-  .bar button.danger:hover:not(:disabled) { background: var(--red); }
+  .lbl {
+    display: none;
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+  :global(.game-mobile) .lbl {
+    display: block;
+  }
+
+  @media (hover: hover) {
+    .bar button:hover:not(:disabled) { background: #3a3835; }
+    .bar button.danger:hover:not(:disabled) { background: var(--red); }
+  }
 
   .opt {
     display: flex;

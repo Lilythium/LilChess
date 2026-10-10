@@ -7,24 +7,23 @@
   --text: #bababa;  
   --text-hi: #e8e8e8;  
   --muted: #7d7b78;
-  /* Cooler, professional emerald greens */
   --green: #408c4e;  
   --green-hi: #4da65e;  
   --blue: #3692e7;  
   --red: #cc3333;
-  /* Increased border radius for a modern feel */
   --radius: 6px;
   --mode-toggle-height: 44px;
-  --header-h: 48px;
-  /* Upgraded typography stack */
+  --header-h: calc(48px + env(safe-area-inset-top, 0px));
+  --tap: 44px;
   --font: "Inter", "Roboto", "Noto Sans", system-ui, -apple-system, sans-serif;
 }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); }
 
+html { -webkit-text-size-adjust: 100%; touch-action: manipulation; } /* no double-tap zoom; pinch still works */
+
 a { color: var(--blue); text-decoration: none; transition: color 0.2s; }  
-a:hover { color: #5caaf0; } /* Removed underline, added subtle color shift */
 
 /* Stronger typography hierarchy */
 h1, h2 { color: var(--text-hi); font-weight: 600; margin: 0 0 1rem; letter-spacing: -0.01em; }
@@ -35,12 +34,10 @@ button {
   border-radius: var(--radius); padding: .55rem 1rem; font: inherit; font-weight: 500; 
   cursor: pointer; transition: all 0.2s ease; 
 }
-button:hover:not(:disabled) { background: #3a3835; border-color: var(--border); }
 button:disabled { opacity: .5; cursor: default; }
 
 button.primary { background: var(--green); color: #fff; }  
-button.primary:hover:not(:disabled) { background: var(--green-hi); border-color: transparent; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-button.danger:hover:not(:disabled) { background: var(--red); color: #fff; border-color: transparent; }
+button.danger { background: transparent; }
 
 /* Inputs */
 input, select { 
@@ -50,7 +47,12 @@ input, select {
 input:focus, select:focus { outline: none; border-color: var(--green); }
 input::placeholder { color: var(--muted); opacity: 0.6; }
 
-.page { max-width: 1100px; margin: 0 auto; padding: 1.5rem; container-type: inline-size; }
+.page { 
+  max-width: 1100px; margin: 0 auto; padding: 1.5rem; container-type: inline-size;
+  padding-left: max(1.5rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1.5rem, env(safe-area-inset-right, 0px));
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+}
 
 /* Panel refinements: soft drop shadow & top border to lift off canvas */
 .panel { 
@@ -61,7 +63,7 @@ input::placeholder { color: var(--muted); opacity: 0.6; }
 .muted { color: var(--muted); }  .error { color: var(--red); }
 .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 table { width: 100%; border-collapse: collapse; }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 0.75rem; }
 td, th { text-align: left; padding: .5rem .25rem; border-bottom: 1px solid var(--border); }
 
 /* --- New UI Components --- */
@@ -75,14 +77,12 @@ td, th { text-align: left; padding: .5rem .25rem; border-bottom: 1px solid var(-
   background: transparent; color: var(--muted); border: none;
   border-radius: calc(var(--radius) - 3px); padding: 0.4rem 1.2rem; font-weight: 500;
 }
-.segmented-control button:hover:not(.active) { background: var(--panel-hi); color: var(--text-hi); }
 .segmented-control button.active {
   background: var(--panel-hi); color: var(--text-hi); box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
 /* Top Navigation Active States */
 header a.nav-link { color: var(--muted); font-weight: 500; font-size: 24px; padding: 0.5rem 0.75rem; border-bottom: 2px solid transparent; }
-header a.nav-link:hover { color: var(--text-hi); }
 header a.nav-link.active { color: var(--text-hi); border-bottom-color: var(--green); }
 
 /* ---- shared game layout ---- */
@@ -105,7 +105,7 @@ header a.nav-link.active { color: var(--text-hi); border-bottom-color: var(--gre
   margin: 0 auto;
 }
 
-.name-area { align-self: start; }      
+.name-area { align-self: start; }       
 .board-area { width: 100%; min-width: 0; }
 .sidebar-area { align-self: center; width: 100%; min-width: 0; } 
 
@@ -115,8 +115,25 @@ header a.nav-link.active { color: var(--text-hi); border-bottom-color: var(--gre
 .h2h { padding-top: .5rem; color: var(--muted); }
 .h2h strong { color: var(--text-hi); }
 
+/* --- Media Queries & Pointer Adjustments --- */
+
+@media (hover: hover) {
+  a:hover { color: #5caaf0; }
+  button:hover:not(:disabled) { background: #3a3835; border-color: var(--border); }
+  button.primary:hover:not(:disabled) { background: var(--green-hi); border-color: transparent; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+  button.danger:hover:not(:disabled) { background: var(--red); color: #fff; border-color: transparent; }
+  .segmented-control button:hover:not(.active) { background: var(--panel-hi); color: var(--text-hi); }
+  header a.nav-link:hover { color: var(--text-hi); }
+}
+
+button:active:not(:disabled) { filter: brightness(1.15); }
+
 @media (max-width: 800px) {
-  .page { padding: 1rem; }
+  .page { 
+    padding: 1rem; 
+    padding-left: max(1rem, env(safe-area-inset-left, 0px)); 
+    padding-right: max(1rem, env(safe-area-inset-right, 0px)); 
+  }
   .game {
     --board: min(100cqw, calc(100dvh - 250px));
     display: flex;
@@ -129,4 +146,53 @@ header a.nav-link.active { color: var(--text-hi); border-bottom-color: var(--gre
   .sidebar-area { width: 100%; }
   .game-actions { width: 100%; margin-top: 0.5rem; }
   .h2h { display: none; }
+}
+
+@media (max-width: 600px) { 
+  .panel { padding: 1rem; } 
+}
+
+@media (pointer: coarse) {  
+  button:not(.compact), select, input:not([type="checkbox"]):not([type="radio"]) { min-height: var(--tap); }  
+  input, select, textarea { font-size: 16px; } /* Prevents iOS Safari zoom on focus */  
+  input[type="checkbox"], input[type="radio"] { width: 1.25rem; height: 1.25rem; }
+}
+
+/* ---- phone game layout: rendered when viewport.mobile (see viewport.svelte.ts) ---- */
+.page:has(.game-mobile) { max-width: none; padding: 0; }
+html:has(.game-mobile) { overscroll-behavior-y: contain; } /* no pull-to-refresh mid-game */
+
+.game-mobile {
+  --strip-h: 46px;
+  --move-h: 44px;
+  --dock-h: 56px;
+  --board: min(100cqw, 640px, max(260px, calc(100dvh - var(--header-h) - 2 * var(--strip-h)
+            - var(--move-h) - var(--dock-h) - env(safe-area-inset-bottom, 0px))));
+  display: grid;
+  grid-template-columns: var(--board);
+  grid-template-areas: "top" "board" "bottom" "moves" "dock";
+  justify-content: center;
+}
+.game-mobile > .strip-top { grid-area: top; }
+.game-mobile > .board-area { grid-area: board; }
+.game-mobile > .strip-bottom { grid-area: bottom; }
+.game-mobile > .move-strip-area { grid-area: moves; }
+.game-mobile > .dock {
+  grid-area: dock; position: sticky; bottom: 0; z-index: 20;
+  background: var(--panel); padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Short landscape phones: board on the left, everything else stacked on the right. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .game-mobile {
+    --board: min(calc(100dvh - var(--header-h)), 60cqw);
+    grid-template-columns: var(--board) minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr auto;
+    grid-template-areas: "board top" "board moves" "board dock" "board bottom";
+    column-gap: 0.5rem;
+    justify-content: stretch;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .game-mobile > .dock { position: static; align-self: start; }
 }

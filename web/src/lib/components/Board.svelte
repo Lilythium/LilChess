@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onDestroy, untrack } from "svelte";
   import { Chessground } from "chessground";
   import type { Api } from "chessground/api";
   import type { Key, MoveMetadata } from "chessground/types";
@@ -10,6 +10,7 @@
   import { boardMode } from "../game/boardMode";
   import { gameAtPly } from "../game/history";
   import PromotionDialog from "./PromotionDialog.svelte";
+  
 
   let { game, myColor, orientation, resetKey, onMove, onCancel, viewPly = null }:
     { game: GameState; myColor: Color | null; orientation?: Color; resetKey: number;
@@ -72,6 +73,7 @@
     promo = null;
   }
   function cancel() { promo = null; onCancel(); }
+  onDestroy(() => cg?.destroy());
 </script>
 
 <div class="wrap">
@@ -80,12 +82,16 @@
 </div>
 
 <style>
-  .wrap { position: relative; width: 100%; }
+  .wrap { position: relative; width: 100%; container-type: inline-size; }
   .board {
     width: 100%;
     aspect-ratio: 1;
     touch-action: none;
     container-type: inline-size;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
     --coord-light: rgba(255, 255, 255, 0.85);
     --coord-dark: rgba(72, 72, 72, 0.85);
   }

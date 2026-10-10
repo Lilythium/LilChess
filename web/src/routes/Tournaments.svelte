@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { auth } from "../lib/auth.svelte";
+  import { viewport } from "../lib/viewport.svelte";
 
   type Format = "round_robin" | "swiss" | "knockout" | "arena";
   type TournamentRow = {
@@ -20,6 +21,7 @@
   let tournaments = $state<TournamentRow[] | null>(null);
   let error = $state<string | null>(null);
   let busy = $state(false);
+  let showForm = $state(false);
   let name = $state("");
   let description = $state("");
   let format = $state<Format>("round_robin");
@@ -79,6 +81,7 @@
       startsAt = "";
       endsAt = "";
       await refresh();
+      showForm = false;
     } catch (err) { error = err instanceof Error ? err.message : String(err); }
     finally { busy = false; }
   }
@@ -102,44 +105,51 @@
   </header>
 
   {#if !auth.user?.is_guest}
-    <form class="create" onsubmit={(event) => { event.preventDefault(); void create(); }}>
-      <div class="create-heading"><h2>Host a tournament</h2><span>{FORMAT_LABELS[format]}</span></div>
-      <label class="name-field">Name<input bind:value={name} minlength="3" maxlength="60" placeholder="Friday club night" required /></label>
-      <label class="description-field">Description<input bind:value={description} maxlength="500" placeholder="Optional event details" /></label>
-      <div class="settings">
-        <label>Format
-          <select bind:value={format}>
-            {#each Object.entries(FORMAT_LABELS) as [value, label]}<option {value}>{label}</option>{/each}
-          </select>
-        </label>
-        <label>Time mode
-          <select bind:value={mode} disabled={format === "arena"}><option value="live">Live</option><option value="correspondence">Correspondence</option></select>
-        </label>
-        {#if mode === "live"}
-          <label>Clock
-            <select bind:value={clockPreset}>
-              <option value="60000:0">1 + 0</option><option value="180000:2000">3 + 2</option>
-              <option value="300000:0">5 + 0</option><option value="300000:3000">5 + 3</option>
-              <option value="600000:0">10 + 0</option>
+    {#if viewport.mobile}
+      <button class="host-toggle" aria-expanded={showForm} onclick={() => (showForm = !showForm)}>
+        {showForm ? "Hide form" : "Host a tournament"}
+      </button>
+    {/if}
+    {#if !viewport.mobile || showForm}
+      <form class="create" onsubmit={(event) => { event.preventDefault(); void create(); }}>
+        <div class="create-heading"><h2>Host a tournament</h2><span>{FORMAT_LABELS[format]}</span></div>
+        <label class="name-field">Name<input bind:value={name} minlength="3" maxlength="60" placeholder="Friday club night" required /></label>
+        <label class="description-field">Description<input bind:value={description} maxlength="500" placeholder="Optional event details" /></label>
+        <div class="settings">
+          <label>Format
+            <select bind:value={format}>
+              {#each Object.entries(FORMAT_LABELS) as [value, label]}<option {value}>{label}</option>{/each}
             </select>
           </label>
-        {:else}
-          <label>Days per move<select bind:value={daysPerMove}><option value={1}>1 day</option><option value={3}>3 days</option><option value={7}>7 days</option><option value={14}>14 days</option></select></label>
-        {/if}
-        <label>Max players<select bind:value={maxPlayers}>{#each PLAYER_COUNTS.filter((count) => count <= MAX_PLAYERS[format]) as count}<option value={count}>{count}</option>{/each}</select></label>
-        {#if format === "swiss"}
-          <label>Rounds<select bind:value={rounds}><option value={0}>Automatic</option>{#each [2, 3, 4, 5, 6, 7, 8, 9, 10] as count}<option value={count}>{count}</option>{/each}</select></label>
-        {:else if format === "arena"}
-          <label>Duration<select bind:value={durationMinutes}>{#each [10, 30, 60, 90, 120, 180] as minutes}<option value={minutes}>{minutes} min</option>{/each}</select></label>
-          <label class="rated-toggle"><input type="checkbox" bind:checked={streakBonus} /> Streak bonus</label>
-        {/if}
-        <label>Variant<select bind:value={variant}><option value="standard">Standard</option><option value="chess960">Chess960</option></select></label>
-        <label>Starts at<input type="datetime-local" bind:value={startsAt} /></label>
-        {#if format !== "arena"}<label>Planned end<input type="datetime-local" bind:value={endsAt} min={startsAt || undefined} /></label>{/if}
-        <label class="rated-toggle"><input type="checkbox" bind:checked={rated} /> Rated</label>
-        <button class="primary create-button" type="submit" disabled={busy || name.trim().length < 3}>{busy ? "Creating…" : "Create"}</button>
-      </div>
-    </form>
+          <label>Time mode
+            <select bind:value={mode} disabled={format === "arena"}><option value="live">Live</option><option value="correspondence">Correspondence</option></select>
+          </label>
+          {#if mode === "live"}
+            <label>Clock
+              <select bind:value={clockPreset}>
+                <option value="60000:0">1 + 0</option><option value="180000:2000">3 + 2</option>
+                <option value="300000:0">5 + 0</option><option value="300000:3000">5 + 3</option>
+                <option value="600000:0">10 + 0</option>
+              </select>
+            </label>
+          {:else}
+            <label>Days per move<select bind:value={daysPerMove}><option value={1}>1 day</option><option value={3}>3 days</option><option value={7}>7 days</option><option value={14}>14 days</option></select></label>
+          {/if}
+          <label>Max players<select bind:value={maxPlayers}>{#each PLAYER_COUNTS.filter((count) => count <= MAX_PLAYERS[format]) as count}<option value={count}>{count}</option>{/each}</select></label>
+          {#if format === "swiss"}
+            <label>Rounds<select bind:value={rounds}><option value={0}>Automatic</option>{#each [2, 3, 4, 5, 6, 7, 8, 9, 10] as count}<option value={count}>{count}</option>{/each}</select></label>
+          {:else if format === "arena"}
+            <label>Duration<select bind:value={durationMinutes}>{#each [10, 30, 60, 90, 120, 180] as minutes}<option value={minutes}>{minutes} min</option>{/each}</select></label>
+            <label class="rated-toggle"><input type="checkbox" bind:checked={streakBonus} /> Streak bonus</label>
+          {/if}
+          <label>Variant<select bind:value={variant}><option value="standard">Standard</option><option value="chess960">Chess960</option></select></label>
+          <label>Starts at<input type="datetime-local" bind:value={startsAt} /></label>
+          {#if format !== "arena"}<label>Planned end<input type="datetime-local" bind:value={endsAt} min={startsAt || undefined} /></label>{/if}
+          <label class="rated-toggle"><input type="checkbox" bind:checked={rated} /> Rated</label>
+          <button class="primary create-button" type="submit" disabled={busy || name.trim().length < 3}>{busy ? "Creating…" : "Create"}</button>
+        </div>
+      </form>
+    {/if}
   {/if}
 
   {#if error}<p class="error" role="alert">{error}</p>{/if}
@@ -187,6 +197,12 @@
   .event-meta strong.running { color:#e5bd67; }
   .joined { color:#9dbf76; font-size:.8rem; }
   .empty { padding:2rem 0; color:var(--muted); }
+  .host-toggle { width: 100%; margin-bottom: 1rem; }
   @media(max-width:700px) { .settings { grid-template-columns:repeat(2,minmax(0,1fr)); } .create-button { grid-column:1/-1; } }
-  @media(max-width:480px) { .event { grid-template-columns:1fr auto; gap:.35rem .6rem; } .event-meta { text-align:left; } .joined { text-align:right; } }
+  @media(max-width:480px) {
+    .settings { grid-template-columns:1fr; }
+    .event { grid-template-columns:1fr auto; gap:.35rem .6rem; }
+    .event-meta { text-align:left; }
+    .joined { text-align:right; }
+  }
 </style>

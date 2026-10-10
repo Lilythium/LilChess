@@ -1,6 +1,6 @@
 const read = () => location.hash.slice(1) || "/";
 export const route = $state({ path: read() });
-addEventListener("hashchange", () => { route.path = read(); });
+addEventListener("hashchange", () => { route.path = read(); scrollTo(0, 0); });
 
 export function navigate(path: string) { location.hash = path; }
 

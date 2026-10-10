@@ -20,7 +20,9 @@
 <style>
   .card { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.5rem;
           background: var(--panel-hi); border-radius: var(--radius); color: var(--text); }
-  .card:hover { background: #3a3835; text-decoration: none; }
+  @media (hover: hover) {
+    .card:hover { background: #3a3835; text-decoration: none; }
+  }
   .title { color: var(--text-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sub { color: var(--muted); font-size: 0.85rem; }
 </style>

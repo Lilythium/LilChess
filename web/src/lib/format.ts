@@ -28,3 +28,13 @@ export function resultText(g: GameState): string {
 export function displayName(name: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
+
+export function gameTitle(
+  clock: { mode: string; initialMs?: number; incrementMs?: number },
+  variant: Variant,
+): string {
+  const base = clock.mode === "live" && clock.initialMs !== undefined && clock.incrementMs !== undefined
+    ? `${Math.floor(clock.initialMs / 60000)}+${Math.floor(clock.incrementMs / 1000)}`
+    : clock.mode;
+  return variant === "standard" ? base : `${base} · ${VARIANT_LABELS[variant]}`;
+}

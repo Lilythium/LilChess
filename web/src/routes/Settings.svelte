@@ -110,5 +110,5 @@
   form { display: flex; gap: 0.5rem; flex-wrap: wrap; }
   form input { flex: 1 1 220px; }
   .options { display: flex; flex-direction: column; gap: 0.6rem; }
-  .opt { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+  .opt { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0; cursor: pointer; }
 </style>

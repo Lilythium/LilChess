@@ -130,7 +130,7 @@
 <style>
   .stack { display: flex; flex-direction: column; gap: 1rem; }
   .ratings-grid { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.5rem; }
-  .rating-box { background: var(--bg-surface, rgba(255,255,255,0.03)); border: 1px solid var(--border, rgba(255,255,255,0.1)); padding: 0.75rem 1rem; border-radius: 6px; min-width: 140px; display: flex; flex-direction: column; gap: 0.25rem; }
+  .rating-box { background: var(--bg-surface, rgba(255,255,255,0.03)); border: 1px solid var(--border, rgba(255,255,255,0.1)); padding: 0.75rem 1rem; border-radius: 6px; flex: 1 1 140px; display: flex; flex-direction: column; gap: 0.25rem; }
   .variant-label { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
   .rating-main { display: flex; align-items: baseline; gap: 0.5rem; }
   .rating-number { font-size: 1.5rem; font-weight: bold; }

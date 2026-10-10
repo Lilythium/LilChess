@@ -19,6 +19,7 @@ const DEFAULT_VOLUME = 0.5;
 
 let enabled = true;
 let volume = DEFAULT_VOLUME;
+let unlocked = false;
 
 const audioCache = new Map<SoundName, HTMLAudioElement>();
 
@@ -36,11 +37,28 @@ function getAudio(sound: SoundName): HTMLAudioElement {
     return audio;
 }
 
+/** First touch: silently "play" every sound once so later programmatic plays are allowed on iOS. */
+export function unlockAudio(): void {
+    if (unlocked) return;
+    unlocked = true;
+    for (const name of Object.keys(sounds) as SoundName[]) {
+        const audio = getAudio(name);
+        audio.muted = true;
+        void audio.play()
+            .then(() => {
+                // If a real sound started in the meantime, playSound already cleared `muted`; leave it playing.
+                if (audio.muted) { audio.pause(); audio.currentTime = 0; audio.muted = false; }
+            })
+            .catch(() => { audio.muted = false; });
+    }
+}
+
 export function playSound(sound: SoundName): void {
     if (!enabled) return;
 
     const audio = getAudio(sound);
 
+    audio.muted = false;
     audio.pause();
     audio.currentTime = 0;
     audio.volume = volume;

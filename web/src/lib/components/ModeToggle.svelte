@@ -34,7 +34,8 @@
   .toggle-switch {
     position: relative;
     display: flex;
-    width: 280px;
+    width: min(280px, 100%);
+    flex: 0 1 280px;
     height: var(--mode-toggle-height);
     background: var(--bg);
     border: 1px solid var(--border);

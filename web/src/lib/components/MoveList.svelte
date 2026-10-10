@@ -42,7 +42,7 @@
       {#if r.white}
         <button
           type="button"
-          class="san"
+          class="san compact"
           class:active={
             selected === r.whitePly ||
             (selected === null && r.whitePly === ply)
@@ -58,7 +58,7 @@
       {#if r.black}
         <button
           type="button"
-          class="san"
+          class="san compact"
           class:active={
             selected === r.blackPly ||
             (selected === null && r.blackPly === ply)
@@ -109,4 +109,5 @@
   .san.active {
     background: var(--border);
   }
+  
 </style>

@@ -53,7 +53,5 @@
     font-weight: 700;
   }
 
-  .low {
-    font-weight: 700;
-  }
+  .low { font-weight: 700; color: #ff7b72; }
 </style>

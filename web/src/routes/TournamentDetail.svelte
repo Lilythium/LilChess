@@ -291,4 +291,8 @@
   .bracket-match small { color:var(--muted); }
   .byes { margin:.8rem 0 0; font-size:.85rem; }
   @media(max-width:720px) { .event-header { align-items:flex-start; flex-direction:column; } .actions { justify-content:start; } .columns { grid-template-columns:1fr; gap:1.5rem; } }
+    .bracket { scroll-snap-type: x proximity; }
+  .bracket-round { scroll-snap-align: start; }
+  .player-list a { min-height: 40px; }
+  @media(max-width:720px) { .actions button { flex: 1 1 8rem; } }
 </style>

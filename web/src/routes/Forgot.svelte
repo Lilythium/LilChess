@@ -41,6 +41,6 @@
 </div>
 
 <style>
-  .card { max-width: 340px; margin: 4rem auto; }
+  .card { max-width: 340px; margin: clamp(1rem, 8vh, 4rem) auto; }
   form { display: flex; flex-direction: column; gap: 0.75rem; }
 </style>

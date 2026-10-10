@@ -65,7 +65,8 @@
 </div>
 
 <style>
-  .card { max-width: 340px; margin: 4rem auto; }
+  .card { max-width: 340px; margin: clamp(1rem, 8vh, 4rem) auto; }
+  a[href="#/forgot"] { display: inline-block; padding: 0.5rem 0; }
   form { display: flex; flex-direction: column; gap: 0.75rem; }
   .link { background: none; padding: 0; color: var(--blue); }
   .link:hover:not(:disabled) { background: none; text-decoration: underline; }

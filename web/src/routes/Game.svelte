@@ -9,6 +9,15 @@
   import GameSidebar from "../lib/components/GameSidebar.svelte";
   import { selectPly, stepView, type NavAction } from "../lib/game/history";
   import { playSound } from "../lib/audio/audio";
+  import type { Color, GameState } from "@lilchess/shared";
+  import { viewport } from "../lib/viewport.svelte";
+  import { gameTitle } from "../lib/format";
+  import PlayerStrip from "../lib/components/PlayerStrip.svelte";
+  import MoveStrip from "../lib/components/MoveStrip.svelte";
+  import GameActions from "../lib/components/GameActions.svelte";
+  import GameAlerts from "../lib/components/GameAlerts.svelte";
+  import GameResult from "../lib/components/GameResult.svelte";
+  import { keepAwake } from "../lib/wakeLock";
 
   let { id }: { id: string } = $props();
 
@@ -91,6 +100,22 @@
   const orientation = $derived(
     myColor === "black" ? "black" : "white",
   );
+
+  const topColor = $derived<Color>(orientation === "white" ? "black" : "white");
+  const bottomColor = $derived<Color>(orientation);
+
+  const side = (c: Color) => {
+    const p = view.players;
+    return c === "white"
+      ? { name: p?.whiteName ?? "", rating: p?.whiteRating ?? null }
+      : { name: p?.blackName ?? "", rating: p?.blackRating ?? null };
+  };
+
+  // Keep the screen on during my own live games (needs HTTPS; a no-op elsewhere).
+  const keepScreenOn = $derived(
+    myColor !== null && view.game?.status === "started" && view.game.clock.mode === "live",
+  );
+  $effect(() => { if (keepScreenOn) return keepAwake(); });
 
   async function sendMove(uci: string) {
     if (!view.game) return;

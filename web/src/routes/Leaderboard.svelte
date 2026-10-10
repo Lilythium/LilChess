@@ -195,4 +195,9 @@
   .error { color: var(--red); }
 
   @media (max-width: 600px) { .hide-sm { display: none; } }
+
+  .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 1.25rem; }
+  .tabs { scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { padding: .75rem 1.1rem; }
 </style>
