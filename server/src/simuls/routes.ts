@@ -4,9 +4,9 @@ import { HOST_COLORS, MAX_SIMUL_PLAYERS, VARIANTS, normalizeUsername } from "@li
 import { requireAuth } from "../auth/routes.js";
 import { notifyDeadlineChanged } from "../game/deadlineBus.js";
 import { notifySimulInvited } from "../notifications/dispatch.js";
-import { IdParams, parse } from "../validation.js";
+import { Id, IdParams, parse } from "../validation.js";
 import {
-  cancelSimul, createSimul, getSimulDetail, inviteToSimul, listSimuls, respondToInvite, SimulError, startSimul,
+  cancelSimul, createSimul, getSimulDetail, inviteToSimul, listSimuls, respondToInvite, SimulError, startSimul, getSimulInvitePreview, joinByCode, joinSimul, resetInviteCode
 } from "./service.js";
 
 const CreateBody = z.object({
@@ -19,6 +19,7 @@ const CreateBody = z.object({
   variant: z.enum(VARIANTS).default("standard"),
   hostColor: z.enum(HOST_COLORS).default("white"),
   maxPlayers: z.number().int().min(2).max(MAX_SIMUL_PLAYERS),
+  public: z.boolean().default(true),
 })
   .refine((b) => b.mode === "live"
     ? b.initialMs !== undefined && b.daysPerMove === undefined
@@ -33,6 +34,7 @@ const InviteBody = z.object({
   usernames: z.array(z.string().trim().min(1).max(64).transform(normalizeUsername)).min(1).max(20),
 });
 const RespondBody = z.object({ accept: z.boolean() });
+const CodeParams = z.object({ code: Id });
 
 async function simulError(reply: FastifyReply, error: unknown) {
   if (error instanceof SimulError) return reply.code(error.status).send({ error: error.message });
@@ -47,15 +49,15 @@ export async function simulRoutes(app: FastifyInstance) {
     const body = parse(CreateBody, req.body, reply);
     if (!body) return reply;
     try {
-      const { hostExtraMinutes, ...rest } = body;
-      return { ok: true, simulId: createSimul(req.user!.id, { ...rest, hostExtraMs: hostExtraMinutes * 60_000 }) };
+      const { hostExtraMinutes, public: isPublic, ...rest } = body;
+      return { ok: true, simulId: createSimul(req.user!.id, { ...rest, isPublic, hostExtraMs: hostExtraMinutes * 60_000 }) };
     } catch (error) { return simulError(reply, error); }
   });
 
   app.get("/api/simuls/:id", { preHandler: requireAuth }, async (req, reply) => {
     const params = parse(IdParams, req.params, reply);
     if (!params) return reply;
-    const detail = getSimulDetail(params.id, req.user!.id);
+    const detail = getSimulDetail(params.id, req.user!.id, !!req.user!.is_guest);
     if (!detail) return reply.code(404).send({ error: "Simul not found" });
     return { ok: true, ...detail };
   });
@@ -67,7 +69,7 @@ export async function simulRoutes(app: FastifyInstance) {
     if (!body) return reply;
     try {
       const result = inviteToSimul(params.id, req.user!.id, body.usernames);
-      const detail = getSimulDetail(params.id, req.user!.id);
+      const detail = getSimulDetail(params.id, req.user!.id, !!req.user!.is_guest);
       for (const user of result.invited) {
         notifySimulInvited({ simulId: params.id, simulName: detail?.simul.name ?? "", hostName: req.user!.username, toId: user.id });
       }
@@ -102,6 +104,42 @@ export async function simulRoutes(app: FastifyInstance) {
     try {
       cancelSimul(params.id, req.user!.id);
       return { ok: true };
+    } catch (error) { return simulError(reply, error); }
+  });
+
+  // Public (no session): lets a logged-out visitor see what a link is for.
+  app.get("/api/simul-invites/:code", async (req, reply) => {
+    const params = parse(CodeParams, req.params, reply);
+    if (!params) return reply;
+    const invite = getSimulInvitePreview(params.code);
+    if (!invite) return reply.code(404).send({ error: "This invite link is invalid or has expired" });
+    return { ok: true, invite };
+  });
+
+  app.post("/api/simuls/:id/join", { preHandler: requireAuth }, async (req, reply) => {
+    if (req.user!.is_guest) return reply.code(403).send({ error: "Register an account to join a simul" });
+    const params = parse(IdParams, req.params, reply);
+    if (!params) return reply;
+    try {
+      joinSimul(params.id, req.user!.id, false);
+      return { ok: true };
+    } catch (error) { return simulError(reply, error); }
+  });
+
+  app.post("/api/simuls/join-code/:code", { preHandler: requireAuth }, async (req, reply) => {
+    if (req.user!.is_guest) return reply.code(403).send({ error: "Register an account to join a simul" });
+    const params = parse(CodeParams, req.params, reply);
+    if (!params) return reply;
+    try {
+      return { ok: true, simulId: joinByCode(params.code, req.user!.id) };
+    } catch (error) { return simulError(reply, error); }
+  });
+
+  app.post("/api/simuls/:id/invite-link/reset", { preHandler: requireAuth }, async (req, reply) => {
+    const params = parse(IdParams, req.params, reply);
+    if (!params) return reply;
+    try {
+      return { ok: true, inviteCode: resetInviteCode(params.id, req.user!.id) };
     } catch (error) { return simulError(reply, error); }
   });
 }

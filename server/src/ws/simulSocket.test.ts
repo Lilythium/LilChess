@@ -80,7 +80,7 @@ describe("simul channel", () => {
 
     const host2 = await registerUser(app, "hugo");
     const open = (await call(host2, "POST", "/api/simuls", {
-      name: "Not started", mode: "correspondence", daysPerMove: 2, maxPlayers: 3,
+      name: "Not started", mode: "correspondence", daysPerMove: 2, maxPlayers: 3, public: false,
     })).json().simulId as string;
     expect(await rejectedWith(track(connectSimulWs(port, open, { sid: watcher })))).toBe(404);
   });
@@ -101,5 +101,15 @@ describe("simul channel", () => {
 
     await call(host, "POST", `/api/games/${b.gameId}/move`, { ply: 0, uci: "d2d4" });
     expect(await onB.next()).toMatchObject({ type: "move", gameId: b.gameId, ply: 1 });
+  });
+
+  it("lets anyone watch an open public simul", async () => {
+    const watcher = await registerUser(app, "wanda");
+    const host2 = await registerUser(app, "hugo");
+    const open = (await call(host2, "POST", "/api/simuls", {
+      name: "Come play", mode: "correspondence", daysPerMove: 2, maxPlayers: 3,
+    })).json().simulId as string;
+    const ws = track(connectSimulWs(port, open, { sid: watcher }));
+    await opened(ws);
   });
 });

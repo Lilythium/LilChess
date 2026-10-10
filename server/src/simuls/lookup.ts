@@ -20,14 +20,18 @@ export function simulInfoForGame(gameId: string): SimulInfo | null {
   return row ?? null;
 }
 
-/** Open and cancelled simuls are private to the host and the people invited; running and finished ones are public. */
+/**
+ * Public simuls can be opened by anyone while they are open; private ones only by the host and the people
+ * invited. Running and finished simuls are public either way.
+ */
 export function canViewSimul(simulId: string, userId: number): boolean {
   const db = getDb();
-  const simul = db.prepare(`SELECT host_id, status FROM simuls WHERE id = ?`).get(simulId) as
-    | { host_id: number; status: string }
+  const simul = db.prepare(`SELECT host_id, status, is_public FROM simuls WHERE id = ?`).get(simulId) as
+    | { host_id: number; status: string; is_public: number }
     | undefined;
   if (!simul) return false;
   if (simul.status === "running" || simul.status === "completed") return true;
   if (simul.host_id === userId) return true;
+  if (simul.status === "open" && simul.is_public === 1) return true;
   return db.prepare(`SELECT 1 FROM simul_players WHERE simul_id = ? AND user_id = ?`).get(simulId, userId) !== undefined;
 }

@@ -59,6 +59,31 @@
     if (confirm("Cancel this simul?") && (await act("cancel"))) navigate("/simuls");
   }
 
+  let linkInput = $state<HTMLInputElement | null>(null);
+  let linkNote = $state<string | null>(null);
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  const link = $derived(d?.simul.inviteCode ? `${location.origin}/#/s/${d.simul.inviteCode}` : "");
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(link);
+      linkNote = "Link copied.";
+    } catch {
+      // clipboard needs HTTPS: select the text so Ctrl+C works
+      linkInput?.select();
+      linkNote = "Copy the selected link.";
+    }
+  }
+
+  async function shareLink() {
+    try { await navigator.share({ title: `Join my simul: ${d?.simul.name ?? ""}`, url: link }); } catch { /* dismissed */ }
+  }
+
+  async function newLink() {
+    if (!confirm("The old link will stop working. Create a new one?")) return;
+    if (await act("invite-link/reset")) linkNote = "New link created.";
+  }
+
   // The host sees boards that need them first, most urgent on top; everyone else sees them by seat.
   const boards = $derived.by(() => {
     const list = [...(d?.boards ?? [])];
@@ -88,7 +113,7 @@
     <p class="muted">
       Host {displayName(d.simul.hostName)} · {simulClock(d.simul)}
       {#if d.simul.mode === "live" && d.simul.hostExtraMs > 0}(+{d.simul.hostExtraMs / 60_000} min for the host){/if}
-      · {VARIANT_LABELS[d.simul.variant]} · {d.simul.status}
+        · {VARIANT_LABELS[d.simul.variant]} · {d.simul.isPublic ? "public" : "invite-only"} · {d.simul.status}
     </p>
     {#if d.simul.status === "running" || d.simul.status === "completed"}
       <p class="score">
@@ -103,7 +128,7 @@
   {#if d.simul.status === "open"}
     <div class="panel">
       <h2>Players ({d.players.filter((p) => p.status === "accepted").length}/{d.simul.maxPlayers})</h2>
-      {#if d.players.length === 0}<p class="muted">Nobody invited yet.</p>{/if}
+      {#if d.players.length === 0}<p class="muted">Nobody has joined or been invited yet.</p>{/if}
       <ul class="players">
         {#each d.players as p (p.userId)}
           <li><a href={"#/u/" + encodeURIComponent(p.username)}>{displayName(p.username)}</a><span class="chip {p.status}">{p.status}</span></li>
@@ -117,6 +142,22 @@
           <button disabled={busy}>Invite</button>
         </form>
         {#if message}<p class="muted">{message}</p>{/if}
+                <div class="link">
+          <h3>Invite link</h3>
+          <p class="muted">
+            {d.simul.isPublic
+              ? "Share it anywhere. Public simuls also appear in everyone's Simuls list."
+              : "Invite-only: only people with this link or a username invitation can join."}
+          </p>
+          <div class="row">
+            <input readonly value={link} bind:this={linkInput} aria-label="Simul invite link"
+                   onfocus={(e) => e.currentTarget.select()} />
+            <button onclick={copyLink}>Copy</button>
+            {#if canShare}<button onclick={shareLink}>Share</button>{/if}
+            <button disabled={busy} onclick={newLink}>New link</button>
+          </div>
+          {#if linkNote}<p class="muted">{linkNote}</p>{/if}
+        </div>
         <div class="row">
           <button class="primary" disabled={busy || !d.players.some((p) => p.status === "accepted")} onclick={start}>Start simul</button>
           <button class="danger" disabled={busy} onclick={cancel}>Cancel</button>
@@ -127,6 +168,10 @@
             {d.viewer.invite === "accepted" ? "Accepted" : "Accept"}
           </button>
           <button disabled={busy || d.viewer.invite === "declined"} onclick={() => act("respond", { accept: false })}>Decline</button>
+        </div>
+      {:else if d.viewer.canJoin}
+        <div class="row">
+          <button class="primary" disabled={busy} onclick={() => act("join")}>Join simul</button>
         </div>
       {/if}
     </div>
@@ -157,4 +202,6 @@
   .row input { flex: 1 1 14rem; }
   .board { border-radius: var(--radius); }
   .board.to-move { outline: 2px solid var(--green); }
+  .link { margin-top: 1rem; }
+  .link h3 { margin: 0 0 0.25rem; font-size: 1rem; }
 </style>

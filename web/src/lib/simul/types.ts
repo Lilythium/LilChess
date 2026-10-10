@@ -5,7 +5,7 @@ import type {
 export interface SimulSummary {
   id: string; name: string; status: SimulStatus; mode: "live" | "correspondence"; variant: Variant;
   hostId: number; hostName: string; initialMs: number | null; incrementMs: number | null;
-  daysPerMove: number | null; maxPlayers: number; createdAt: number;
+  daysPerMove: number | null; maxPlayers: number; createdAt: number; isPublic: boolean;
   accepted: number; boardsLeft: number; boardsToMove: number;
   viewerGameId: string | null; myStatus: SimulInviteStatus | null;
 }
@@ -13,6 +13,7 @@ export interface SimulSummary {
 export interface SimulLists {
   hosting: SimulSummary | null;
   invitations: SimulSummary[];
+  open: SimulSummary[];
   running: SimulSummary[];
   recent: SimulSummary[];
 }
@@ -30,10 +31,12 @@ export interface SimulDetail {
     hostId: number; hostName: string; initialMs: number | null; incrementMs: number | null;
     daysPerMove: number | null; hostExtraMs: number; hostColor: HostColor; maxPlayers: number;
     createdAt: number; startedAt: number | null; endedAt: number | null;
+    isPublic: boolean;
+    inviteCode: string | null; // only the host receives it
   };
   players: { userId: number; username: string; status: SimulInviteStatus; seat: number | null; gameId: string | null }[];
   boards: SimulBoard[];
   score: SimulScore;
-  viewer: { isHost: boolean; invite: SimulInviteStatus | null; gameId: string | null };
+  viewer: { isHost: boolean; invite: SimulInviteStatus | null; gameId: string | null; canJoin: boolean };
   serverNow: number;
 }

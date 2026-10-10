@@ -37,6 +37,9 @@
 - **Game Association:** Each accepted player receives one ordinary game, linked back through `simul_players.game_id`.
 - **Completion Logic:** Automatically managed via the `simuls_complete_after_game` trigger.
 - **Host & Timing:** Live simuls are host-White only, utilizing an extended first-move window defined by `simulFirstMoveWindowMs`.
+- **Visibility & Joining:** Simuls are public by default. Public simuls appear in the open list and can be joined by id; private simuls cannot be joined by id.
+- **Invite Codes:** Each simul has its own `invite_code`, visible only to the host, who can reset it.
+- **Acceptance:** Joining by invite code or by public simul id counts as accepting.
 - **Real-time Communication:** Overview updates flow through `/ws/simuls/:id`, whereas individual board play leverages the existing `/ws/games/:id` game sockets.
 - **Event Sinks:** Events are rebuilt from committed rows and flushed only after the transaction commits.
 

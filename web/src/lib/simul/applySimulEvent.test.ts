@@ -12,7 +12,7 @@ const detail = (): SimulDetail => ({
     deadlineAt: 10, drawOfferedBy: null,
   }],
   score: { wins: 0, draws: 0, losses: 0, ongoing: 1, aborted: 0, played: 0, points: 0 },
-  viewer: { isHost: true, invite: null, gameId: null },
+  viewer: { isHost: true, invite: null, gameId: null, canJoin: false },
   serverNow: 0,
 });
 

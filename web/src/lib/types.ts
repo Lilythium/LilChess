@@ -7,6 +7,32 @@ export interface Players {
 }
 export interface H2H { wins: number; draws: number; losses: number }
 export interface SimulInfo { id: string; name: string; hostId: number; hostName: string }
+
+export interface SimulSummary extends SimulInfo {
+  isPublic: boolean;
+}
+
+export interface SimulLists {
+  active: SimulSummary[];
+  finished: SimulSummary[];
+  open: SimulSummary[];
+}
+
+export type SimulInviteStatus = "pending" | "accepted" | "declined" | string;
+
+export interface SimulDetail {
+  simul: SimulInfo & {
+    isPublic: boolean;
+    inviteCode: string | null;
+  };
+  viewer: {
+    isHost: boolean;
+    invite: SimulInviteStatus | null;
+    gameId: string | null;
+    canJoin: boolean;
+  };
+}
+
 export interface GameResponse {
   ok: true; game: GameState; sans: string[]; players: Players; h2h: H2H | null; serverNow: number;
   simul: SimulInfo | null;

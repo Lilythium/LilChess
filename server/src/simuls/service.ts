@@ -23,6 +23,7 @@ interface SimulRow {
   initial_ms: number | null; increment_ms: number | null; days_per_move: number | null;
   host_extra_ms: number; variant: Variant; host_color: HostColor; max_players: number;
   created_at: number; started_at: number | null; ended_at: number | null;
+  is_public: number; invite_code: string | null;
 }
 
 const loadSimul = (id: string) => getDb().prepare(`SELECT * FROM simuls WHERE id = ?`).get(id) as SimulRow | undefined;
@@ -49,6 +50,7 @@ export interface SimulConfig {
   variant: Variant;
   hostColor: HostColor;
   maxPlayers: number;
+  isPublic: boolean;
 }
 
 export function createSimul(hostId: number, c: SimulConfig, now = Date.now()): string {
@@ -56,14 +58,15 @@ export function createSimul(hostId: number, c: SimulConfig, now = Date.now()): s
   try {
     getDb().prepare(`
       INSERT INTO simuls (id, host_id, name, mode, initial_ms, increment_ms, days_per_move,
-                          host_extra_ms, variant, host_color, max_players, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          host_extra_ms, variant, host_color, max_players, created_at, is_public, invite_code)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, hostId, c.name, c.mode,
       c.mode === "live" ? c.initialMs : null,
       c.mode === "live" ? c.incrementMs ?? 0 : null,
       c.mode === "correspondence" ? c.daysPerMove : null,
       c.hostExtraMs, c.variant, c.hostColor, c.maxPlayers, now,
+      c.isPublic ? 1 : 0, randomBytes(8).toString("hex"),
     );
   } catch (err) {
     if ((err as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
@@ -139,6 +142,67 @@ export function respondToInvite(simulId: string, userId: number, accept: boolean
   });
 }
 
+/** Join without an invitation: public simuls by id, any simul by invite code. Joining counts as accepting. */
+export function joinSimul(simulId: string, userId: number, viaCode: boolean, now = Date.now()): void {
+  commit(() => {
+    const db = getDb();
+    const simul = loadSimul(simulId);
+    if (!simul) throw new SimulError("Simul not found", 404);
+    const me = db.prepare(`SELECT status FROM simul_players WHERE simul_id = ? AND user_id = ?`)
+      .get(simulId, userId) as { status: string } | undefined;
+    // A private simul doesn't admit it exists to people with neither a link nor an invitation.
+    if (!simul.is_public && !viaCode && !me) throw new SimulError("Simul not found", 404);
+    if (simul.host_id === userId) throw new SimulError("You are the host of this simul", 400);
+    if (simul.status !== "open") throw new SimulError("This simul has already started or was cancelled", 409);
+    if (me?.status === "accepted") return;
+    const accepted = (db.prepare(`SELECT COUNT(*) AS n FROM simul_players WHERE simul_id = ? AND status = 'accepted'`)
+      .get(simulId) as { n: number }).n;
+    if (accepted >= simul.max_players) throw new SimulError("This simul is full", 409);
+    if (me) {
+      db.prepare(`UPDATE simul_players SET status = 'accepted', responded_at = ? WHERE simul_id = ? AND user_id = ?`)
+        .run(now, simulId, userId);
+    } else {
+      db.prepare(`INSERT INTO simul_players (simul_id, user_id, status, invited_at, responded_at) VALUES (?, ?, 'accepted', ?, ?)`)
+        .run(simulId, userId, now, now);
+    }
+    queueSimulEvent({ type: "simul_roster", simulId });
+  });
+}
+
+/** Returns the simul id so the client can open it. */
+export function joinByCode(code: string, userId: number): string {
+  const row = getDb().prepare(`SELECT id FROM simuls WHERE invite_code = ?`).get(code) as { id: string } | undefined;
+  if (!row) throw new SimulError("This invite link is invalid or has expired", 404);
+  joinSimul(row.id, userId, true);
+  return row.id;
+}
+
+/** Revokes the old link. */
+export function resetInviteCode(simulId: string, hostId: number): string {
+  return commit(() => {
+    const simul = loadSimul(simulId);
+    if (!simul) throw new SimulError("Simul not found", 404);
+    if (simul.host_id !== hostId) throw new SimulError("Only the host can change the invite link", 403);
+    if (simul.status !== "open") throw new SimulError("This simul is no longer taking players", 409);
+    const code = randomBytes(8).toString("hex");
+    getDb().prepare(`UPDATE simuls SET invite_code = ? WHERE id = ?`).run(code, simulId);
+    return code;
+  });
+}
+
+/** What a logged-out visitor sees behind a link. Deliberately leaves out the simul id. */
+export function getSimulInvitePreview(code: string) {
+  const row = getDb().prepare(`
+    SELECT s.name, s.status, s.mode, s.variant, s.initial_ms AS initialMs, s.increment_ms AS incrementMs,
+           s.days_per_move AS daysPerMove, s.host_extra_ms AS hostExtraMs, s.max_players AS maxPlayers,
+           s.is_public AS isPublic, u.username AS hostName,
+           (SELECT COUNT(*) FROM simul_players p WHERE p.simul_id = s.id AND p.status = 'accepted') AS accepted
+    FROM simuls s JOIN users u ON u.id = s.host_id
+    WHERE s.invite_code = ?
+  `).get(code) as ({ isPublic: number } & Record<string, unknown>) | undefined;
+  return row ? { ...row, isPublic: row.isPublic === 1 } : undefined;
+}
+
 /** Creates one ordinary game per accepted player. Returns the number of boards. */
 export function startSimul(simulId: string, hostId: number, now = Date.now()): number {
   return commit(() => {
@@ -198,7 +262,7 @@ export function cancelSimul(simulId: string, hostId: number, now = Date.now()): 
 
 // ---- reads ----
 
-export function getSimulDetail(simulId: string, viewerId: number) {
+export function getSimulDetail(simulId: string, viewerId: number, viewerIsGuest = false) {
   if (!canViewSimul(simulId, viewerId)) return undefined;
   const db = getDb();
   const simul = db.prepare(`
@@ -229,6 +293,11 @@ export function getSimulDetail(simulId: string, viewerId: number) {
   }));
 
   const me = players.find((p) => p.userId === viewerId);
+  const isHost = simul.host_id === viewerId;
+  const accepted = players.filter((p) => p.status === "accepted").length;
+  const canJoin = !isHost && !viewerIsGuest && simul.status === "open" && me?.status !== "accepted"
+    && accepted < simul.max_players && (simul.is_public === 1 || me !== undefined);
+
   return {
     simul: {
       id: simul.id, name: simul.name, status: simul.status, mode: simul.mode, variant: simul.variant,
@@ -236,11 +305,14 @@ export function getSimulDetail(simulId: string, viewerId: number) {
       incrementMs: simul.increment_ms, daysPerMove: simul.days_per_move, hostExtraMs: simul.host_extra_ms,
       hostColor: simul.host_color, maxPlayers: simul.max_players, createdAt: simul.created_at,
       startedAt: simul.started_at, endedAt: simul.ended_at,
+      isPublic: simul.is_public === 1,
+      // The code is the secret for private simuls: only the host ever sees it.
+      inviteCode: isHost ? simul.invite_code : null,
     },
     players,
     boards,
     score: simulScore(boards),
-    viewer: { isHost: simul.host_id === viewerId, invite: me?.status ?? null, gameId: me?.gameId ?? null },
+    viewer: { isHost, invite: me?.status ?? null, gameId: me?.gameId ?? null, canJoin },
     serverNow: Date.now(),
   };
 }
@@ -248,7 +320,7 @@ export function getSimulDetail(simulId: string, viewerId: number) {
 const SUMMARY = `
   s.id, s.name, s.status, s.mode, s.variant, s.host_id AS hostId, hu.username AS hostName,
   s.initial_ms AS initialMs, s.increment_ms AS incrementMs, s.days_per_move AS daysPerMove,
-  s.max_players AS maxPlayers, s.created_at AS createdAt,
+  s.max_players AS maxPlayers, s.created_at AS createdAt, s.is_public AS isPublic,
   (SELECT COUNT(*) FROM simul_players p WHERE p.simul_id = s.id AND p.status = 'accepted') AS accepted,
   (SELECT COUNT(*) FROM simul_players p JOIN games g ON g.id = p.game_id
     WHERE p.simul_id = s.id AND g.status = 'started') AS boardsLeft,
@@ -263,21 +335,30 @@ export function listSimuls(viewerId: number) {
   const db = getDb();
   const from = `FROM simuls s JOIN users hu ON hu.id = s.host_id`;
   const params = { viewer: viewerId };
+  const clean = <T extends { isPublic: number }>(r: T) => ({ ...r, isPublic: r.isPublic === 1 });
+  const all = (sql: string) => (db.prepare(sql).all(params) as { isPublic: number }[]).map(clean);
+
+  const hosting = db.prepare(`
+    SELECT ${SUMMARY}, NULL AS myStatus ${from}
+    WHERE s.host_id = @viewer AND s.status IN ('open', 'running') LIMIT 1
+  `).get(params) as { isPublic: number } | undefined;
+
   return {
-    hosting: db.prepare(`
-      SELECT ${SUMMARY}, NULL AS myStatus ${from}
-      WHERE s.host_id = @viewer AND s.status IN ('open', 'running') LIMIT 1
-    `).get(params) ?? null,
-    invitations: db.prepare(`
+    hosting: hosting ? clean(hosting) : null,
+    invitations: all(`
       SELECT ${SUMMARY}, me.status AS myStatus ${from}
       JOIN simul_players me ON me.simul_id = s.id AND me.user_id = @viewer AND me.status IN ('invited', 'accepted')
       WHERE s.status = 'open' ORDER BY s.created_at DESC
-    `).all(params),
-    running: db.prepare(`
-      SELECT ${SUMMARY}, NULL AS myStatus ${from} WHERE s.status = 'running' ORDER BY s.started_at DESC LIMIT 20
-    `).all(params),
-    recent: db.prepare(`
-      SELECT ${SUMMARY}, NULL AS myStatus ${from} WHERE s.status = 'completed' ORDER BY s.ended_at DESC LIMIT 10
-    `).all(params),
+    `),
+    // Public simuls anyone can join; the ones I've already answered live under "invitations".
+    open: all(`
+      SELECT ${SUMMARY}, me.status AS myStatus ${from}
+      LEFT JOIN simul_players me ON me.simul_id = s.id AND me.user_id = @viewer
+      WHERE s.status = 'open' AND s.is_public = 1 AND s.host_id <> @viewer
+        AND (me.status IS NULL OR me.status = 'declined')
+      ORDER BY s.created_at DESC LIMIT 20
+    `),
+    running: all(`SELECT ${SUMMARY}, NULL AS myStatus ${from} WHERE s.status = 'running' ORDER BY s.started_at DESC LIMIT 20`),
+    recent: all(`SELECT ${SUMMARY}, NULL AS myStatus ${from} WHERE s.status = 'completed' ORDER BY s.ended_at DESC LIMIT 10`),
   };
 }

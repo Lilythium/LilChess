@@ -9,13 +9,14 @@
   import type { SimulLists, SimulSummary } from "../lib/simul/types";
 
   let lists = $state<SimulLists | null>(null);
+  let openSimuls = $derived((lists as (SimulLists & { open?: SimulSummary[] }) | null)?.open ?? []);
   let error = $state<string | null>(null);
   let busy = $state(false);
 
   let form = $state({
     name: "", mode: "live" as "live" | "correspondence", minutes: 10, increment: 0, extraMinutes: 30,
     days: 2, variant: "standard" as (typeof VARIANTS)[number], hostColor: "white" as (typeof HOST_COLORS)[number],
-    maxPlayers: 8,
+    maxPlayers: 8, isPublic: true,
   });
 
   async function load() {
@@ -40,7 +41,7 @@
       const live = form.mode === "live";
       const res = await api<{ simulId: string }>("/api/simuls", {
         body: {
-          name: form.name, mode: form.mode, variant: form.variant, maxPlayers: form.maxPlayers,
+          name: form.name, mode: form.mode, variant: form.variant, maxPlayers: form.maxPlayers, public: form.isPublic,
           ...(live
             ? { initialMs: form.minutes * 60_000, incrementMs: form.increment * 1000, hostExtraMinutes: form.extraMinutes }
             : { daysPerMove: form.days, hostColor: form.hostColor }),
@@ -61,6 +62,16 @@
       error = err instanceof Error ? err.message : String(err);
     }
     await load();
+  }
+
+  async function join(s: SimulSummary) {
+    try {
+      await api(`/api/simuls/${s.id}/join`, { method: "POST" });
+      navigate(`/simul/${s.id}`);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      await load();
+    }
   }
 </script>
 
@@ -106,6 +117,10 @@
             <option value="correspondence">Correspondence</option>
           </select>
         </label>
+        <label class="check">
+          <input type="checkbox" bind:checked={form.isPublic} />
+          Public: anyone can join from the Simuls list. Untick for invite-only (people need your link or an invitation).
+        </label>
         {#if form.mode === "live"}
           <label>Minutes per board<input type="number" min="1" max="60" bind:value={form.minutes} /></label>
           <label>Increment (s)<input type="number" min="0" max="60" bind:value={form.increment} /></label>
@@ -129,6 +144,27 @@
       {/if}
       <button class="primary" disabled={busy}>Create simul</button>
     </form>
+  {/if}
+
+    {#if lists.open.length}
+    <div class="panel">
+      <h2>Open simuls</h2>
+      <ul class="rows">
+        {#each lists.open as s (s.id)}
+          <li>
+            <div class="info">
+              <a href={"#/simul/" + s.id}>{s.name}</a>
+              <span class="muted">{displayName(s.hostName)} · {simulClock(s)} · {s.accepted}/{s.maxPlayers} joined</span>
+            </div>
+            {#if !auth.user?.is_guest}
+              <button class="primary" disabled={s.accepted >= s.maxPlayers} onclick={() => join(s)}>
+                {s.accepted >= s.maxPlayers ? "Full" : "Join"}
+              </button>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    </div>
   {/if}
 
   <div class="panel">
@@ -174,4 +210,5 @@
   label { display: flex; flex-direction: column; gap: 0.25rem; color: var(--muted); font-size: 0.9rem; }
   .hint { margin: 0 0 0.75rem; font-size: 0.9rem; }
   .btn { padding: 0.4rem 0.8rem; background: var(--panel-hi); border-radius: var(--radius); }
+  .check { flex-direction: row; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
 </style>

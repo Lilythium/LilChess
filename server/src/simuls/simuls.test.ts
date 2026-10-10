@@ -129,7 +129,7 @@ describe("simuls", () => {
   });
 
   it("rejects what it should", async () => {
-    const id = await openSimul();
+    const id = await openSimul({ public: false });
     expect((await call(host, "POST", "/api/simuls", { name: "Second", mode: "correspondence", daysPerMove: 2, maxPlayers: 4 })).statusCode).toBe(409);
     expect((await call(ann, "POST", `/api/simuls/${id}/start`)).statusCode).toBe(403); // not the host
     expect((await call(host, "POST", `/api/simuls/${id}/start`)).statusCode).toBe(409); // nobody accepted
@@ -185,5 +185,78 @@ describe("simuls", () => {
     // The host's game rows carry the simul id so the UI can group them.
     const mine = (await call(host, "GET", "/api/games/my-games")).json();
     expect([...mine.myTurn, ...mine.theirTurn].every((g: any) => g.simul_id === id && g.simul_host_id !== null)).toBe(true);
+  });
+
+  it("is public by default: strangers can see it, find it in the list and join without an invitation", async () => {
+    const id = await openSimul();
+    expect((await call(ben, "GET", `/api/simuls/${id}`)).json().simul.isPublic).toBe(true);
+    expect((await call(ben, "GET", "/api/simuls")).json().open.map((s: any) => s.id)).toEqual([id]);
+
+    expect((await call(ben, "POST", `/api/simuls/${id}/join`)).statusCode).toBe(200);
+    const detail = (await call(host, "GET", `/api/simuls/${id}`)).json();
+    expect(detail.players.map((p: any) => [p.username, p.status])).toEqual([["ben", "accepted"]]);
+
+    // Joined: it moves from "open" to the player's own list.
+    const lists = (await call(ben, "GET", "/api/simuls")).json();
+    expect(lists.open).toEqual([]);
+    expect(lists.invitations.map((s: any) => s.id)).toEqual([id]);
+    expect((await call(host, "POST", `/api/simuls/${id}/start`)).json().boards).toBe(1);
+  });
+
+  it("keeps private simuls hidden and unjoinable by id, but an invite link lets anyone in", async () => {
+    const id = await openSimul({ public: false });
+    expect((await call(ben, "GET", `/api/simuls/${id}`)).statusCode).toBe(404);
+    expect((await call(ben, "GET", "/api/simuls")).json().open).toEqual([]);
+    expect((await call(ben, "POST", `/api/simuls/${id}/join`)).statusCode).toBe(404);
+
+    const code = (await call(host, "GET", `/api/simuls/${id}`)).json().simul.inviteCode as string;
+    expect(code).toMatch(/^[0-9a-f]{16}$/);
+    const joined = await call(ben, "POST", `/api/simuls/join-code/${code}`);
+    expect(joined.statusCode, joined.body).toBe(200);
+    expect(joined.json().simulId).toBe(id);
+    expect((await call(ben, "GET", `/api/simuls/${id}`)).statusCode).toBe(200); // a member can see it now
+  });
+
+  it("shows the invite code to the host only", async () => {
+    const id = await openSimul();
+    expect((await call(host, "GET", `/api/simuls/${id}`)).json().simul.inviteCode).toMatch(/^[0-9a-f]{16}$/);
+    expect((await call(ben, "GET", `/api/simuls/${id}`)).json().simul.inviteCode).toBeNull();
+  });
+
+  it("previews an invite link without a session", async () => {
+    const id = await openSimul({ public: false });
+    const code = (await call(host, "GET", `/api/simuls/${id}`)).json().simul.inviteCode as string;
+    const res = await app.inject({ method: "GET", url: `/api/simul-invites/${code}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().invite).toMatchObject({
+      name: "Friday simul", hostName: "hana", status: "open", isPublic: false, accepted: 0, maxPlayers: 10,
+    });
+    expect(res.json().invite).not.toHaveProperty("simulId");
+    expect((await app.inject({ method: "GET", url: `/api/simul-invites/${"0".repeat(16)}` })).statusCode).toBe(404);
+  });
+
+  it("replaces the invite link on request and the old one stops working", async () => {
+    const id = await openSimul({ public: false });
+    const old = (await call(host, "GET", `/api/simuls/${id}`)).json().simul.inviteCode as string;
+
+    expect((await call(ann, "POST", `/api/simuls/${id}/invite-link/reset`)).statusCode).toBe(403);
+    const reset = await call(host, "POST", `/api/simuls/${id}/invite-link/reset`);
+    expect(reset.statusCode).toBe(200);
+    const fresh = reset.json().inviteCode as string;
+    expect(fresh).not.toBe(old);
+
+    expect((await call(ben, "POST", `/api/simuls/join-code/${old}`)).statusCode).toBe(404);
+    expect((await call(ben, "POST", `/api/simuls/join-code/${fresh}`)).statusCode).toBe(200);
+  });
+
+  it("won't let people join a full, started or own simul", async () => {
+    const id = await openSimul({ maxPlayers: 2 });
+    expect((await call(host, "POST", `/api/simuls/${id}/join`)).statusCode).toBe(400); // own simul
+    expect((await call(ann, "POST", `/api/simuls/${id}/join`)).statusCode).toBe(200);
+    expect((await call(ben, "POST", `/api/simuls/${id}/join`)).statusCode).toBe(200);
+    expect((await call(cyd, "POST", `/api/simuls/${id}/join`)).statusCode).toBe(409); // full
+
+    await call(host, "POST", `/api/simuls/${id}/start`);
+    expect((await call(cyd, "POST", `/api/simuls/${id}/join`)).statusCode).toBe(409); // started
   });
 });

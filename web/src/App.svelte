@@ -24,6 +24,7 @@
   import Simuls from "./routes/Simuls.svelte";
   import SimulDetail from "./routes/SimulDetail.svelte";
   import type { SimulLists } from "./lib/simul/types";
+  import SimulInvite from "./routes/SimulInvite.svelte";
 
   onMount(loadMe);
 
@@ -38,12 +39,14 @@
   const forgot = $derived(route.path === "/forgot");
   // Reachable without logging in (the user is locked out, or clicked a link in an email).
   const publicPage = $derived(forgot || !!reset || !!unsub);
+  const simulInvite = $derived(matchRoute(route.path, "/s/:code"));
 
   $effect(() => {
     if (!auth.ready) return;
     // Invite links are reachable while logged out: the page offers login / register / guest.
     if (!auth.user && route.path !== "/login" && !invite && !publicPage) navigate("/login");
     if (auth.user && route.path === "/login") navigate("/");
+    if (!auth.user && route.path !== "/login" && !invite && !simulInvite && !publicPage) navigate("/login");
   });
 
   // On startup/login, resume the active game that will end soonest (else stay on the lobby).
@@ -136,6 +139,8 @@
   <main class="page">
     {#if game}{#key game.id}<Game id={game.id} />{/key}
     {:else if invite}{#key invite.id}<Invite id={invite.id} />{/key}
+    {:else if simulInvite}
+    <main class="page">{#key simulInvite.code}<SimulInvite code={simulInvite.code} />{/key}</main>
     {:else if profile}{#key profile.name}<Profile name={profile.name} />{/key}
     {:else if publicPage}{@render publicPages()}
     {:else if route.path === "/games"}<MyGames />
