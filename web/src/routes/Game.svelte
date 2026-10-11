@@ -48,6 +48,29 @@
     }
   }
 
+  function onWheel(e: WheelEvent) {
+    const target = e.target;
+    if (
+      e.ctrlKey ||
+      e.deltaY === 0 ||
+      (target instanceof HTMLElement &&
+        (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) ||
+          target.isContentEditable))
+    ) {
+      return;
+    }
+
+    const game = view.game;
+    if (!game) return;
+
+    const currentPly = viewPly ?? game.ply;
+    const nextPly = currentPly + (e.deltaY > 0 ? 1 : -1);
+    if (nextPly < 0 || nextPly > game.ply) return;
+
+    e.preventDefault();
+    viewPly = selectPly(nextPly, game.ply);
+  }
+
   function onKey(e: KeyboardEvent) {
     const t = e.target;
 
@@ -147,7 +170,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window onkeydown={onKey} onwheel={onWheel} />
 
 <svelte:head>
   {#if view.game && view.players}

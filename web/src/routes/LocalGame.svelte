@@ -149,6 +149,29 @@
     viewPly = ply === save.game.ply ? null : ply;
   }
 
+  function onWheel(event: WheelEvent) {
+    const target = event.target;
+    if (
+      event.ctrlKey ||
+      event.deltaY === 0 ||
+      (target instanceof HTMLElement &&
+        (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) ||
+          target.isContentEditable))
+    ) {
+      return;
+    }
+
+    const total = save?.game.ply;
+    if (total === undefined) return;
+
+    const currentPly = viewPly ?? total;
+    const nextPly = currentPly + (event.deltaY > 0 ? 1 : -1);
+    if (nextPly < 0 || nextPly > total) return;
+
+    event.preventDefault();
+    selectPly(nextPly);
+  }
+
   const sanByPly: Record<number, string> = $derived(
     Object.fromEntries((save?.sans ?? []).map((s, i) => [i + 1, s])),
   );
@@ -290,7 +313,9 @@
       </div>
     </div>
   {/if}
-{/if}
+  {/if}
+
+  <svelte:window onwheel={onWheel} />
 
 <style>
   /* Name card (unchanged apart from dropping the border to match the sidebar panel) */

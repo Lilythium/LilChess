@@ -26,12 +26,26 @@
   );
 
   $effect(() => {
-    void ply;
+    const activePly = selected ?? ply;
 
     if (!box) return;
 
-    box.scrollTop = box.scrollHeight;
+    const move = box.querySelector<HTMLButtonElement>(
+      `button[data-ply="${activePly}"]`,
+    );
+    const row = move?.parentElement;
+    if (!row) return;
+
+    const boxBounds = box.getBoundingClientRect();
+    const rowBounds = row.getBoundingClientRect();
+
+    if (rowBounds.top < boxBounds.top) {
+      box.scrollTop += rowBounds.top - boxBounds.top;
+    } else if (rowBounds.bottom > boxBounds.bottom) {
+      box.scrollTop += rowBounds.bottom - boxBounds.bottom;
+    }
   });
+
 </script>
 
 <div class="moves" bind:this={box}>
@@ -43,6 +57,7 @@
         <button
           type="button"
           class="san compact"
+          data-ply={r.whitePly}
           class:active={
             selected === r.whitePly ||
             (selected === null && r.whitePly === ply)
@@ -59,6 +74,7 @@
         <button
           type="button"
           class="san compact"
+          data-ply={r.blackPly}
           class:active={
             selected === r.blackPly ||
             (selected === null && r.blackPly === ply)
