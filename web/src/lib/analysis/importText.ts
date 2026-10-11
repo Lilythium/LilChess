@@ -2,9 +2,9 @@ import { Chess } from "chessops/chess";
 import { makeFen, parseFen } from "chessops/fen";
 import { parsePgn, startingPosition } from "chessops/pgn";
 import { parseSan } from "chessops/san";
-import { makeUci, squareFile, squareRank } from "chessops/util";
-import type { Setup } from "chessops/setup";
+import { makeUci } from "chessops/util";
 import type { LoadedGame } from "./loadedGame";
+import { needsChess960 } from "@lilchess/shared";
 
 export const MAX_INPUT_CHARS = 200_000;
 export const MAX_PLIES = 1000;
@@ -14,16 +14,6 @@ export type ParsedInput =
   | { ok: false; error: string };
 
 const RESULTS = ["1-0", "0-1", "1/2-1/2"];
-
-/** Castling rights that only make sense in Chess960: a king off the e-file or a rook off a/h. */
-function needsChess960(setup: Setup): boolean {
-  for (const square of setup.castlingRights) {
-    const color = squareRank(square) === 0 ? "white" : "black";
-    const king = setup.board.kingOf(color);
-    if (king === undefined || squareFile(king) !== 4 || squareFile(square) % 7 !== 0) return true;
-  }
-  return false;
-}
 
 function header(headers: Map<string, string>, name: string): string | null {
   const value = headers.get(name)?.trim();

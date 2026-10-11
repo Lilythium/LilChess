@@ -13,7 +13,6 @@ getGamePlayers,
 getLiveGames,
 getInvitePreview,
 ChallengeError,
-importPgnForUser,
 } from "./queries.js";
 import {
 submitMove,
@@ -33,7 +32,7 @@ headToHead,
 } from "../db/repositories/games.js";
 import { getUserByUsername } from "../auth/queries.js";
 import { notifyDeadlineChanged } from "./deadlineBus.js";
-import { ChallengeBody, IdParams, ImportPgnBody, MoveBody, UsernameParams, parse } from "../validation.js";
+import { ChallengeBody, IdParams, MoveBody, UsernameParams, parse } from "../validation.js";
 import { notifyChallengeAccepted, notifyChallengeReceived } from "../notifications/dispatch.js";
 import { simulInfoForGame } from "../simuls/lookup.js";
 
@@ -267,24 +266,6 @@ app.get("/api/games/my-games", { preHandler: requireAuth }, async (req) => ({
 ok: true,
 ...getMyGames(req.user!.id),
 }));
-
-app.post("/api/games/import", { preHandler: requireAuth }, async (req, reply) => {
-  if (req.user!.is_guest) {
-    return reply.code(403).send({ error: "Guests cannot import PGN games. Register an account first." });
-  }
-
-  const body = parse(ImportPgnBody, req.body, reply);
-  if (!body) return reply;
-
-  try {
-    const imported = importPgnForUser(req.user!, body.pgn);
-    return { ok: true, imported };
-  } catch (error) {
-    return reply.code(400).send({
-      error: error instanceof Error ? error.message : "PGN import failed",
-    });
-  }
-});
 
 app.get("/api/users/:username", { preHandler: requireAuth }, async (req, reply) => {
 const params = parse(UsernameParams, req.params, reply);

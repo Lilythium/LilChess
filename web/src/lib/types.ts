@@ -75,3 +75,32 @@ export interface AnalysisResponse {
   white: string;
   black: string;
 }
+
+// Games imported from PGN files. They name their players as plain text and belong to one user.
+export interface ImportedGameRow {
+  id: string;
+  white: string;
+  black: string;
+  whiteElo: number | null;
+  blackElo: number | null;
+  event: string | null;
+  site: string | null;
+  date: string | null; // PGN style, e.g. "2026.10.10"
+  variant: Variant;
+  timeControl: string | null;
+  result: "1-0" | "0-1" | "1/2-1/2" | "*";
+  termination: string | null;
+  fen: string;
+  lastMove: string | null;
+  plies: number;
+  importedAt: number;
+}
+export interface ImportedList { ok: true; total: number; games: ImportedGameRow[] }
+export interface ImportFailure { index: number; label: string; message: string }
+export interface ImportSummary {
+  ok: true;
+  imported: string[];
+  duplicates: number;
+  overLimit: number;
+  failures: ImportFailure[];
+}

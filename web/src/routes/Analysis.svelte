@@ -24,10 +24,13 @@
 
   // App.svelte wraps this in {#key id}, so capturing the initial id is intended.
   // svelte-ignore state_referenced_locally
-  let { id }: { id?: string } = $props();
+  let { id, imported = false }: { id?: string; imported?: boolean } = $props();
   // svelte-ignore state_referenced_locally
   const gameId = id;
-
+  // Imported games share the page but not the id space, so their cached analysis gets its own keys.
+  // svelte-ignore state_referenced_locally
+  const cacheId = id && imported ? `imported:${id}` : id;
+  
   const session = createAnalysisSession();
   const s = session.view;
   const cache = browserCache();
@@ -130,7 +133,7 @@
     line = [...game.moves];
     viewPly = null;
     flipped = false;
-    const hit = cache.load(gameCacheKey(gameId, game), game.moves.length + 1);
+    const hit = cache.load(gameCacheKey(cacheId, game), game.moves.length + 1);
     if (hit) {
       session.loadFull(hit.evals);
       depth = hit.depth;
@@ -139,11 +142,11 @@
 
   async function runAnalysis() {
     if (!gameTimeline || !loaded) return;
-    const key = gameCacheKey(gameId, loaded);
+    const key = gameCacheKey(cacheId, loaded);
     const ranAt = depth;
     await session.runFull(gameTimeline.fens, chess960, ranAt);
     // Only a finished run for the game still on screen is worth keeping.
-    if (loaded && gameCacheKey(gameId, loaded) === key) cache.save(key, ranAt, s.full.evals);
+    if (loaded && gameCacheKey(cacheId, loaded) === key) cache.save(key, ranAt, s.full.evals);
   }
 
   function loadText(text: string): { error?: string; note?: string } {
@@ -206,7 +209,7 @@
         .catch((err) => {
           loadError = err instanceof Error && err.message === "game_not_finished"
             ? "Games can be analysed once they are finished."
-            : "Couldn't load this game.";
+            : imported ? "Couldn't load this imported game." : "Couldn't load this game.";
         })
         .finally(() => (loading = false));
     }

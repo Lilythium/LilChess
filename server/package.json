@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "check-db": "tsx src/scripts/check-db.ts",
+    "purge-legacy-imports": "tsx src/scripts/purge-legacy-imports.ts",
     "bench": "tsx src/scripts/bench-replay.ts"
   },
   "dependencies": {

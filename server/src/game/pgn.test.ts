@@ -36,34 +36,6 @@ describe("GET /api/games/:id/pgn", () => {
     expect(res.body).toContain("1. e4 *");
   });
 
-  it("imports valid PGN and exposes it in the user history", async () => {
-    const alice = await registerUser(app, "alice");
-    const pgn = `[Event "Import test"]
-[White "alice"]
-[Black "bob"]
-[Result "1-0"]
-
-1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0`;
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/games/import",
-      cookies: { sessionId: alice },
-      payload: { pgn },
-    });
-
-    expect(res.statusCode).toBe(200);
-    expect(res.json().ok).toBe(true);
-    expect(res.json().imported).toHaveLength(1);
-
-    const list = await app.inject({ method: "GET", url: "/api/games/my-games", cookies: { sessionId: alice } });
-    expect(list.statusCode).toBe(200);
-    const data = list.json();
-    expect(data.finished.length).toBeGreaterThanOrEqual(1);
-    expect(data.finished[0].white_name).toBe("alice");
-    expect(data.finished[0].black_name).toBe("bob");
-  });
-
   it("accepts Lichess PGNs with clock comments and time-forfeit termination", async () => {
     const alice = await registerUser(app, "alice");
     const pgn = `[Event "rated bullet game"]
@@ -91,7 +63,7 @@ describe("GET /api/games/:id/pgn", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: "/api/games/import",
+      url: "/api/imported",
       cookies: { sessionId: alice },
       payload: { pgn },
     });
@@ -99,41 +71,10 @@ describe("GET /api/games/:id/pgn", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().ok).toBe(true);
     expect(res.json().imported).toHaveLength(1);
-  });
+    expect(res.json().failures).toEqual([]);
 
-  it("imports multiple games from one PGN file and rejects malformed input", async () => {
-    const alice = await registerUser(app, "alice");
-    const pgn = `[Event "Game 1"]
-[White "alice"]
-[Black "bob"]
-[Result "1-0"]
-
-1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0
-
-[Event "Game 2"]
-[White "alice"]
-[Black "carol"]
-[Result "1-0"]
-
-1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0`;
-
-    const imported = await app.inject({
-      method: "POST",
-      url: "/api/games/import",
-      cookies: { sessionId: alice },
-      payload: { pgn },
-    });
-    expect(imported.statusCode).toBe(200);
-    expect(imported.json().imported).toHaveLength(2);
-
-    const bad = await app.inject({
-      method: "POST",
-      url: "/api/games/import",
-      cookies: { sessionId: alice },
-      payload: { pgn: "1. e4 e5 2. Qh5 ???" },
-    });
-    expect(bad.statusCode).toBe(400);
-    expect(bad.json().error).toMatch(/PGN|illegal|unsupported/i);
+    const listed = await app.inject({ method: "GET", url: "/api/imported", cookies: { sessionId: alice } });
+    expect(listed.json().games[0]).toMatchObject({ white: "KomronARM", black: "lilythium", result: "0-1", termination: "Time forfeit" });
   });
 
   it("404s for an unknown game and 401s without a session", async () => {

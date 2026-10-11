@@ -15,6 +15,7 @@ import { notificationRoutes } from "./notifications/routes.js";
 import { adminRoutes } from "./admin/routes.js";
 import { tournamentRoutes } from "./tournaments/routes.js";
 import { leaderboardRoutes } from "./leaderboard/routes.js";
+import { importedRoutes } from "./imported/routes.js";
 import { simulRoutes } from "./simuls/routes.js";
 
 type TrustProxy = boolean | string | ((address: string, hop: number) => boolean);
@@ -63,6 +64,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(adminRoutes);
   await app.register(tournamentRoutes);
   await app.register(leaderboardRoutes);
+  await app.register(importedRoutes);
   await app.register(simulRoutes);
   app.get("/api/health", { config: { rateLimit: false } }, async () => ({ ok: true }));
 

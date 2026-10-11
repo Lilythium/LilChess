@@ -8,29 +8,9 @@
 
   let data = $state<MyGames | null>(null);
   let error = $state<string | null>(null);
-  let success = $state<string | null>(null);
   let now = $state(Date.now());
   let hostedBoards = $state(0);
 
-  async function importPgn(event: Event) {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
-
-    try {
-      const pgn = await file.text();
-      const result = await api<{ ok: true; imported: string[] }>('/api/games/import', { body: { pgn } });
-      success = result.imported.length === 1 ? 'Imported 1 game.' : `Imported ${result.imported.length} games.`;
-      error = null;
-      input.value = '';
-      await load();
-    } catch (err) {
-      success = null;
-      error = err instanceof Error ? err.message : String(err);
-      input.value = '';
-    }
-  }
-  
   async function load() {
     try {
       const all = await api<MyGames>("/api/games/my-games");
@@ -95,14 +75,9 @@
 {:else if !data}
   <p class="muted">Loading…</p>
 {:else}
-  <div class="panel import-panel">
-    <h2>Import PGN</h2>
-    <label class="button label-style">
-      <input type="file" accept=".pgn,.txt,text/x-chess-pgn" onchange={importPgn} />
-      Choose PGN file
-    </label>
-    {#if success}<p class="success">{success}</p>{/if}
-    <a href="#/analysis">Open the analysis board</a>
+  <div class="panel links">
+    <a href="#/imported">Imported games</a>
+    <a href="#/analysis">Analysis board</a>
   </div>
   {#if hostedBoards > 0}  <div class="panel"><a href="#/simuls">Your simul: {hostedBoards} {hostedBoards === 1 ? "board" : "boards"} in progress →</a></div>{/if}
   <div class="stack">
@@ -114,8 +89,5 @@
 
 <style>
   .stack { display: flex; flex-direction: column; gap: 1rem; }
-  .import-panel { display: flex; flex-direction: column; gap: 0.5rem; }
-  .label-style { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; }
-  .label-style input { display: none; }
-  .success { color: #2e7d32; }
+  .links { display: flex; gap: 1.25rem; flex-wrap: wrap; }
 </style>

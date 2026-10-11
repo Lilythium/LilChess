@@ -13,3 +13,7 @@ export { buildPgn, type BuildPgnOptions } from "./pgn.js";
 export { gameStateProblems } from "./invariants.js";
 export { chess960Fen, randomChess960Fen, startFenFor } from "./variants.js";
 export { PositionTimeline } from "./timeline.js";
+export {
+  parsePgnGames, needsChess960, IMPORT_MAX_CHARS, IMPORT_MAX_GAMES, IMPORT_MAX_PLIES,
+  type ParsedPgnGame, type PgnParseFailure, type PgnParseOutcome, type ImportedResult,
+} from "./pgnImport.js";

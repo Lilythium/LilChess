@@ -31,7 +31,14 @@ export function checkIntegrity(db: Database.Database, opts: { deep?: boolean } =
     FROM games g LEFT JOIN moves m ON m.game_id = g.id
     GROUP BY g.id HAVING n <> g.ply OR top <> g.ply
   `).all() as { id: string; ply: number; n: number; top: number }[];
+  
   for (const g of mismatched) add("ply", `game ${g.id}: ply ${g.ply} but ${g.n} move rows (max ply ${g.top})`);
+    const importedMismatch = db.prepare(`
+    SELECT g.id, g.ply, COUNT(m.ply) AS n, COALESCE(MAX(m.ply), 0) AS top
+    FROM imported_games g LEFT JOIN imported_moves m ON m.game_id = g.id
+    GROUP BY g.id HAVING n <> g.ply OR top <> g.ply
+  `).all() as { id: string; ply: number; n: number; top: number }[];
+  for (const g of importedMismatch) add("imported", `imported game ${g.id}: ply ${g.ply} but ${g.n} move rows (max ply ${g.top})`);
 
   for (const g of db.prepare(`SELECT id FROM games WHERE fen IS NULL`).all() as { id: string }[]) {
     add("fen", `game ${g.id} has no stored position`);
