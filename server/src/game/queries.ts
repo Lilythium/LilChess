@@ -1,6 +1,10 @@
 import { getDb } from "../db/connection.js";
 import { randomBytes } from "node:crypto";
-import { createGame, normalizeUsername, type ClockConfig, type Variant } from "@lilchess/shared";
+import { makeFen } from "chessops/fen";
+import { parsePgn, startingPosition } from "chessops/pgn";
+import { parseSan } from "chessops/san";
+import { makeUci } from "chessops/util";
+import { createGame, normalizeUsername, type ClockConfig, type GameState, type Variant } from "@lilchess/shared";
 import { insertGame, headToHead } from "../db/repositories/games.js";
 import { getPlayerRatings, getRatingHistory, getRatingBadge } from "../db/repositories/ratings.js";
 
@@ -251,6 +255,217 @@ export function getLiveGames(limit = 20) {
   `).all(limit) as any[];
 
   return rows;
+}
+
+function parseImportedClock(headers: Map<string, string>): ClockConfig {
+  const raw = (headers.get("TimeControl") ?? "").trim();
+  if (!raw || raw === "?" || raw === "-") {
+    return { mode: "live", initialMs: 300_000, incrementMs: 0 };
+  }
+
+  const correspondence = /^1\/(\d+)$/.exec(raw);
+  if (correspondence) {
+    return { mode: "correspondence", daysPerMove: Number(correspondence[1]) / 86_400 };
+  }
+
+  const live = /^([0-9]+)(?:\+([0-9]+))?$/.exec(raw);
+  if (live) {
+    return {
+      mode: "live",
+      initialMs: Number(live[1]) * 1000,
+      incrementMs: Number(live[2] ?? 0) * 1000,
+    };
+  }
+
+  return { mode: "live", initialMs: 300_000, incrementMs: 0 };
+}
+
+function resolveImportedUserId(username: string, importerId: number, importerName: string): number {
+  const canonical = normalizeUsername(username);
+  if (!canonical) throw new Error("Imported PGN is missing a player name");
+
+  const me = normalizeUsername(importerName);
+  if (canonical === me) return importerId;
+
+  const existing = getDb().prepare(`SELECT id FROM users WHERE username = ?`).get(canonical) as { id: number } | undefined;
+  if (existing) return existing.id;
+
+  const info = getDb().prepare(`
+    INSERT INTO users (username, password_hash, created_at, is_guest)
+    VALUES (?, '!', ?, 1)
+  `).run(canonical, Date.now());
+
+  return Number(info.lastInsertRowid);
+}
+
+function importedVariant(headers: Map<string, string>): Variant {
+  const variant = (headers.get("Variant") ?? "").trim().toLowerCase();
+  if (variant === "chess960" || variant === "fischerandom" || variant === "fischer random") return "chess960";
+  const fen = headers.get("FEN")?.trim();
+  if (fen && fen !== "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") {
+    return "chess960";
+  }
+  return "standard";
+}
+
+function importedTermination(headers: Map<string, string>, lastSan: string | undefined, result: string | undefined): GameState["termination"] {
+  const tag = (headers.get("Termination") ?? "").trim();
+  const mapping: Record<string, GameState["termination"]> = {
+    "Time forfeit": "timeout",
+    "Abandoned": "abort",
+    "Normal": "checkmate",
+  };
+
+  if (tag && mapping[tag]) return mapping[tag];
+  if (lastSan?.endsWith("#")) return "checkmate";
+  if (result === "1/2-1/2") return "agreement";
+  if (result === "1-0" || result === "0-1") return "resignation";
+  return "agreement";
+}
+
+function validateImportedPgn(pgnText: string): void {
+  const cleaned = pgnText
+    .replace(/\r/g, "")
+    .replace(/^\s*\[[A-Za-z0-9][A-Za-z0-9_+#=:-]*\s+"(?:[^"\\]|\\"|\\\\)*"\]\s*/gm, "")
+    .replace(/\{[^}]*\}/g, " ")
+    .replace(/^\s*%.*$/gm, "")
+    .trim();
+
+  if (!cleaned) {
+    throw new Error("No valid PGN games found in this file");
+  }
+
+  const noInternalComments = cleaned.replace(/\[[^\]]*\]/g, " ");
+  if (/(?:[!?]){2,}/.test(noInternalComments)) {
+    throw new Error("Illegal or unsupported PGN content");
+  }
+}
+
+export function importPgnForUser(user: { id: number; username: string }, pgnText: string) {
+  validateImportedPgn(pgnText);
+  const parsed = parsePgn(pgnText);
+  if (!parsed.length) {
+    throw new Error("No valid PGN games found in this file");
+  }
+
+  const imported: string[] = [];
+
+  for (const game of parsed) {
+    const setup = startingPosition(game.headers);
+    if (setup.isErr) {
+      throw new Error(`Unsupported PGN variant or setup: ${game.headers.get("Variant") ?? "standard"}`);
+    }
+
+    const pos = setup.unwrap();
+    const whiteName = game.headers.get("White")?.trim() ?? "White";
+    const blackName = game.headers.get("Black")?.trim() ?? "Black";
+    const whiteIsMe = normalizeUsername(whiteName) === normalizeUsername(user.username);
+    const blackIsMe = normalizeUsername(blackName) === normalizeUsername(user.username);
+
+    const whiteUserId = resolveImportedUserId(whiteName, user.id, user.username);
+    const blackUserId = resolveImportedUserId(blackName, user.id, user.username);
+    const meIsWhite = whiteIsMe || (!blackIsMe && !whiteIsMe);
+    const whiteId = meIsWhite ? user.id : whiteUserId;
+    const blackId = meIsWhite ? blackUserId : user.id;
+
+    const state: GameState = {
+      variant: importedVariant(game.headers),
+      rated: false,
+      initialFen: makeFen(pos.toSetup()),
+      moves: [],
+      ply: 0,
+      turn: "white",
+      clock: parseImportedClock(game.headers),
+      whiteMs: 0,
+      blackMs: 0,
+      turnStartedAt: Date.now(),
+      deadlineAt: Date.now(),
+      status: "finished",
+      result: undefined,
+    };
+
+    const rawResult = game.headers.get("Result") ?? "*";
+    if (rawResult !== "*" && rawResult !== "1/2-1/2" && rawResult !== "1-0" && rawResult !== "0-1") {
+      throw new Error("Unsupported PGN result format");
+    }
+    if (rawResult !== "*") state.result = rawResult as GameState["result"];
+
+    const sanMoves: string[] = [];
+    for (const node of game.moves.mainline()) {
+      const move = parseSan(pos, node.san);
+      if (!move) {
+        throw new Error(`Illegal or unsupported move in PGN: ${node.san}`);
+      }
+      state.moves.push(makeUci(move));
+      sanMoves.push(node.san);
+      pos.play(move);
+    }
+
+    state.ply = state.moves.length;
+    state.turn = state.ply % 2 === 0 ? "white" : "black";
+    if (state.result === undefined && rawResult === "*") {
+      state.status = "started";
+    }
+    if (state.result) {
+      state.termination = importedTermination(game.headers, sanMoves.at(-1), state.result);
+    }
+
+    const gameId = randomBytes(5).toString("hex");
+    if (whiteId !== user.id && blackId !== user.id) {
+      throw new Error("PGN does not include the current user as a participant");
+    }
+
+    const db = getDb();
+    db.transaction(() => {
+      db.prepare(`
+        INSERT INTO games (
+          id, white_id, black_id, variant, rated, mode,
+          initial_ms, increment_ms, days_per_move,
+          status, result, termination,
+          initial_fen, fen, last_move, ply, white_ms, black_ms,
+          turn_started_at, deadline_at, draw_offered_by, created_at, ended_at
+        ) VALUES (
+          @id, @whiteId, @blackId, @variant, @rated, @mode,
+          @initialMs, @incrementMs, @daysPerMove,
+          @status, @result, @termination,
+          @initialFen, @fen, @lastMove, @ply, @whiteMs, @blackMs,
+          @turnStartedAt, @deadlineAt, @drawOfferedBy, @createdAt, @endedAt
+        )`).run({
+          id: gameId,
+          whiteId,
+          blackId,
+          variant: state.variant,
+          rated: state.rated ? 1 : 0,
+          mode: state.clock.mode,
+          initialMs: state.clock.mode === "live" ? state.clock.initialMs ?? 0 : null,
+          incrementMs: state.clock.mode === "live" ? state.clock.incrementMs ?? 0 : null,
+          daysPerMove: state.clock.mode === "correspondence" ? state.clock.daysPerMove ?? null : null,
+          status: state.status,
+          result: state.result ?? null,
+          termination: state.termination ?? null,
+          initialFen: state.initialFen,
+          fen: state.initialFen,
+          lastMove: state.moves.at(-1) ?? null,
+          ply: state.ply,
+          whiteMs: state.whiteMs,
+          blackMs: state.blackMs,
+          turnStartedAt: state.turnStartedAt,
+          deadlineAt: state.deadlineAt,
+          drawOfferedBy: null,
+          createdAt: Date.now(),
+          endedAt: state.status === "finished" ? Date.now() : null,
+        });
+
+      for (let i = 0; i < state.moves.length; i++) {
+        db.prepare(`INSERT INTO moves (game_id, ply, uci, san) VALUES (?, ?, ?, ?)`)
+          .run(gameId, i + 1, state.moves[i], sanMoves[i]);
+      }
+    }).immediate();
+
+    imported.push(gameId);
+  }
+
+  return imported;
 }
 
 // Public preview for the invite page. Works for any live challenge; never exposes user ids.
