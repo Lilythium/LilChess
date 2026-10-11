@@ -98,7 +98,7 @@
   <div class="panel import-panel">
     <h2>Import PGN</h2>
     <label class="button label-style">
-      <input type="file" accept=".pgn,.txt,text/x-chess-pgn" on:change={importPgn} />
+      <input type="file" accept=".pgn,.txt,text/x-chess-pgn" onchange={importPgn} />
       Choose PGN file
     </label>
     {#if success}<p class="success">{success}</p>{/if}
