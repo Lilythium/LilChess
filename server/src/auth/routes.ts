@@ -139,3 +139,9 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
 
   req.user = user;
 }
+
+export async function requireAdmin(req: FastifyRequest, reply: FastifyReply) {
+  await requireAuth(req, reply);
+  if (reply.sent) return;
+  if (!req.user?.is_admin) return reply.code(403).send({ error: "Administrator access required" });
+}

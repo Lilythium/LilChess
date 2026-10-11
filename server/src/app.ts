@@ -12,6 +12,7 @@ import { authRoutes } from "./auth/routes.js";
 import { resetRoutes } from "./auth/resetRoutes.js";
 import { gameRoutes } from "./game/routes.js";
 import { notificationRoutes } from "./notifications/routes.js";
+import { adminRoutes } from "./admin/routes.js";
 import { tournamentRoutes } from "./tournaments/routes.js";
 import { leaderboardRoutes } from "./leaderboard/routes.js";
 import { simulRoutes } from "./simuls/routes.js";
@@ -59,6 +60,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(resetRoutes);
   await app.register(gameRoutes);
   await app.register(notificationRoutes);
+  await app.register(adminRoutes);
   await app.register(tournamentRoutes);
   await app.register(leaderboardRoutes);
   await app.register(simulRoutes);

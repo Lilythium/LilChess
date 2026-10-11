@@ -7,6 +7,7 @@ const Env = z.object({
   DATA_DIR: z.string().default("./data"),
   REGISTRATION: z.enum(["open", "invite", "closed"]).default("open"),
   INVITE_CODE: z.string().optional(),
+  ADMIN_USERNAME: z.string().trim().min(1).optional(),
   BASE_URL: z
     .url({
       protocol: /^https?$/, // matched without the colon
@@ -45,6 +46,7 @@ export interface Config {
   dataDir: string;
   registration: "open" | "invite" | "closed";
   inviteCode: string | undefined;
+  adminUsername: string | undefined;
   baseOrigin: string | undefined;
   cookieSecure: boolean;
   trustProxy: boolean | number | string;
@@ -93,6 +95,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dataDir: e.DATA_DIR,
     registration: e.REGISTRATION,
     inviteCode: e.INVITE_CODE,
+    adminUsername: e.ADMIN_USERNAME,
     baseOrigin,
     // Secure cookies need HTTPS. Follow BASE_URL when given; otherwise fall back to NODE_ENV.
     cookieSecure: baseOrigin ? baseOrigin.startsWith("https://") : e.NODE_ENV === "production",

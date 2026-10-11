@@ -113,6 +113,7 @@ LilChess can be configured with environment variables.
 | `DATA_DIR`        | `./data`            | Database/data directory                       |
 | `REGISTRATION`    | `open`              | `open`, `invite`, or `closed`                 |
 | `INVITE_CODE`     | —                   | Required when registration is set to `invite` |
+| `ADMIN_USERNAME`  | —                   | Grant the first administrator to this existing registered account |
 | `BASE_URL`        | —                   | Public HTTP(S) URL                            |
 | `TRUST_PROXY`     | —                   | Configure proxy trust                         |
 | `LOG_LEVEL`       | `info`              | Logging level                                 |
@@ -147,6 +148,13 @@ Example:
 REGISTRATION=invite
 INVITE_CODE=your-secret-code
 ```
+
+## Administration
+
+Create the account that should administer the server, then set `ADMIN_USERNAME` to that exact
+username and restart LilChess. On startup, it is promoted only when the database has no administrator;
+public registrations made later are never promoted automatically. The admin page is available at
+`#/admin` and can manage account roles and sessions, tournaments, invitations, and games.
 
 ## Email
 

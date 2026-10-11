@@ -25,6 +25,7 @@
   import SimulDetail from "./routes/SimulDetail.svelte";
   import type { SimulLists } from "./lib/simul/types";
   import SimulInvite from "./routes/SimulInvite.svelte";
+  import Admin from "./routes/Admin.svelte";
 
   onMount(loadMe);
 
@@ -145,6 +146,7 @@
     {:else if publicPage}{@render publicPages()}
     {:else if route.path === "/games"}<MyGames />
     {:else if route.path === "/settings"}<Settings />
+    {:else if route.path === "/admin"}{#if auth.user.is_admin}<Admin />{:else}<p class="error" role="alert">Administrator access required.</p>{/if}
     {:else if route.path === "/local"}<LocalGame />
     {:else if route.path === "/watch"}<Watch />
     {:else if route.path === "/tournaments"}<Tournaments />

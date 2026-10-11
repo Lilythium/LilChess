@@ -239,7 +239,7 @@ function startTournamentInTransaction(tournamentId: string, organizerId: number 
   }
 }
 
-export function startTournament(tournamentId: string, organizerId: number, now = Date.now()): number {
+export function startTournament(tournamentId: string, organizerId: number | null, now = Date.now()): number {
   try {
     const count = getDb().transaction(() => startTournamentInTransaction(tournamentId, organizerId, now)).immediate();
     flushTournamentEvents();
@@ -359,16 +359,16 @@ export function repairStalledTournaments(): string[] {
   return repaired;
 }
 
-export function cancelTournament(tournamentId: string, organizerId: number): void {
+export function cancelTournament(tournamentId: string, organizerId: number | null): void {
   const result = getDb().prepare(`
     UPDATE tournaments SET status = 'cancelled'
-    WHERE id = ? AND created_by = ? AND status = 'open'
-  `).run(tournamentId, organizerId);
+    WHERE id = ? AND (? IS NULL OR created_by = ?) AND status = 'open'
+  `).run(tournamentId, organizerId, organizerId);
   if (result.changes) return;
   const tournament = getDb().prepare(`SELECT created_by, status FROM tournaments WHERE id = ?`).get(tournamentId) as
     { created_by: number; status: string } | undefined;
   if (!tournament) throw new TournamentError("Tournament not found", 404);
-  if (tournament.created_by !== organizerId) throw new TournamentError("Only the organizer can cancel this tournament", 403);
+  if (organizerId !== null && tournament.created_by !== organizerId) throw new TournamentError("Only the organizer can cancel this tournament", 403);
   throw new TournamentError("Only open tournaments can be cancelled", 409);
 }
 

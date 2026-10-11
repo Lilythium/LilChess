@@ -15,6 +15,14 @@ if (config.nodeEnv === "production" && !config.baseOrigin) {
 }
 
 openDb(`${config.dataDir}/lilchess.db`);
+if (config.adminUsername) {
+  const result = getDb().prepare(`
+    UPDATE users SET is_admin = 1
+    WHERE username = ? AND is_guest = 0
+      AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = 1)
+  `).run(config.adminUsername);
+  if (result.changes) logger.info({ username: config.adminUsername }, "bootstrapped initial administrator");
+}
 for (const issue of checkIntegrity(getDb())) logger.warn(issue, "database integrity issue");
 startTimeoutScheduler(); // also sweeps games that expired while the server was down
 startMaintenance();

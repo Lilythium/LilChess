@@ -62,7 +62,12 @@ export function getGameWithSans(id: string): { game: GameState; sans: string[] }
 }
 
 // Single choke point for writing game state: the stored position always matches the moves
-function updateGameState(id: string, game: GameState, actorId: number | null = null): void {
+function updateGameState(
+  id: string,
+  game: GameState,
+  actorId: number | null = null,
+  suppressTournamentForfeit = false,
+): void {
   const row = gameStateToRow(game);
   const fen = fenAfterMoves(game.initialFen, game.moves);
   if (fen === null) throw new Error(`game ${id}: moves do not replay from initial_fen`);
@@ -82,7 +87,7 @@ function updateGameState(id: string, game: GameState, actorId: number | null = n
     queueSimulBoard(id);
 
   if (game.status !== "started") {
-    advanceTournamentSafely(id, game.status === "aborted" ? abortFaultId(id, game, actorId) : null);
+      advanceTournamentSafely(id, game.status === "aborted" && !suppressTournamentForfeit ? abortFaultId(id, game, actorId) : null);
   }
   if (game.status === "finished" && game.rated) settleRatings(id);
 }
@@ -335,6 +340,31 @@ export function abortAndPersist(gameId: string, userId: number) {
     });
   }
   return r;
+}
+
+export function terminateGameAsAdmin(gameId: string) {
+  const outcome = getDb().transaction(() => {
+    const game = getGame(gameId);
+    if (!game) return { ok: false as const, error: "not_found" as const };
+    if (game.status !== "started") return { ok: false as const, error: "game_not_active" as const };
+    const state: GameState = {
+      ...game,
+      drawOfferedBy: undefined,
+      takebackOfferedBy: undefined,
+      status: "aborted",
+      result: undefined,
+      termination: "abort",
+    };
+    updateGameState(gameId, state, null, true);
+    return { ok: true as const, state };
+  }).immediate();
+
+  if (outcome.ok) {
+    afterCommit();
+    broadcastGameOver(gameId, outcome.state);
+    notifyGameOver(gameId, outcome.state, null);
+  }
+  return outcome;
 }
 
 export function offerTakebackAndPersist(gameId: string, userId: number) {

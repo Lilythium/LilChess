@@ -16,6 +16,11 @@ describe("loadConfig", () => {
     expect(c.baseOrigin).toBeUndefined();
   });
 
+  it("trims the optional initial administrator username", () => {
+    expect(loadConfig({ ADMIN_USERNAME: "  admin  " }).adminUsername).toBe("admin");
+    expect(loadConfig({}).adminUsername).toBeUndefined();
+  });
+
   it("requires INVITE_CODE in invite mode", () => {
     expect(() => loadConfig({ REGISTRATION: "invite" })).toThrow(/INVITE_CODE/);
     expect(loadConfig({ REGISTRATION: "invite", INVITE_CODE: "abc12345" }).inviteCode).toBe("abc12345");
