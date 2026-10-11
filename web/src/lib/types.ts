@@ -1,4 +1,4 @@
-import type { GameState } from "@lilchess/shared";
+import type { GameState, Variant } from "@lilchess/shared";
 
 export interface RatingBadge { rating: number; provisional: boolean }
 export interface Players {
@@ -63,3 +63,15 @@ export interface ChallengeRow {
   is_link: number;
 }
 export interface Challenges { mine: ChallengeRow[]; forMe: ChallengeRow[]; open: ChallengeRow[] }
+
+export interface AnalysisResponse {
+  ok: true;
+  variant: Variant;
+  initialFen: string;
+  moves: string[]; // UCI, in the order played
+  status: string;
+  result: string | null;
+  termination: string | null;
+  white: string;
+  black: string;
+}

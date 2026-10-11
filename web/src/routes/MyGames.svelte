@@ -102,6 +102,7 @@
       Choose PGN file
     </label>
     {#if success}<p class="success">{success}</p>{/if}
+    <a href="#/analysis">Open the analysis board</a>
   </div>
   {#if hostedBoards > 0}  <div class="panel"><a href="#/simuls">Your simul: {hostedBoards} {hostedBoards === 1 ? "board" : "boards"} in progress →</a></div>{/if}
   <div class="stack">

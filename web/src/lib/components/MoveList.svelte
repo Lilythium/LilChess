@@ -4,6 +4,8 @@
     ply: number;
     selected?: number | null;
     onSelect?: (p: number) => void;
+    marks?: Record<number, string>; // ply -> "inaccuracy" | "mistake" | "blunder" | ...
+    evaluations?: Record<number, string>;
   };
 
   let {
@@ -11,7 +13,11 @@
     ply,
     selected = null,
     onSelect = () => {},
+    marks = {},
+    evaluations = {},
   }: Props = $props();
+
+  const GLYPH: Record<string, string> = { inaccuracy: "?!", mistake: "?", blunder: "??" };
 
   let box: HTMLDivElement;
 
@@ -48,6 +54,10 @@
 
 </script>
 
+{#snippet mark(p: number)}
+  {#if GLYPH[marks[p] ?? ""]}<span class="glyph {marks[p]}">{GLYPH[marks[p] ?? ""]}</span>{/if}
+{/snippet}
+
 <div class="moves" bind:this={box}>
   {#each rows as r (r.n)}
     <div class="move-row">
@@ -64,7 +74,8 @@
           }
           onclick={() => onSelect(r.whitePly)}
         >
-          {r.white}
+          {r.white}{@render mark(r.whitePly)}
+          {#if evaluations[r.whitePly]}<span class="evaluation">{evaluations[r.whitePly]}</span>{/if}
         </button>
       {:else}
         <span class="san"></span>
@@ -81,7 +92,8 @@
           }
           onclick={() => onSelect(r.blackPly)}
         >
-          {r.black}
+          {r.black}{@render mark(r.blackPly)}
+          {#if evaluations[r.blackPly]}<span class="evaluation">{evaluations[r.blackPly]}</span>{/if}
         </button>
       {:else}
         <span class="san"></span>
@@ -110,6 +122,8 @@
   }
 
   .san {
+    display: flex;
+    align-items: center;
     min-width: 0;
     padding: 0.15rem 0.25rem;
     border: 0;
@@ -125,5 +139,11 @@
   .san.active {
     background: var(--border);
   }
+
+  .glyph { margin-left: 0.15rem; font-weight: 700; }
+  .glyph.inaccuracy { color: #56b4e9; }
+  .glyph.mistake { color: #e69f00; }
+  .glyph.blunder { color: #db3031; }
+  .evaluation { margin-left: auto; padding-left: 0.2rem; color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
   
 </style>

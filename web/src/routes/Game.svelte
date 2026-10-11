@@ -249,7 +249,7 @@
         onDone={store.resync}
       />
 
-      <GameResult game={g} />
+      <GameResult game={g} {id} />
     </div>
   {:else}
     {#if view.simul}
@@ -299,7 +299,13 @@
           onSelect={(ply: number) => (viewPly = selectPly(ply, g.ply))}
           onDone={store.resync}
         />
+        {#if g.status === "finished"}
+          <a class="analyse-link" href={`#/analysis/${id}`}>Analyse this game</a>
+        {/if}
       </div>
     </div>
   {/if}
 {/if}
+<style>
+  .analyse-link { display: block; margin-top: 0.75rem; text-align: center; }
+</style>

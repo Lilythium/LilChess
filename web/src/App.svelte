@@ -26,6 +26,7 @@
   import type { SimulLists } from "./lib/simul/types";
   import SimulInvite from "./routes/SimulInvite.svelte";
   import Admin from "./routes/Admin.svelte";
+  import Analysis from "./routes/Analysis.svelte";
 
   onMount(loadMe);
 
@@ -37,6 +38,7 @@
   const tournament = $derived(matchRoute(route.path, "/tournament/:id"));
   const simul = $derived(matchRoute(route.path, "/simul/:id"));
   const leaderboard = $derived(matchRoute(route.path, "/leaderboard/:variant"));
+  const analysisGame = $derived(matchRoute(route.path, "/analysis/:id"));
   const forgot = $derived(route.path === "/forgot");
   // Reachable without logging in (the user is locked out, or clicked a link in an email).
   const publicPage = $derived(forgot || !!reset || !!unsub);
@@ -148,6 +150,8 @@
     {:else if route.path === "/settings"}<Settings />
     {:else if route.path === "/admin"}{#if auth.user.is_admin}<Admin />{:else}<p class="error" role="alert">Administrator access required.</p>{/if}
     {:else if route.path === "/local"}<LocalGame />
+    {:else if route.path === "/analysis"}<Analysis />
+    {:else if analysisGame}{#key analysisGame.id}<Analysis id={analysisGame.id} />{/key}
     {:else if route.path === "/watch"}<Watch />
     {:else if route.path === "/tournaments"}<Tournaments />
     {:else if route.path === "/simuls"}<Simuls />

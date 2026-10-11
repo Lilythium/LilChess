@@ -44,6 +44,27 @@ export function getGame(id: string): GameState | undefined {
   return rowToGameState(row, moves.map((m) => m.uci));
 }
 
+// Everything the analysis page needs and nothing else: two indexed reads, no replay,
+// no SAN, no ratings, no head-to-head. The client rebuilds positions from these moves.
+export function getGameForAnalysis(id: string) {
+  const db = getDb();
+  const game = db
+    .prepare(
+      `SELECT g.variant, g.initial_fen AS initialFen, g.status, g.result, g.termination,
+              wu.username AS white, bu.username AS black
+       FROM games g
+       JOIN users wu ON wu.id = g.white_id
+       JOIN users bu ON bu.id = g.black_id
+       WHERE g.id = ?`,
+    )
+    .get(id) as
+    | { variant: string; initialFen: string; status: string; result: string | null; termination: string | null; white: string; black: string }
+    | undefined;
+  if (!game) return undefined;
+  const moves = db.prepare(`SELECT uci FROM moves WHERE game_id = ? ORDER BY ply ASC`).pluck().all(id) as string[];
+  return { ...game, moves };
+}
+
 export function getMoveSans(gameId: string): string[] {
   return getDb()
     .prepare(`SELECT san FROM moves WHERE game_id = ? ORDER BY ply ASC`)

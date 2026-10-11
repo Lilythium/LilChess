@@ -26,7 +26,9 @@ offerTakebackAndPersist,
 acceptTakebackAndPersist,
 declineTakebackAndPersist,
 getGame,
+getGameWithSans,
 getMoveSans,
+getGameForAnalysis,
 headToHead,
 } from "../db/repositories/games.js";
 import { getUserByUsername } from "../auth/queries.js";
@@ -43,6 +45,7 @@ ply_mismatch: 409,
 game_not_active: 409,
 deadline_passed: 409,
 takebacks_disabled: 409,
+game_not_finished: 409,
 };
 
 const fail = (reply: FastifyReply, error: string) =>
@@ -176,9 +179,11 @@ if (!params) return reply;
 
 
 const { id } = params;
-const game = getGame(id);
+// One game row + one moves query (uci and san together) instead of three queries.
+const loaded = getGameWithSans(id);
 
-if (!game) return reply.code(404).send({ error: "Game not found" });
+if (!loaded) return reply.code(404).send({ error: "Game not found" });
+const { game, sans } = loaded;
 
 const players = getGamePlayers(id);
 let h2h: { wins: number; draws: number; losses: number } | null = null;
@@ -205,7 +210,7 @@ if (players) {
 return {
   ok: true,
   game,
-  sans: getMoveSans(id),
+  sans,
   players,
   h2h,
   simul: simulInfoForGame(id),
@@ -213,6 +218,20 @@ return {
 };
 
 
+});
+
+// Lightweight read for the client-side analysis page. Finished games never change, so the
+// browser may reuse the response. Games in progress are refused, so the page can't be used
+// as an engine feed during play.
+app.get("/api/games/:id/analysis", { preHandler: requireAuth }, async (req, reply) => {
+  const params = parse(IdParams, req.params, reply);
+  if (!params) return reply;
+
+  const data = getGameForAnalysis(params.id);
+  if (!data) return reply.code(404).send({ error: "Game not found" });
+  if (data.status !== "finished") return fail(reply, "game_not_finished");
+
+  return reply.header("cache-control", "private, max-age=3600").send({ ok: true, ...data });
 });
 
 app.get("/api/games/:id/pgn", { preHandler: requireAuth }, async (req, reply) => {

@@ -13,5 +13,5 @@ export default [
       "@typescript-eslint/no-explicit-any": "warn",
     },
   },
-  { ignores: ["dist/**", "**/dist/**", "web/dist/**", "quick-check.mjs"] },
+  { ignores: ["dist/**", "**/dist/**", "web/dist/**", "web/public/stockfish/**", "quick-check.mjs"] },
 ];

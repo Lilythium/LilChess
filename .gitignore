@@ -151,3 +151,6 @@ data/
 *.cookies
 black.txt
 white.txt
+
+# Stockfish WASM is copied from node_modules by web/scripts/copy-stockfish.mjs
+web/public/stockfish/

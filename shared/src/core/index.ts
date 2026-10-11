@@ -12,3 +12,4 @@ export { fenAfterMoves, fensForMoves } from "./fen.js";
 export { buildPgn, type BuildPgnOptions } from "./pgn.js";
 export { gameStateProblems } from "./invariants.js";
 export { chess960Fen, randomChess960Fen, startFenFor } from "./variants.js";
+export { PositionTimeline } from "./timeline.js";

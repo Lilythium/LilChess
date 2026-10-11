@@ -70,7 +70,17 @@ export async function buildApp(): Promise<FastifyInstance> {
   const webDistPath = path.resolve(process.cwd(), "web/dist");
   const hasWeb = fs.existsSync(webDistPath);
   if (hasWeb) {
-    await app.register(fastifyStatic, { root: webDistPath, prefix: "/", wildcard: false });
+    await app.register(fastifyStatic, {
+      root: webDistPath,
+      prefix: "/",
+      wildcard: false,
+      // The engine's file name carries its version, so it can be cached for a year.
+      setHeaders: (reply, filePath) => {
+        if (filePath.includes(`${path.sep}stockfish${path.sep}`)) {
+          reply.header("cache-control", "public, max-age=31536000, immutable");
+        }
+      },
+    });
   }
 
   app.setNotFoundHandler((req, reply) => {
