@@ -55,7 +55,7 @@ export function topPlayers(variant: string, opts: LeaderboardOptions): { players
     .prepare(
       `SELECT u.username, r.rating, r.rd, r.volatility, r.games, r.last_game_at
        FROM ratings r JOIN users u ON u.id = r.user_id
-       WHERE r.variant = @variant AND u.is_guest = 0
+       WHERE r.variant = @variant AND u.is_guest = 0 AND u.disabled_at IS NULL
          AND r.games >= @minGames AND r.last_game_at >= @activeSince
        ORDER BY r.rating DESC, r.games DESC, u.id ASC
        LIMIT @limit`,
@@ -67,7 +67,7 @@ export function topPlayers(variant: string, opts: LeaderboardOptions): { players
   const { n } = db
     .prepare(
       `SELECT COUNT(*) AS n FROM ratings r JOIN users u ON u.id = r.user_id
-       WHERE r.variant = @variant AND u.is_guest = 0 AND r.games >= @minGames AND r.last_game_at >= @activeSince`,
+       WHERE r.variant = @variant AND u.is_guest = 0 AND u.disabled_at IS NULL AND r.games >= @minGames AND r.last_game_at >= @activeSince`,
     )
     .get({ variant, minGames: opts.minGames, activeSince }) as { n: number };
 
@@ -114,7 +114,7 @@ export function periodBoards(
               MAX(CASE WHEN w.rn_last  = 1 THEN w.rating_after  END) AS end_rating,
               MAX(w.n) AS games
        FROM w
-       JOIN users u   ON u.id = w.user_id AND u.is_guest = 0
+       JOIN users u   ON u.id = w.user_id AND u.is_guest = 0 AND u.disabled_at IS NULL
        JOIN ratings r ON r.user_id = w.user_id AND r.variant = @variant AND r.games >= @minGames
        GROUP BY w.user_id`,
     )

@@ -70,6 +70,15 @@ export function unsubscribeUser(userId: number, socket: WebSocket): void {
   if (set.size === 0) userSockets.delete(userId);
 }
 
+/** Drops a user's live-update connections, e.g. when an admin disables the account. */
+export function closeUserSockets(userId: number): number {
+  const set = userSockets.get(userId);
+  if (!set) return 0;
+  const sockets = [...set];
+  for (const socket of sockets) socket.close(4003, "account disabled");
+  return sockets.length;
+}
+
 export function userSocketCount(userId: number): number {
   return userSockets.get(userId)?.size ?? 0;
 }

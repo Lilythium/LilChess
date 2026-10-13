@@ -11,6 +11,8 @@ import {
 } from "./crypto.js";
 import { createGuest, createSession, createUser, deleteSession, getSessionUser, getUserByUsername, type User } from "./queries.js";
 import { getInvitePreview } from "../game/queries.js";   
+import { consumeRegistrationInvite, isRegistrationInviteUsable } from "./invites.js";
+import { getDb } from "../db/connection.js";
 
 export const SESSION_COOKIE = "sessionId";
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -21,6 +23,8 @@ declare module "fastify" {
     user?: User;
   }
 }
+
+class InviteUsedUp extends Error {}
 
 export async function authRoutes(app: FastifyInstance) {
   // Global rate limiting is registered once in app.ts; routes below opt in to stricter limits.
@@ -36,16 +40,25 @@ export async function authRoutes(app: FastifyInstance) {
       const body = parse(RegisterBody, req.body, reply);
       if (!body) return reply;
 
-      if (config.registration === "invite" && !safeEqual(body.inviteCode ?? "", config.inviteCode ?? "")) {
+            // In invite mode the code is either the INVITE_CODE from the environment or one an admin created.
+      const code = body.inviteCode ?? "";
+      const envCode = config.registration === "invite" && !!config.inviteCode && safeEqual(code, config.inviteCode);
+      if (config.registration === "invite" && !envCode && !isRegistrationInviteUsable(code)) {
         return reply.code(403).send({ error: "Invalid invite code" });
       }
 
       try {
-        const user = createUser(body.username, await hashPassword(body.password));
+        const passwordHash = await hashPassword(body.password);
+        // Using up a code and creating the account succeed or fail together: a taken username costs no invite.
+        const user = getDb().transaction(() => {
+          if (config.registration === "invite" && !envCode && !consumeRegistrationInvite(code)) throw new InviteUsedUp();
+          return createUser(body.username, passwordHash);
+        }).immediate();
         await establishSession(reply, user.id);
         req.log.info({ userId: user.id }, "user registered");
         return { ok: true, user };
       } catch (err) {
+        if (err instanceof InviteUsedUp) return reply.code(403).send({ error: "Invalid invite code" });
         if ((err as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
           return reply.code(409).send({ error: "Username taken" });
         }
@@ -73,8 +86,14 @@ export async function authRoutes(app: FastifyInstance) {
         return reply.code(401).send({ error: "Invalid credentials" });
       }
 
+      // Only said after the password checked out, so it doesn't reveal which usernames exist.
+      if (user.disabled_at !== null) {
+        req.log.warn({ userId: user.id }, "login to a disabled account");
+        return reply.code(403).send({ error: "This account has been disabled. Contact the server administrator." });
+      }
+
       await establishSession(reply, user.id);
-      const { password_hash: _omit, ...safeUser } = user;
+      const { password_hash: _omit, disabled_at: _disabled, ...safeUser } = user;
       return { ok: true, user: safeUser };
     },
   );

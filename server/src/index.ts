@@ -6,6 +6,7 @@ import { checkIntegrity } from "./db/integrity.js";
 import { startTimeoutScheduler, stopTimeoutScheduler } from "./game/timeoutScheduler.js";
 import { startBackupScheduler, stopBackupScheduler } from "./db/backup.js";
 import { startMaintenance, stopMaintenance } from "./maintenance.js";
+import { bootstrapAdmin } from "./auth/bootstrap.js";
 
 if (config.registration === "invite" && config.inviteCode === "changeme") {
   logger.warn("INVITE_CODE is still the example value 'changeme'");
@@ -15,14 +16,7 @@ if (config.nodeEnv === "production" && !config.baseOrigin) {
 }
 
 openDb(`${config.dataDir}/lilchess.db`);
-if (config.adminUsername) {
-  const result = getDb().prepare(`
-    UPDATE users SET is_admin = 1
-    WHERE username = ? AND is_guest = 0
-      AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = 1)
-  `).run(config.adminUsername);
-  if (result.changes) logger.info({ username: config.adminUsername }, "bootstrapped initial administrator");
-}
+await bootstrapAdmin(getDb(), { username: config.adminUsername, password: config.adminPassword }, logger);
 for (const issue of checkIntegrity(getDb())) logger.warn(issue, "database integrity issue");
 startTimeoutScheduler(); // also sweeps games that expired while the server was down
 startMaintenance();

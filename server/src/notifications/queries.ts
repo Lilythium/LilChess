@@ -49,10 +49,10 @@ export function setPrefs(userId: number, changes: Partial<Prefs>): void {
   })();
 }
 
-// Who should get this kind of email? Undefined: no address, a guest, or they turned it off.
+// Who should get this kind of email? Undefined: no address, a guest, a disabled account, or they turned it off.
 export function recipientFor(userId: number, kind: NotificationKind): Recipient | undefined {
   const row = getDb()
-    .prepare(`SELECT id, username, email, unsubscribe_token FROM users WHERE id = ? AND email IS NOT NULL AND is_guest = 0`)
+    .prepare(`SELECT id, username, email, unsubscribe_token FROM users WHERE id = ? AND email IS NOT NULL AND is_guest = 0 AND disabled_at IS NULL`)
     .get(userId) as { id: number; username: string; email: string; unsubscribe_token: string | null } | undefined;
   if (!row || !getPrefs(userId)[kind]) return undefined;
   return { id: row.id, username: row.username, email: row.email, unsubscribeToken: row.unsubscribe_token };

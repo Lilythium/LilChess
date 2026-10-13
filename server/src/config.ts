@@ -8,6 +8,8 @@ const Env = z.object({
   REGISTRATION: z.enum(["open", "invite", "closed"]).default("open"),
   INVITE_CODE: z.string().optional(),
   ADMIN_USERNAME: z.string().trim().min(1).optional(),
+  // Only used to create the first administrator when that account doesn't exist yet (see auth/bootstrap.ts).
+  ADMIN_PASSWORD: z.string().min(8, "must be at least 8 characters").max(128).optional(),
   BASE_URL: z
     .url({
       protocol: /^https?$/, // matched without the colon
@@ -47,6 +49,7 @@ export interface Config {
   registration: "open" | "invite" | "closed";
   inviteCode: string | undefined;
   adminUsername: string | undefined;
+  adminPassword: string | undefined;
   baseOrigin: string | undefined;
   cookieSecure: boolean;
   trustProxy: boolean | number | string;
@@ -79,6 +82,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error("Invalid configuration:\n  INVITE_CODE: required when REGISTRATION=invite");
   }
 
+  if (e.ADMIN_PASSWORD && !e.ADMIN_USERNAME) {
+    throw new Error("Invalid configuration:\n  ADMIN_PASSWORD: needs ADMIN_USERNAME as well");
+  }
+
   const baseOrigin = e.BASE_URL ? new URL(e.BASE_URL).origin : undefined;
 
   if (e.SMTP_HOST) {
@@ -96,6 +103,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     registration: e.REGISTRATION,
     inviteCode: e.INVITE_CODE,
     adminUsername: e.ADMIN_USERNAME,
+    adminPassword: e.ADMIN_PASSWORD,
     baseOrigin,
     // Secure cookies need HTTPS. Follow BASE_URL when given; otherwise fall back to NODE_ENV.
     cookieSecure: baseOrigin ? baseOrigin.startsWith("https://") : e.NODE_ENV === "production",

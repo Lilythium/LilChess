@@ -60,4 +60,11 @@ describe("loadConfig", () => {
     });
     expect(loadConfig({ ...ok, SMTP_PORT: "465", SMTP_SECURE: "true" }).smtp).toMatchObject({ port: 465, secure: true });
   });
+
+  it("reads ADMIN_PASSWORD, but only alongside ADMIN_USERNAME and at registration's minimum length", () => {
+    expect(loadConfig({ ADMIN_USERNAME: "boss", ADMIN_PASSWORD: "correct horse" }).adminPassword).toBe("correct horse");
+    expect(loadConfig({}).adminPassword).toBeUndefined();
+    expect(() => loadConfig({ ADMIN_PASSWORD: "correct horse" })).toThrow(/ADMIN_PASSWORD[\s\S]*ADMIN_USERNAME/);
+    expect(() => loadConfig({ ADMIN_USERNAME: "boss", ADMIN_PASSWORD: "short" })).toThrow(/ADMIN_PASSWORD[\s\S]*8/);
+  });
 });

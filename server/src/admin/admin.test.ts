@@ -32,8 +32,9 @@ describe("admin routes", () => {
     expect(stats.statusCode).toBe(200);
     expect(stats.json().stats).toMatchObject({ users: 2, registeredUsers: 2, activeGames: 0 });
 
+    // Looking at a page is not an administrative action, so it isn't logged.
     const audit = await app.inject({ method: "GET", url: "/api/admin/audit", cookies: { sessionId: admin } });
-    expect(audit.json().entries.some((entry: { action: string }) => entry.action === "GET /api/admin/stats")).toBe(true);
+    expect(audit.json().entries).toEqual([]);
   });
 
   it("manages user access, invitations and tournaments, and terminates active games", async () => {
@@ -55,7 +56,7 @@ describe("admin routes", () => {
     expect(role.statusCode).toBe(200);
 
     const revoked = await app.inject({
-      method: "DELETE", url: `/api/admin/invitations/${challengeId}`, cookies: { sessionId: admin },
+      method: "DELETE", url: `/api/admin/challenges/${challengeId}`, cookies: { sessionId: admin },
     });
     expect(revoked.statusCode).toBe(200);
 
@@ -87,13 +88,16 @@ describe("admin routes", () => {
     expect((await app.inject({ method: "GET", url: "/api/me", cookies: { sessionId: player } })).statusCode).toBe(401);
 
     const audit = await app.inject({ method: "GET", url: "/api/admin/audit", cookies: { sessionId: admin } });
-    expect(audit.json().entries.map((entry: { target: string }) => entry.target)).toEqual(expect.arrayContaining([
-      `/api/admin/users/${playerId}`,
-      `/api/admin/users/${playerId}/revoke-sessions`,
-      `/api/admin/invitations/${challengeId}`,
-      `/api/admin/tournaments/${tournament.json().tournamentId}/cancel`,
-      `/api/admin/games/${gameId}/terminate`,
+    const entries = audit.json().entries as { action: string; target: string; details: string; actor: string }[];
+    expect(entries.map((entry) => [entry.action, entry.target])).toEqual(expect.arrayContaining([
+      ["user.grant_admin", "user:player"],
+      ["user.revoke_sessions", "user:player"],
+      ["challenge.delete", `challenge:${challengeId}`],
+      ["tournament.cancel", `tournament:${tournament.json().tournamentId}`],
+      ["game.terminate", `game:${gameId}`],
     ]));
+    expect(entries.every((entry) => entry.actor === "admin")).toBe(true);
+    expect(JSON.parse(entries.find((entry) => entry.action === "user.revoke_sessions")!.details)).toEqual({ userId: playerId, revoked: 1 });
   });
 
   it("purges only unused guests and preserves guests with game history", async () => {
@@ -114,6 +118,9 @@ describe("admin routes", () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().deleted).toBe(1);
+    const logged = (await app.inject({ method: "GET", url: "/api/admin/audit", cookies: { sessionId: admin } })).json().entries;
+    expect(logged[0]).toMatchObject({ action: "guests.purge", target: "guests" });
+    expect(JSON.parse(logged[0].details)).toEqual({ deleted: 1 });
     expect(db.prepare(`SELECT username FROM users WHERE is_guest = 1 ORDER BY username`).all()).toEqual([
       { username: "guest_active" }, { username: "guest_history" },
     ]);
