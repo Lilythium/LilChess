@@ -1,8 +1,13 @@
 import { getDb } from "../db/connection.js";
 import { randomBytes } from "node:crypto";
-import { createGame, normalizeUsername, type ClockConfig, type Variant } from "@lilchess/shared";
+import {
+  RATING_HISTORY_RANGES, createGame, normalizeUsername,
+  type ClockConfig, type RatingHistoryRange, type Variant,
+} from "@lilchess/shared";
+import { config } from "../config.js";
 import { insertGame, headToHead } from "../db/repositories/games.js";
 import { getPlayerRatings, getRatingHistory, getRatingBadge } from "../db/repositories/ratings.js";
+import { ratingPercentile } from "../leaderboard/queries.js";
 
 // Helper to generate short random IDs like "aB9x2p"
 function generateId(bytes = 4) {
@@ -55,12 +60,12 @@ export function createChallenge(data: {
   return db.transaction(() => {
     db.prepare(`DELETE FROM challenges WHERE from_user = ? AND mode = ?`).run(data.fromUser, data.mode);
     db.prepare(`
-      INSERT INTO challenges (id, from_user, to_user, mode, initial_ms, increment_ms, days_per_move, color_pref, created_at, expires_at, is_link, variant)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO challenges (id, from_user, to_user, mode, initial_ms, increment_ms, days_per_move, color_pref, created_at, expires_at, is_link, variant, rated)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, data.fromUser, data.toUser ?? null, data.mode,
       data.initialMs ?? null, data.incrementMs ?? null, data.daysPerMove ?? null,
-      data.colorPref ?? null, now, expiresAt, data.isLink ? 1 : 0, data.variant ?? "standard",
+      data.colorPref ?? null, now, expiresAt, data.isLink ? 1 : 0, data.variant ?? "standard", data.rated ? 1 : 0,
     );
 
     return id;
@@ -99,7 +104,7 @@ export function acceptChallengeTx(challengeId: string, acceptingUserId: number) 
         : { mode: "correspondence", daysPerMove: challenge.days_per_move };
 
     const variant: Variant = challenge.variant === "chess960" ? "chess960" : "standard";
-    insertGame(gameId, whiteId, blackId, createGame({ clock, now: Date.now(), variant }));
+    insertGame(gameId, whiteId, blackId, createGame({ clock, now: Date.now(), variant, rated: challenge.rated === 1 }));
 
     // Delete the consumed challenge
     db.prepare(`DELETE FROM challenges WHERE id = ?`).run(challengeId);
@@ -166,8 +171,11 @@ export function getUserProfileWithH2H(targetUsername: string, viewerId: number) 
   const targetUser = db.prepare(`SELECT id, username, created_at FROM users WHERE username = ?`).get(normalizeUsername(targetUsername)) as any;
   if (!targetUser) return null;
 
-  const ratings = getPlayerRatings(targetUser.id);
-  const history = getRatingHistory(targetUser.id);
+  const lbOpts = { minGames: config.leaderboardMinGames, inactiveDays: config.leaderboardInactiveDays };
+  const ratings = getPlayerRatings(targetUser.id).map((r) => ({
+    ...r,
+    ...ratingPercentile(r.variant, targetUser.id, lbOpts),
+  }));
 
   let h2h = null;
   if (targetUser.id !== viewerId) {
@@ -187,7 +195,18 @@ export function getUserProfileWithH2H(targetUsername: string, viewerId: number) 
     ORDER BY g.ended_at DESC LIMIT 20
   `).all(targetUser.id, targetUser.id) as any[];
 
-  return { profile: targetUser, ratings, history, h2h, games };
+  return { profile: targetUser, ratings, h2h, games };
+}
+
+/** Rating graph data for one variant over a time range; null if the user doesn't exist. */
+export function getUserRatingHistory(targetUsername: string, variant: Variant, range: RatingHistoryRange, now = Date.now()) {
+  const user = getDb().prepare(`SELECT id FROM users WHERE username = ?`).get(normalizeUsername(targetUsername)) as
+    | { id: number }
+    | undefined;
+  if (!user) return null;
+  const windowMs = RATING_HISTORY_RANGES[range].ms;
+  const since = windowMs === null ? 0 : now - windowMs;
+  return { variant, range, since, points: getRatingHistory(user.id, variant, 1000, since) };
 }
 
 export function getGamePlayers(gameId: string) {

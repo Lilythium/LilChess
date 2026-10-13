@@ -59,7 +59,7 @@ export type LiveGameRow = Pick<
 export interface ChallengeRow {
   id: string; from_user: number; from_name: string; to_user: number | null;
   mode: "live" | "correspondence"; initial_ms: number | null; increment_ms: number | null;
-  days_per_move: number | null; color_pref: string | null;
+  days_per_move: number | null; color_pref: string | null; rated: number;
   is_link: number;
 }
 export interface Challenges { mine: ChallengeRow[]; forMe: ChallengeRow[]; open: ChallengeRow[] }

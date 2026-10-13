@@ -1,5 +1,8 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { buildPgn } from "@lilchess/shared";
+import { z } from "zod";
+import {
+  DEFAULT_RATING_HISTORY_RANGE, RATING_HISTORY_RANGE_KEYS, VARIANTS, buildPgn,
+} from "@lilchess/shared";
 import { config } from "../config.js";
 import { requireAuth } from "../auth/routes.js";
 import {
@@ -7,6 +10,7 @@ createChallenge,
 acceptChallengeTx,
 getMyGames,
 getUserProfileWithH2H,
+getUserRatingHistory,
 listChallenges,
 cancelChallenge,
 getGamePlayers,
@@ -35,6 +39,11 @@ import { notifyDeadlineChanged } from "./deadlineBus.js";
 import { ChallengeBody, IdParams, MoveBody, UsernameParams, parse } from "../validation.js";
 import { notifyChallengeAccepted, notifyChallengeReceived } from "../notifications/dispatch.js";
 import { simulInfoForGame } from "../simuls/lookup.js";
+
+const RatingHistoryQuery = z.object({
+variant: z.enum(VARIANTS).default("standard"),
+range: z.enum(RATING_HISTORY_RANGE_KEYS).default(DEFAULT_RATING_HISTORY_RANGE),
+});
 
 const STATUS: Record<string, number> = {
 not_found: 404,
@@ -90,6 +99,7 @@ const challengeId = createChallenge({
       ? body.colorPref
       : undefined,
   isLink,
+  rated: body.rated,
   variant: body.variant,
 });
 
@@ -278,6 +288,19 @@ if (!data) return reply.code(404).send({ error: "User not found" });
 
 return { ok: true, ...data };
 
+});
+
+app.get("/api/users/:username/rating-history", { preHandler: requireAuth }, async (req, reply) => {
+const params = parse(UsernameParams, req.params, reply);
+if (!params) return reply;
+
+const query = parse(RatingHistoryQuery, req.query, reply);
+if (!query) return reply;
+
+const data = getUserRatingHistory(params.username, query.variant, query.range);
+if (!data) return reply.code(404).send({ error: "User not found" });
+
+return { ok: true, ...data };
 });
 
 app.post("/api/games/:id/move", { preHandler: requireAuth }, async (req, reply) => {

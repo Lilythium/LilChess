@@ -9,6 +9,12 @@ export type SimulInviteStatus = (typeof SIMUL_INVITE_STATUSES)[number];
 export const HOST_COLORS = ["white", "black", "alternate"] as const;
 export type HostColor = (typeof HOST_COLORS)[number];
 
+/** A simul nobody has started is cancelled after this long, so the lobby never lists dead simuls. */
+export const SIMUL_PENDING_TTL_MS = {
+  live: 2 * 60 * 60 * 1000,
+  correspondence: 2 * 24 * 60 * 60 * 1000,
+} as const;
+
 export const MAX_SIMUL_PLAYERS = 20;
 export const MAX_SIMUL_INVITES = 40;
 

@@ -3,6 +3,7 @@
   import { api } from "../lib/api";
   import { displayName, timeControl } from "../lib/format";
   import GameCard from "../lib/components/GameCard.svelte";
+  import { simulClock } from "../lib/simul/format";
   import type { LiveGameRow } from "../lib/types";
   import type { SimulLists, SimulSummary } from "../lib/simul/types";
 
@@ -32,14 +33,19 @@
 {:else if !games}
   <p class="muted">Loading…</p>
 {:else}
-  {#if simuls.length}
-    <div class="panel">
-      <h2>Live simuls</h2>
+  <div class="panel">
+    <h2>Live simuls</h2>
+    {#if simuls.length === 0}
+      <p class="muted">No simuls in progress.</p>
+    {:else}
       {#each simuls as s (s.id)}
-        <p><a href={"#/simul/" + s.id}>{s.name}</a> <span class="muted">· {displayName(s.hostName)} · {s.boardsLeft} boards left</span></p>
+        <p>
+          <a href={"#/simul/" + s.id}>{s.name}</a>
+          <span class="muted">· {displayName(s.hostName)} · {simulClock(s)} · {s.boardsLeft} {s.boardsLeft === 1 ? "board" : "boards"} left</span>
+        </p>
       {/each}
-    </div>
-  {/if}
+    {/if}
+  </div>
 
   <div class="panel">
     <h2>Watch live</h2>

@@ -45,16 +45,26 @@ const CreateBody = z.object({
   .refine((body) => body.endsAt === undefined || body.startsAt === undefined || body.endsAt > body.startsAt,
     { message: "End time must be after the start time" });
 
+// ?scope=active&limit=6 is what the lobby uses; the Tournaments page keeps asking for everything.
+const ListQuery = z.object({
+  scope: z.enum(["all", "active"]).default("all"),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
 async function handleTournamentError(reply: import("fastify").FastifyReply, error: unknown) {
   if (error instanceof TournamentError) return reply.code(error.status).send({ error: error.message });
   throw error;
 }
 
 export async function tournamentRoutes(app: FastifyInstance) {
-  app.get("/api/tournaments", { preHandler: requireAuth }, async (req) => ({
-    ok: true,
-    tournaments: listTournaments(req.user!.id),
-  }));
+  app.get("/api/tournaments", { preHandler: requireAuth }, async (req, reply) => {
+    const query = parse(ListQuery, req.query, reply);
+    if (!query) return reply;
+    return {
+      ok: true,
+      tournaments: listTournaments(req.user!.id, { activeOnly: query.scope === "active", limit: query.limit }),
+    };
+  });
 
   app.post("/api/tournaments", { preHandler: requireAuth }, async (req, reply) => {
     if (req.user!.is_guest) return reply.code(403).send({ error: "Register an account to create tournaments" });

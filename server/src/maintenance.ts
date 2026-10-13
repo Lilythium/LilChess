@@ -1,9 +1,13 @@
 import { getDb } from "./db/connection.js";
 import { logger } from "./logger.js";
+import { expirePendingSimuls } from "./simuls/service.js";
 
 const log = logger.child({ mod: "maintenance" });
 const INTERVAL_MS = 60 * 60 * 1000;
+// Pending simuls expire after hours, not days, so they get their own cheap (indexed) sweep.
+const SIMUL_SWEEP_MS = 60 * 1000;
 let timer: NodeJS.Timeout | undefined;
+let simulTimer: NodeJS.Timeout | undefined;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -43,8 +47,7 @@ export function purgeExpired(now = Date.now()): {
   const notifications = db.prepare(`DELETE FROM notification_log WHERE created_at < ?`).run(now - 30 * DAY_MS).changes;
   // A guest with no session who never played or challenged anyone can never be reached again.
   const guests = purgeUnusedGuests(now);
-  const simuls = db.prepare(`UPDATE simuls SET status = 'cancelled', ended_at = ? WHERE status = 'open' AND created_at < ?`)
-    .run(now, now - 2 * DAY_MS).changes;
+  const simuls = expirePendingSimuls(now);
   return { sessions, challenges, guests, resets, notifications, simuls };
 }
 
@@ -57,13 +60,26 @@ function run(): void {
   }
 }
 
+function sweepSimuls(): void {
+  try {
+    const n = expirePendingSimuls();
+    if (n > 0) log.info({ simuls: n }, "cancelled simuls that never started");
+  } catch (err) {
+    log.error({ err }, "simul expiry failed");
+  }
+}
+
 export function startMaintenance(): void {
   run();
   timer = setInterval(run, INTERVAL_MS);
   timer.unref();
+  simulTimer = setInterval(sweepSimuls, SIMUL_SWEEP_MS);
+  simulTimer.unref();
 }
 
 export function stopMaintenance(): void {
   if (timer) clearInterval(timer);
+  if (simulTimer) clearInterval(simulTimer);
   timer = undefined;
+  simulTimer = undefined;
 }

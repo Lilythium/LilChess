@@ -15,8 +15,8 @@ describe("challenge lifecycle", () => {
   const create = (payload: Record<string, unknown>) =>
     app.inject({ method: "POST", url: "/api/challenges", cookies: { sessionId: alice }, payload });
   const rows = () =>
-    getDb().prepare(`SELECT id, mode, created_at, expires_at FROM challenges`).all() as
-      { id: string; mode: string; created_at: number; expires_at: number }[];
+    getDb().prepare(`SELECT id, mode, created_at, expires_at, rated FROM challenges`).all() as
+      { id: string; mode: string; created_at: number; expires_at: number; rated: number }[];
 
   beforeEach(async () => {
     openDb(":memory:");
@@ -52,6 +52,19 @@ describe("challenge lifecycle", () => {
     await create(LIVE);
     await create(CORR);
     expect(rows().map((r) => r.mode).sort()).toEqual(["correspondence", "live"]);
+  });
+
+  it("carries a rated challenge into the accepted game", async () => {
+    const bob = await registerUser(app, "bob");
+    const challengeId = (await create({ ...LIVE, rated: true })).json().challengeId as string;
+    expect(rows()[0]?.rated).toBe(1);
+
+    const accepted = await app.inject({
+      method: "POST", url: `/api/challenges/${challengeId}/accept`, cookies: { sessionId: bob },
+    });
+    expect(accepted.statusCode).toBe(200);
+    const game = getDb().prepare(`SELECT rated FROM games WHERE id = ?`).get(accepted.json().gameId) as { rated: number };
+    expect(game.rated).toBe(1);
   });
 
   it("refuses to accept an expired challenge", async () => {

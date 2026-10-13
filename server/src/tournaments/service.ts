@@ -84,7 +84,14 @@ export function createTournament(creatorId: number, config: TournamentConfig): s
   return id;
 }
 
-export function listTournaments(viewerId: number) {
+export interface ListTournamentsOptions {
+  /** Only upcoming (registration open) and in-progress tournaments, running first then soonest start. */
+  activeOnly?: boolean;
+  limit?: number;
+}
+
+export function listTournaments(viewerId: number, opts: ListTournamentsOptions = {}) {
+  const limit = Math.min(Math.max(opts.limit ?? 100, 1), 100);
   return getDb().prepare(`
     SELECT t.id, t.name, t.description, t.status, t.format, t.mode, t.variant, t.rated,
            t.starts_at AS startsAt, t.ends_at AS endsAt, t.max_players AS maxPlayers,
@@ -99,9 +106,11 @@ export function listTournaments(viewerId: number) {
              ORDER BY tp.round_number, tp.board_number LIMIT 1
            ) END AS nextGameId
     FROM tournaments t
-    ORDER BY CASE t.status WHEN 'running' THEN 0 WHEN 'open' THEN 1 ELSE 2 END, COALESCE(t.starts_at, t.created_at) DESC
-    LIMIT 100
-  `).all({ viewer: viewerId });
+    ${opts.activeOnly ? `WHERE t.status IN ('running', 'open')` : ""}
+    ORDER BY CASE t.status WHEN 'running' THEN 0 WHEN 'open' THEN 1 ELSE 2 END,
+             ${opts.activeOnly ? "COALESCE(t.starts_at, t.created_at) ASC" : "COALESCE(t.starts_at, t.created_at) DESC"}
+    LIMIT @limit
+  `).all({ viewer: viewerId, limit });
 }
 
 export function joinTournament(tournamentId: string, userId: number, now = Date.now()): void {

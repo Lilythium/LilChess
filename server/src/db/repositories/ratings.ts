@@ -1,5 +1,8 @@
 import {
   DEFAULT_RATING,
+  RECENT_DELTA_GAMES,
+  VARIANTS,
+  VARIANT_LABELS,
   idlePeriods,
   inflateRd,
   isProvisional,
@@ -27,8 +30,11 @@ export interface PlayerRating extends Rating {
 
 export interface ProfileRating extends RatingBadge {
   variant: string;
+  label: string;
   rd: number;
   games: number;
+  /** Rating change over the last RECENT_DELTA_GAMES rated games (stored on the ratings row). */
+  delta: number;
 }
 
 export interface RatingPoint {
@@ -64,30 +70,49 @@ export function getRatingBadge(userId: number, variant = "standard"): RatingBadg
   return { rating: Math.round(r.rating), provisional: r.provisional };
 }
 
+/** One entry per variant the server supports, including variants the player has never played. */
 export function getPlayerRatings(userId: number, now = Date.now()): ProfileRating[] {
   const rows = getDb()
     .prepare(
-      `SELECT variant, rating, rd, volatility, games, last_game_at FROM ratings WHERE user_id = ? ORDER BY variant`,
+      `SELECT variant, rating, rd, volatility, games, last_game_at, recent_delta FROM ratings WHERE user_id = ?`,
     )
-    .all(userId) as (RatingRow & { variant: string })[];
-  const list = rows.length > 0 ? rows.map((r) => toPlayerRating(r.variant, r, now)) : [toPlayerRating("standard", undefined, now)];
-  return list.map((r) => ({
-    variant: r.variant,
-    rating: Math.round(r.rating),
-    rd: Math.round(r.rd),
-    games: r.games,
-    provisional: r.provisional,
-  }));
+    .all(userId) as (RatingRow & { variant: string; recent_delta: number })[];
+  const byVariant = new Map(rows.map((r) => [r.variant, r]));
+  return VARIANTS.map((variant) => {
+    const row = byVariant.get(variant);
+    const r = toPlayerRating(variant, row, now);
+    return {
+      variant,
+      label: VARIANT_LABELS[variant],
+      rating: Math.round(r.rating),
+      rd: Math.round(r.rd),
+      games: r.games,
+      provisional: r.provisional,
+      delta: row?.recent_delta ?? 0,
+    };
+  });
 }
 
-/** Oldest-first, last `limit` rated games. */
-export function getRatingHistory(userId: number, variant = "standard", limit = 200): RatingPoint[] {
+/** Displayed-rating change across the player's last RECENT_DELTA_GAMES rated games in one variant. */
+export function computeRecentDelta(userId: number, variant: string): number {
+  const rows = getDb()
+    .prepare(
+      `SELECT rating_before, rating_after FROM rating_history
+       WHERE user_id = ? AND variant = ? ORDER BY id DESC LIMIT ?`,
+    )
+    .all(userId, variant, RECENT_DELTA_GAMES) as { rating_before: number; rating_after: number }[];
+  if (rows.length === 0) return 0;
+  return Math.round(rows[0]!.rating_after) - Math.round(rows[rows.length - 1]!.rating_before);
+}
+
+/** Oldest-first, last `limit` rated games, optionally only those finished at or after `since` (ms). */
+export function getRatingHistory(userId: number, variant = "standard", limit = 200, since = 0): RatingPoint[] {
   const rows = getDb()
     .prepare(
       `SELECT game_id, created_at, rating_after FROM rating_history
-       WHERE user_id = ? AND variant = ? ORDER BY id DESC LIMIT ?`,
+       WHERE user_id = ? AND variant = ? AND created_at >= ? ORDER BY id DESC LIMIT ?`,
     )
-    .all(userId, variant, limit) as { game_id: string; created_at: number; rating_after: number }[];
+    .all(userId, variant, since, limit) as { game_id: string; created_at: number; rating_after: number }[];
   return rows.reverse().map((r) => ({ gameId: r.game_id, createdAt: r.created_at, rating: Math.round(r.rating_after) }));
 }
 
@@ -139,12 +164,16 @@ export function settleRatings(gameId: string, now = Date.now()): boolean {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
+  const setDelta = db.prepare(`UPDATE ratings SET recent_delta = ? WHERE user_id = ? AND variant = ?`);
+
   const apply = (userId: number, opponentId: number, me: PlayerRating, opp: PlayerRating, after: Rating, score: number) => {
     upsert.run({ userId, variant: g.variant, rating: after.rating, rd: after.rd, volatility: after.volatility, now });
     history.run(
       gameId, userId, g.variant, opponentId, opp.rating, score,
       me.rating, me.rd, after.rating, after.rd, after.volatility, now,
     );
+    // History row is in, so the last-N window now includes this game.
+    setDelta.run(computeRecentDelta(userId, g.variant), userId, g.variant);
   };
   apply(g.white_id, g.black_id, white, black, next.white, whiteScore);
   apply(g.black_id, g.white_id, black, white, next.black, 1 - whiteScore);

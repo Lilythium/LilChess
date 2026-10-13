@@ -89,6 +89,42 @@ export function topPlayers(variant: string, opts: LeaderboardOptions): { players
   return { players, ranked: n };
 }
 
+export interface RatingPercentile {
+  /** Whole percent of the other ranked players this player out-rates (0-99); null when it isn't meaningful. */
+  percentile: number | null;
+  /** How many other players were compared against. */
+  pool: number;
+}
+
+/**
+ * "Better than X% of players". The pool is everyone the leaderboard would rank in this variant (enough games,
+ * recently active, not a guest, not disabled), minus the player. The player needs `minGames` games themselves,
+ * otherwise their rating is still provisional and the number would mislead; being inactive is fine.
+ */
+export function ratingPercentile(variant: string, userId: number, opts: LeaderboardOptions): RatingPercentile {
+  const now = opts.now ?? Date.now();
+  const activeSince = opts.inactiveDays > 0 ? now - opts.inactiveDays * DAY_MS : 0;
+  const db = getDb();
+
+  const me = db
+    .prepare(`SELECT rating, games FROM ratings WHERE user_id = ? AND variant = ?`)
+    .get(userId, variant) as { rating: number; games: number } | undefined;
+  if (!me || me.games < opts.minGames) return { percentile: null, pool: 0 };
+
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS pool, COALESCE(SUM(r.rating < @rating), 0) AS below
+       FROM ratings r JOIN users u ON u.id = r.user_id
+       WHERE r.variant = @variant AND r.user_id <> @userId AND u.is_guest = 0 AND u.disabled_at IS NULL
+         AND r.games >= @minGames AND r.last_game_at >= @activeSince`,
+    )
+    .get({ variant, userId, rating: me.rating, minGames: opts.minGames, activeSince }) as { pool: number; below: number };
+
+  if (row.pool === 0) return { percentile: null, pool: 0 };
+  // Floor, so 100% is never claimed while someone is rated at or above the player.
+  return { percentile: Math.floor((100 * row.below) / row.pool), pool: row.pool };
+}
+
 /** Most improved + most active over a window, both computed from rating_history. */
 export function periodBoards(
   variant: string,

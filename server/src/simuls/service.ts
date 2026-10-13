@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import {
-  createGame, hostColorForSeat, MAX_SIMUL_INVITES, simulFirstMoveWindowMs, simulScore,
+  createGame, hostColorForSeat, MAX_SIMUL_INVITES, SIMUL_PENDING_TTL_MS, simulFirstMoveWindowMs, simulScore,
   type Color, type ClockConfig, type HostColor, type SimulStatus, type Variant,
 } from "@lilchess/shared";
 import { getUserByUsername } from "../auth/queries.js";
@@ -53,7 +53,30 @@ export interface SimulConfig {
   isPublic: boolean;
 }
 
+/**
+ * Cancels open simuls nobody started in time (SIMUL_PENDING_TTL_MS), so the lobby only lists live prospects and a
+ * host is never blocked by their own forgotten simul. Returns how many were cancelled.
+ */
+export function expirePendingSimuls(now = Date.now()): number {
+  const liveCutoff = now - SIMUL_PENDING_TTL_MS.live;
+  const correspondenceCutoff = now - SIMUL_PENDING_TTL_MS.correspondence;
+  return commit(() => {
+    const db = getDb();
+    const stale = db.prepare(`
+      SELECT id FROM simuls
+      WHERE status = 'open' AND created_at < CASE mode WHEN 'live' THEN ? ELSE ? END
+    `).all(liveCutoff, correspondenceCutoff) as { id: string }[];
+    const cancel = db.prepare(`UPDATE simuls SET status = 'cancelled', ended_at = ? WHERE id = ? AND status = 'open'`);
+    for (const { id } of stale) {
+      cancel.run(now, id);
+      queueSimulEvent({ type: "simul_state", simulId: id, status: "cancelled" });
+    }
+    return stale.length;
+  });
+}
+
 export function createSimul(hostId: number, c: SimulConfig, now = Date.now()): string {
+  expirePendingSimuls(now); // a stale simul of this host's would otherwise trip the one-active-simul-per-host index
   const id = randomBytes(8).toString("hex");
   try {
     getDb().prepare(`

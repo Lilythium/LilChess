@@ -8,6 +8,7 @@
   import type { ChallengeRow, Challenges, MyGames } from "../lib/types";
   import HoverDropdown from "../lib/components/HoverDropdown.svelte";
   import ModeToggle from "../lib/components/ModeToggle.svelte";
+  import LobbyEvents from "../lib/components/LobbyEvents.svelte";
   import { ChallengeBody, VARIANTS, VARIANT_LABELS, type Variant } from "@lilchess/shared";
   import { validate } from "../lib/validate";
   import { playSound } from "../lib/audio/audio";
@@ -25,6 +26,7 @@
   let mode = $state<"live" | "correspondence">("live");
   let preset = $state(2); // 5+3
   let days = $state(3);
+  let rated = $state(false);
   let color = $state<"random" | "white" | "black">("random");
   let toUsername = $state("");
   let error = $state<string | null>(null);
@@ -110,6 +112,7 @@
     try {
       const v = validate(ChallengeBody, {
         ...clock,
+        rated,
         colorPref: color === "random" ? undefined : color,
         toUsername: asLink ? undefined : toUsername.trim() || undefined,
         link: asLink || undefined, variant: variant === "standard" ? undefined : variant,
@@ -200,6 +203,7 @@
 
               <td>
                 {timeControl(c)}
+                {c.rated ? " · Rated" : ""}
                 {c.is_link ? " · Private" : " · Open"}
               </td>
 
@@ -264,6 +268,8 @@
               {/each}
             </select>
           {/if}
+
+          <label class="rated-toggle"><input type="checkbox" bind:checked={rated} /> Rated</label>
 
           <div class="row">
             <button
@@ -395,6 +401,8 @@
         true
       )}
     {/if}
+
+    <LobbyEvents />
   </div>
 </div>
 
@@ -411,6 +419,9 @@
     flex-direction: column;
     gap: 0.75rem;
   }
+
+  .rated-toggle { display: flex; align-items: center; gap: 0.45rem; min-height: 42px; }
+  .rated-toggle input { width: 1rem; height: 1rem; accent-color: var(--green); }
 
   @media (max-width: 800px) {
     .grid {
