@@ -9,13 +9,13 @@ const MAX_TARGETS = 5;
 export interface ResetTarget { id: number; username: string; email: string }
 
 // Accepts a username or an email. Emails aren't unique (they're unverified), so an email can
-// match a few accounts: each gets its own link. Guests and accounts without an email never match.
+// match a few accounts: each gets its own link. Guests, disabled accounts and accounts without an email never match.
 export function findResetTargets(identifier: string): ResetTarget[] {
   const raw = identifier.trim();
   const db = getDb();
   return (raw.includes("@")
-    ? db.prepare(`SELECT id, username, email FROM users WHERE email = ? AND is_guest = 0 LIMIT ?`).all(raw.toLowerCase(), MAX_TARGETS)
-    : db.prepare(`SELECT id, username, email FROM users WHERE username = ? AND email IS NOT NULL AND is_guest = 0`).all(normalizeUsername(raw))
+    ? db.prepare(`SELECT id, username, email FROM users WHERE email = ? AND is_guest = 0 AND disabled_at IS NULL LIMIT ?`).all(raw.toLowerCase(), MAX_TARGETS)
+    : db.prepare(`SELECT id, username, email FROM users WHERE username = ? AND email IS NOT NULL AND is_guest = 0 AND disabled_at IS NULL`).all(normalizeUsername(raw))
   ) as ResetTarget[];
 }
 
@@ -38,7 +38,7 @@ export function consumeResetToken(tokenHash: string, newPasswordHash: string, no
       .prepare(`SELECT user_id FROM password_resets WHERE token_hash = ? AND expires_at > ?`)
       .get(tokenHash, now) as { user_id: number } | undefined;
     if (!row) return false;
-    db.prepare(`UPDATE users SET password_hash = ? WHERE id = ? AND is_guest = 0`).run(newPasswordHash, row.user_id);
+    db.prepare(`UPDATE users SET password_hash = ? WHERE id = ? AND is_guest = 0 AND disabled_at IS NULL`).run(newPasswordHash, row.user_id);
     db.prepare(`DELETE FROM password_resets WHERE user_id = ?`).run(row.user_id);
     db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(row.user_id);
     return true;

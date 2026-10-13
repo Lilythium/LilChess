@@ -1,34 +1,54 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { getDb } from "../db/connection.js";
 import { terminateGameAsAdmin } from "../db/repositories/games.js";
 import { requireAdmin } from "../auth/routes.js";
+import { hashPassword } from "../auth/crypto.js";
+import {
+  countActiveInvites,
+  createRegistrationInvite,
+  listRegistrationInvites,
+  normalizeInviteCode,
+  revokeRegistrationInvite,
+} from "../auth/invites.js";
 import { cancelTournament, startTournament, TournamentError } from "../tournaments/service.js";
 import { notifyDeadlineChanged } from "../game/deadlineBus.js";
 import { notifyTournamentStarting } from "../notifications/dispatch.js";
-import { IdParams, parse } from "../validation.js";
+import { IdParams, RegisterBody, parse } from "../validation.js";
 import { purgeUnusedGuests } from "../maintenance.js";
+import { closeUserSockets } from "../ws/hub.js";
+import { recordAudit } from "./audit.js";
+import { AdminError, createUserAsAdmin, revokeUserSessions, setUserAdmin, setUserDisabled } from "./users.js";
+
+const DAY_MS = 86_400_000;
 
 const UserParams = z.object({ id: z.coerce.number().int().positive() });
 const AdminBody = z.object({ isAdmin: z.boolean() });
-
-function audit(actorId: number, action: string, target: string, details: Record<string, unknown> = {}) {
-  getDb().prepare(`
-    INSERT INTO admin_audit (actor_id, action, target, details, created_at)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(actorId, action, target, JSON.stringify(details), Date.now());
-}
+const CreateUserBody = RegisterBody.pick({ username: true, password: true }).extend({ isAdmin: z.boolean().default(false) });
+const InviteParams = z.object({ code: z.string().regex(/^[A-Za-z0-9-]{8,40}$/, "Invalid invite code") });
+const CreateInviteBody = z.object({
+  note: z.string().trim().max(80).optional(),
+  maxUses: z.number().int().min(1).max(1000).default(1),
+  expiresInDays: z.number().int().min(1).max(365).nullable().default(null),
+});
 
 export async function adminRoutes(app: FastifyInstance) {
-  app.addHook("onResponse", async (req, reply) => {
-    if (!req.user?.is_admin || !req.url.startsWith("/api/admin/")) return;
-    const target = req.url.split("?")[0] ?? req.url;
+  // Every change below records itself through recordAudit (inside the change's own transaction where
+  // it can). Reading pages is deliberately not logged.
+
+  // Runs a service call and turns its expected errors into replies (undefined means "reply already sent").
+  // Anything else is a real bug and surfaces as a 500.
+  const guarded = <T>(reply: FastifyReply, fn: () => T): T | undefined => {
     try {
-      audit(req.user.id, `${req.method} ${target}`, target, { statusCode: reply.statusCode });
+      return fn();
     } catch (error) {
-      req.log.error({ err: error, target }, "admin audit write failed");
+      if (error instanceof AdminError || error instanceof TournamentError) {
+        void reply.code(error.status).send({ error: error.message });
+        return undefined;
+      }
+      throw error;
     }
-  });
+  };
 
   app.get("/api/admin/stats", { preHandler: requireAdmin }, async () => {
     const db = getDb();
@@ -40,61 +60,122 @@ export async function adminRoutes(app: FastifyInstance) {
         users: counts("users"),
         registeredUsers: counts("users", "WHERE is_guest = 0"),
         guests: counts("users", "WHERE is_guest = 1"),
+        disabledUsers: counts("users", "WHERE disabled_at IS NOT NULL"),
         activeGames: counts("games", "WHERE status = 'started'"),
         completedGames: counts("games", "WHERE status <> 'started'"),
-        openInvitations: counts("challenges", "WHERE expires_at > ?", [Date.now()]),
+        openChallenges: counts("challenges", "WHERE expires_at > ?", [Date.now()]),
+        activeInviteCodes: countActiveInvites(),
         openTournaments: counts("tournaments", "WHERE status = 'open'"),
         runningTournaments: counts("tournaments", "WHERE status = 'running'"),
       },
     };
   });
 
+  // ---- users ----
+
   app.get("/api/admin/users", { preHandler: requireAdmin }, async () => ({
     ok: true,
     users: getDb().prepare(`
       SELECT u.id, u.username, u.created_at AS createdAt, u.is_admin AS isAdmin,
-             u.is_guest AS isGuest, u.email,
+             u.is_guest AS isGuest, u.email, u.disabled_at AS disabledAt,
              (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > ?) AS activeSessions,
-             (SELECT COUNT(*) FROM games g WHERE g.white_id = u.id OR g.black_id = u.id) AS gameCount
+             (SELECT COUNT(*) FROM games g WHERE g.white_id = u.id OR g.black_id = u.id) AS gameCount,
+             (SELECT COUNT(*) FROM games g WHERE g.status = 'started' AND (g.white_id = u.id OR g.black_id = u.id)) AS activeGames
       FROM users u ORDER BY u.created_at DESC LIMIT 500
     `).all(Date.now()),
   }));
+
+  // Works in every registration mode, which is what makes REGISTRATION=closed usable.
+  app.post("/api/admin/users", { preHandler: requireAdmin }, async (req, reply) => {
+    const body = parse(CreateUserBody, req.body, reply);
+    if (!body) return reply;
+    const passwordHash = await hashPassword(body.password);
+    const user = guarded(reply, () => createUserAsAdmin(req.user!.id, body.username, passwordHash, body.isAdmin));
+    if (!user) return reply;
+    return { ok: true, user };
+  });
 
   app.patch("/api/admin/users/:id", { preHandler: requireAdmin }, async (req, reply) => {
     const params = parse(UserParams, req.params, reply);
     const body = parse(AdminBody, req.body, reply);
     if (!params || !body) return reply;
-    if (params.id === req.user!.id && !body.isAdmin) {
-      return reply.code(409).send({ error: "You cannot remove your own administrator access" });
-    }
-    const db = getDb();
-    const user = db.prepare(`SELECT id, is_guest FROM users WHERE id = ?`).get(params.id) as
-      { id: number; is_guest: number } | undefined;
-    if (!user) return reply.code(404).send({ error: "User not found" });
-    if (body.isAdmin && user.is_guest) return reply.code(409).send({ error: "Guest accounts cannot be administrators" });
-    if (!body.isAdmin) {
-      const admins = db.prepare(`SELECT COUNT(*) AS count FROM users WHERE is_admin = 1`).get() as { count: number };
-      if (admins.count <= 1) return reply.code(409).send({ error: "At least one administrator must remain" });
-    }
-    db.prepare(`UPDATE users SET is_admin = ? WHERE id = ?`).run(body.isAdmin ? 1 : 0, params.id);
+    const changed = guarded(reply, () => setUserAdmin(req.user!.id, params.id, body.isAdmin));
+    if (changed === undefined) return reply;
+    return { ok: true, changed };
+  });
+
+  app.post("/api/admin/users/:id/disable", { preHandler: requireAdmin }, async (req, reply) => {
+    const params = parse(UserParams, req.params, reply);
+    if (!params) return reply;
+    const result = guarded(reply, () => setUserDisabled(req.user!.id, params.id, true));
+    if (!result) return reply;
+    closeUserSockets(params.id);
+    return { ok: true, activeGames: result.activeGames };
+  });
+
+  app.post("/api/admin/users/:id/enable", { preHandler: requireAdmin }, async (req, reply) => {
+    const params = parse(UserParams, req.params, reply);
+    if (!params) return reply;
+    if (!guarded(reply, () => setUserDisabled(req.user!.id, params.id, false))) return reply;
     return { ok: true };
   });
 
   app.post("/api/admin/users/:id/revoke-sessions", { preHandler: requireAdmin }, async (req, reply) => {
     const params = parse(UserParams, req.params, reply);
     if (!params) return reply;
-    if (params.id === req.user!.id) return reply.code(409).send({ error: "You cannot revoke your own session" });
-    const result = getDb().prepare(`DELETE FROM sessions WHERE user_id = ?`).run(params.id);
-    if (!getDb().prepare(`SELECT 1 FROM users WHERE id = ?`).get(params.id)) {
-      return reply.code(404).send({ error: "User not found" });
-    }
-    return { ok: true, revoked: result.changes };
+    const revoked = guarded(reply, () => revokeUserSessions(req.user!.id, params.id));
+    if (revoked === undefined) return reply;
+    return { ok: true, revoked };
   });
 
-  app.post("/api/admin/users/purge-guests", { preHandler: requireAdmin }, async () => ({
+  app.post("/api/admin/users/purge-guests", { preHandler: requireAdmin }, async (req) => {
+    const deleted = getDb().transaction(() => {
+      const count = purgeUnusedGuests();
+      recordAudit(req.user!.id, "guests.purge", "guests", { deleted: count });
+      return count;
+    }).immediate();
+    return { ok: true, deleted };
+  });
+
+  // ---- registration invite codes (REGISTRATION=invite) ----
+
+  app.get("/api/admin/invites", { preHandler: requireAdmin }, async () => ({
     ok: true,
-    deleted: purgeUnusedGuests(),
+    invites: listRegistrationInvites(),
   }));
+
+  app.post("/api/admin/invites", { preHandler: requireAdmin }, async (req, reply) => {
+    const body = parse(CreateInviteBody, req.body, reply);
+    if (!body) return reply;
+    const invite = getDb().transaction(() => {
+      const created = createRegistrationInvite(req.user!.id, {
+        note: body.note || null,
+        maxUses: body.maxUses,
+        expiresAt: body.expiresInDays === null ? null : Date.now() + body.expiresInDays * DAY_MS,
+      });
+      recordAudit(req.user!.id, "invite.create", `invite:${created.code}`, {
+        note: created.note, maxUses: created.maxUses, expiresAt: created.expiresAt,
+      });
+      return created;
+    }).immediate();
+    return { ok: true, invite };
+  });
+
+  app.post("/api/admin/invites/:code/revoke", { preHandler: requireAdmin }, async (req, reply) => {
+    const params = parse(InviteParams, req.params, reply);
+    if (!params) return reply;
+    const code = normalizeInviteCode(params.code);
+    const outcome = getDb().transaction(() => {
+      const result = revokeRegistrationInvite(code);
+      if (result === "revoked") recordAudit(req.user!.id, "invite.revoke", `invite:${code}`);
+      return result;
+    }).immediate();
+    if (outcome === "not_found") return reply.code(404).send({ error: "Invite code not found" });
+    if (outcome === "already_revoked") return reply.code(409).send({ error: "Invite code is already revoked" });
+    return { ok: true };
+  });
+
+  // ---- tournaments ----
 
   app.get("/api/admin/tournaments", { preHandler: requireAdmin }, async () => ({
     ok: true,
@@ -111,32 +192,31 @@ export async function adminRoutes(app: FastifyInstance) {
   app.post("/api/admin/tournaments/:id/start", { preHandler: requireAdmin }, async (req, reply) => {
     const params = parse(IdParams, req.params, reply);
     if (!params) return reply;
-    try {
-      const gameCount = startTournament(params.id, null);
-      notifyDeadlineChanged();
-      notifyTournamentStarting(params.id);
-      return { ok: true, gameCount };
-    } catch (error) {
-      if (error instanceof TournamentError) return reply.code(error.status).send({ error: error.message });
-      throw error;
-    }
+    const gameCount = guarded(reply, () => startTournament(params.id, null));
+    if (gameCount === undefined) return reply;
+    recordAudit(req.user!.id, "tournament.start", `tournament:${params.id}`, { gameCount });
+    notifyDeadlineChanged();
+    notifyTournamentStarting(params.id);
+    return { ok: true, gameCount };
   });
 
   app.post("/api/admin/tournaments/:id/cancel", { preHandler: requireAdmin }, async (req, reply) => {
     const params = parse(IdParams, req.params, reply);
     if (!params) return reply;
-    try {
+    const cancelled = guarded(reply, () => {
       cancelTournament(params.id, null);
-      return { ok: true };
-    } catch (error) {
-      if (error instanceof TournamentError) return reply.code(error.status).send({ error: error.message });
-      throw error;
-    }
+      return true;
+    });
+    if (!cancelled) return reply;
+    recordAudit(req.user!.id, "tournament.cancel", `tournament:${params.id}`);
+    return { ok: true };
   });
 
-  app.get("/api/admin/invitations", { preHandler: requireAdmin }, async () => ({
+  // ---- open challenges (the old "invitations" list: seeks, direct challenges and challenge links) ----
+
+  app.get("/api/admin/challenges", { preHandler: requireAdmin }, async () => ({
     ok: true,
-    invitations: getDb().prepare(`
+    challenges: getDb().prepare(`
       SELECT c.id, c.mode, c.created_at AS createdAt, c.expires_at AS expiresAt,
              c.is_link AS isLink, fu.username AS fromUser, tu.username AS toUser
       FROM challenges c JOIN users fu ON fu.id = c.from_user
@@ -145,13 +225,23 @@ export async function adminRoutes(app: FastifyInstance) {
     `).all(),
   }));
 
-  app.delete("/api/admin/invitations/:id", { preHandler: requireAdmin }, async (req, reply) => {
+  app.delete("/api/admin/challenges/:id", { preHandler: requireAdmin }, async (req, reply) => {
     const params = parse(IdParams, req.params, reply);
     if (!params) return reply;
-    const result = getDb().prepare(`DELETE FROM challenges WHERE id = ?`).run(params.id);
-    if (!result.changes) return reply.code(404).send({ error: "Invitation not found" });
+    const removed = getDb().transaction(() => {
+      const row = getDb().prepare(`
+        SELECT fu.username AS fromUser FROM challenges c JOIN users fu ON fu.id = c.from_user WHERE c.id = ?
+      `).get(params.id) as { fromUser: string } | undefined;
+      if (!row) return false;
+      getDb().prepare(`DELETE FROM challenges WHERE id = ?`).run(params.id);
+      recordAudit(req.user!.id, "challenge.delete", `challenge:${params.id}`, { fromUser: row.fromUser });
+      return true;
+    }).immediate();
+    if (!removed) return reply.code(404).send({ error: "Challenge not found" });
     return { ok: true };
   });
+
+  // ---- games ----
 
   app.get("/api/admin/games", { preHandler: requireAdmin }, async () => ({
     ok: true,
@@ -169,14 +259,20 @@ export async function adminRoutes(app: FastifyInstance) {
     if (!params) return reply;
     const result = terminateGameAsAdmin(params.id);
     if (!result.ok) return reply.code(result.error === "not_found" ? 404 : 409).send({ error: "Game is not active" });
+    recordAudit(req.user!.id, "game.terminate", `game:${params.id}`);
     return { ok: true };
   });
 
+  // ---- audit log ----
+
   app.get("/api/admin/audit", { preHandler: requireAdmin }, async () => ({
     ok: true,
+    // Older versions logged every page view as "GET /api/admin/...". Those rows stay in the table but are
+    // hidden here, so real actions are what you see.
     entries: getDb().prepare(`
       SELECT a.id, a.action, a.target, a.details, a.created_at AS createdAt, u.username AS actor
       FROM admin_audit a JOIN users u ON u.id = a.actor_id
+      WHERE a.action NOT LIKE 'GET %'
       ORDER BY a.created_at DESC, a.id DESC LIMIT 200
     `).all(),
   }));

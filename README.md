@@ -113,7 +113,8 @@ LilChess can be configured with environment variables.
 | `DATA_DIR`        | `./data`            | Database/data directory                       |
 | `REGISTRATION`    | `open`              | `open`, `invite`, or `closed`                 |
 | `INVITE_CODE`     | —                   | Required when registration is set to `invite` |
-| `ADMIN_USERNAME`  | —                   | Grant the first administrator to this existing registered account |
+| `ADMIN_USERNAME`  | —                   | The first administrator: an existing account is promoted, a missing one is created if |||`ADMIN_PASSWORD` is set |
+| `ADMIN_PASSWORD`  | —                   | Password for creating the `ADMIN_USERNAME` account (8+ characters). Never changes an existing account. Remove it once the account exists |
 | `BASE_URL`        | —                   | Public HTTP(S) URL                            |
 | `TRUST_PROXY`     | —                   | Configure proxy trust                         |
 | `LOG_LEVEL`       | `info`              | Logging level                                 |
@@ -151,10 +152,24 @@ INVITE_CODE=your-secret-code
 
 ## Administration
 
-Create the account that should administer the server, then set `ADMIN_USERNAME` to that exact
-username and restart LilChess. On startup, it is promoted only when the database has no administrator;
-public registrations made later are never promoted automatically. The admin page is available at
-`#/admin` and can manage account roles and sessions, tournaments, invitations, and games.
+The first administrator is set up at startup, and only while the database has no administrator, so
+public registrations made later are never promoted automatically. Set `ADMIN_USERNAME` to either:
+
+- an account that already exists: it is promoted, or
+- a new name together with `ADMIN_PASSWORD`: the account is created as an administrator. This is how you
+  get started with `REGISTRATION=closed`, where nobody could register the first account. Remove
+  `ADMIN_PASSWORD` from the environment once the account exists; it is never used to change a password.
+
+The admin page is at `#/admin`. It can:
+
+- **Users**: create accounts (in any registration mode), make or remove administrators, revoke sessions,
+  and disable or re-enable accounts. A disabled account is signed out everywhere, can't log in, and is
+  removed from open challenges, tournaments that haven't started, and the leaderboard; its games and
+  history are kept, and games already running are left for you to terminate if you want.
+- **Invitations**: create, copy and revoke registration invite codes for `REGISTRATION=invite`. A code can
+  have several uses and an expiry. The `INVITE_CODE` from the environment keeps working alongside them.
+- **Tournaments, Challenges, Games**: start or cancel tournaments, delete open challenges, terminate games.
+- **Audit log**: every change made from the admin page, with who did it and what changed.
 
 ## Email
 

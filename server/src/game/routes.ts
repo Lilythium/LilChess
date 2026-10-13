@@ -67,7 +67,7 @@ let toUser: number | undefined;
 if (body.toUsername && !isLink) {
   const target = getUserByUsername(body.toUsername);
 
-  if (!target) return reply.code(404).send({ error: "User not found" });
+  if (!target || target.disabled_at !== null) return reply.code(404).send({ error: "User not found" });
   if (target.id === req.user!.id) {
     return reply.code(400).send({ error: "Cannot challenge yourself" });
   }

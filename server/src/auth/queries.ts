@@ -17,20 +17,26 @@ export interface UserRow extends User {
 
 export function getUserByUsername(username: string) {
   return getDb().prepare(
-    `SELECT id, username, password_hash, created_at, is_admin, is_guest, email FROM users WHERE username = ?`,
-  ).get(normalizeUsername(username)) as (User & { password_hash: string }) | undefined;
+    `SELECT id, username, password_hash, created_at, is_admin, is_guest, email, disabled_at FROM users WHERE username = ?`,
+  ).get(normalizeUsername(username)) as (User & { password_hash: string; disabled_at: number | null }) | undefined;
 }
 
-export function createUser(username: string, passwordHash: string): User {
+export function createUser(username: string, passwordHash: string, isAdmin = false): User {
   const now = Date.now();
   const info = getDb().prepare(`
     INSERT INTO users (username, password_hash, created_at, is_admin)
     VALUES (?, ?, ?, ?)
-  `).run(normalizeUsername(username), passwordHash, now, 0);
+  `).run(normalizeUsername(username), passwordHash, now, isAdmin ? 1 : 0);
 
-    return { id: info.lastInsertRowid as number, username: normalizeUsername(username), created_at: now, is_admin: 0, is_guest: 0, email: null };
+    return {
+      id: Number(info.lastInsertRowid),
+      username: normalizeUsername(username),
+      created_at: now,
+      is_admin: isAdmin ? 1 : 0,
+     is_guest: 0,
+      email: null,
+   };
 }
-
 // '!' can never match a "salt:hash" value, so guests cannot log in with a password.
 export function createGuest(): User {
   const db = getDb();
@@ -62,7 +68,7 @@ export function getSessionUser(tokenHash: string): User | undefined {
     SELECT u.id, u.username, u.created_at, u.is_admin, u.is_guest, u.email
     FROM sessions s
     JOIN users u ON s.user_id = u.id
-    WHERE s.token_hash = ? AND s.expires_at > ?
+    WHERE s.token_hash = ? AND s.expires_at > ? AND u.disabled_at IS NULL
   `).get(tokenHash, Date.now()) as User | undefined;
 }
 
