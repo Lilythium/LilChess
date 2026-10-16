@@ -120,4 +120,47 @@ describe("migrate", () => {
       VALUES ('event0001', 2, 1, 1, 1)
     `).run()).not.toThrow();
   });
+
+  it("enforces Simul² board relationships while allowing a game in both host views", () => {
+    const db = open();
+    migrate(db);
+    db.exec(`
+      INSERT INTO users (id, username, password_hash, created_at)
+        VALUES (1,'alice','x',0),(2,'bob','x',0),(3,'carol','x',0);
+      INSERT INTO tournaments (id, created_by, name, format, mode, initial_ms, increment_ms, max_players, created_at)
+        VALUES ('event0001',1,'Cup','simul2','live',60000,0,4,0),
+               ('event0002',1,'Other Cup','simul2','live',60000,0,4,0);
+      INSERT INTO tournament_participants (tournament_id, user_id, joined_at)
+        VALUES ('event0001',1,0),('event0001',2,0),('event0002',1,0);
+      INSERT INTO games (
+        id, white_id, black_id, mode, initial_ms, increment_ms, status, initial_fen,
+        white_ms, black_ms, turn_started_at, deadline_at, created_at
+      ) VALUES (
+        'game000001',1,2,'live',60000,0,'started',
+        'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        60000,60000,0,60000,0
+      );
+      INSERT INTO tournament_pairings (tournament_id, round_number, board_number, white_id, black_id, game_id)
+        VALUES ('event0001',1,1,1,2,'game000001');
+      INSERT INTO tournament_simuls (tournament_id, host_id, created_at)
+        VALUES ('event0001',1,0),('event0001',2,0),('event0002',1,0);
+      INSERT INTO tournament_simul_boards (tournament_id, host_id, challenger_id, game_id, seat)
+        VALUES ('event0001',1,2,'game000001',1),('event0001',2,1,'game000001',1);
+    `);
+
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM tournament_simul_boards WHERE game_id = 'game000001'`).get())
+      .toEqual({ n: 2 });
+    expect(() => db.prepare(`
+      INSERT INTO tournament_simul_boards (tournament_id, host_id, challenger_id, game_id, seat)
+      VALUES ('event0002',1,2,'game000001',1)
+    `).run()).toThrow();
+    expect(() => db.prepare(`
+      INSERT INTO tournament_simul_boards (tournament_id, host_id, challenger_id, game_id, seat)
+      VALUES ('event0001',1,3,'game000001',2)
+    `).run()).toThrow();
+    expect(() => db.prepare(`
+      INSERT INTO tournament_simuls (tournament_id, host_id, created_at)
+      VALUES ('event0002',2,0)
+    `).run()).toThrow();
+  });
 });

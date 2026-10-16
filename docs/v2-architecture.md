@@ -1,5 +1,20 @@
 # v2 architecture review
 
+## Current status (2026-10-16)
+
+- Ratings, tournament formats/pairings, simuls, and their persistence are implemented; the phase notes below are historical context, not a current task list.
+- WebSockets use separate game, simul-overview, and per-user endpoints. Live tournament pairings push `pairing_ready` to players over `/ws/me` after the database transaction commits.
+- Tournament lists and details still refresh by polling. There is no tournament-wide WebSocket channel for standings or other shared updates; this is a possible follow-up, not a prerequisite for tournament play.
+- The 20-socket per-user limit applies across all WebSocket endpoints, so a user with many open game boards can hit it.
+
+## Native client integration
+
+The browser client continues to use an HTTP-only session cookie for HTTP requests and WebSocket upgrades. Native clients can register or log in through `/api/native/register` and `/api/native/login`, which return an opaque `sessionToken` without setting a cookie. Send it as `Authorization: Bearer <token>` for HTTP requests and WebSocket upgrades. Native bearer sessions use the existing 30-day lifetime and can be revoked through `/api/logout`; the client is responsible for storing the token securely. CSRF and origin checks remain in place. This adds native integration support without changing the browser security model.
+
+## Historical planning notes
+
+The schema and game-core sections retain findings from the original phased plan. Verify them against the implementation before treating any item as an open task.
+
 ## Schema
 
 | Finding | Needed for | Action |
@@ -24,13 +39,11 @@
 
 ## WebSocket
 
-- Hub is keyed by gameId only; only `/ws/games/:id` exists.
-- `MAX_SOCKETS_PER_USER = 20` caps a simul host at 20 boards (Phase 8).
-- `ClientMessage` has no `gameId` (socket is bound to one game), so multiplexing needs a protocol change.
-- Tournaments (Phase 4/5) need a `tournament:<id>` channel (standings) and a `user:<id>`
-  channel ("your pairing is ready"). Lobby currently polls every 3s.
-- Plan: generalise hub keys to channel strings in Phase 4; add a per-user multiplexed
-  socket for simuls in Phase 8. No change in Phase 0/1.
+- `/ws/games/:id` carries updates and player move submissions for one game; spectators may watch but cannot submit moves.
+- `/ws/simuls/:id` pushes simul-overview events. Each board still uses its own game socket.
+- `/ws/me` is an authenticated, server-push-only connection used for per-user notifications, including live tournament `pairing_ready` events. Tournament events are queued and sent after commit.
+- These are separate endpoint-specific subscriptions, not a general multiplexed channel protocol. The 20-socket limit is per user across all endpoints.
+- Tournament standings and detail views are not pushed on a tournament channel: the lobby refreshes every 3 seconds, tournament details every 5 seconds, and tournament lists every 10 seconds.
 
 ## Simuls
 

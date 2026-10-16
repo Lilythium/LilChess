@@ -1,5 +1,5 @@
 import type { IncomingMessage } from "node:http";
-import { SESSION_COOKIE } from "../auth/routes.js";
+import { SESSION_COOKIE, sessionTokenFromCredentials } from "../auth/sessionToken.js";
 import { hashSessionToken } from "../auth/crypto.js";
 import { getSessionUser, type User } from "../auth/queries.js";
 import { originAllowed } from "../security/csrf.js";
@@ -21,7 +21,7 @@ function parseCookie(header: string | undefined, name: string): string | undefin
 }
 
 export function authenticateUpgrade(req: IncomingMessage): User | undefined {
-  const token = parseCookie(req.headers.cookie, SESSION_COOKIE);
+  const token = sessionTokenFromCredentials(req.headers.authorization, parseCookie(req.headers.cookie, SESSION_COOKIE));
   if (!token) return undefined;
   return getSessionUser(hashSessionToken(token));
 }

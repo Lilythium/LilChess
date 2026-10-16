@@ -52,6 +52,70 @@ describe("username case handling", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().user.username).toBe("alice");
+    expect(res.json().sessionToken).toBeUndefined();
+  });
+
+  it("issues a bearer session to native clients and revokes it on logout", async () => {
+    await registerUser(app, "alice");
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/native/login",
+      payload: { username: "alice", password: "hunter22!" },
+    });
+
+    expect(login.statusCode).toBe(200);
+    expect(login.cookies).toHaveLength(0);
+    const sessionToken = login.json().sessionToken as string;
+    expect(sessionToken).toMatch(/^[a-f0-9]{64}$/);
+
+    const me = await app.inject({
+      method: "GET",
+      url: "/api/me",
+      headers: { authorization: `Bearer ${sessionToken}` },
+    });
+    expect(me.json().user.username).toBe("alice");
+
+    const logout = await app.inject({
+      method: "POST",
+      url: "/api/logout",
+      headers: { authorization: `Bearer ${sessionToken}` },
+    });
+    expect(logout.statusCode).toBe(200);
+
+    const revoked = await app.inject({
+      method: "GET",
+      url: "/api/me",
+      headers: { authorization: `Bearer ${sessionToken}` },
+    });
+    expect(revoked.statusCode).toBe(401);
+  });
+
+  it("returns a bearer session instead of a cookie for native registration", async () => {
+    const registered = await app.inject({
+      method: "POST",
+      url: "/api/native/register",
+      payload: { username: "native_user", password: "hunter22!" },
+    });
+
+    expect(registered.statusCode).toBe(200);
+    expect(registered.cookies).toHaveLength(0);
+    expect(registered.json().sessionToken).toMatch(/^[a-f0-9]{64}$/);
+    const me = await app.inject({
+      method: "GET",
+      url: "/api/me",
+      headers: { authorization: `Bearer ${registered.json().sessionToken}` },
+    });
+    expect(me.json().user.username).toBe("native_user");
+  });
+
+  it("does not fall back to a cookie when an Authorization header is supplied", async () => {
+    const sid = await registerUser(app, "alice");
+    const me = await app.inject({
+      method: "GET",
+      url: "/api/me",
+      headers: { authorization: "Basic invalid", cookie: `sessionId=${sid}` },
+    });
+    expect(me.statusCode).toBe(401);
   });
 
   it("profile lookup ignores case", async () => {

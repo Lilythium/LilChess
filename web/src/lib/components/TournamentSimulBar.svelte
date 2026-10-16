@@ -1,7 +1,12 @@
 <script lang="ts">
-  import { adjacentBoard, nextBoardForHost } from "@lilchess/shared";
   import type { TournamentSimulInfo } from "../types";
   import { navigate } from "../router.svelte";
+  import {
+    boardsForCurrentGame,
+    manuallyNavigateAdjacentTournamentBoard,
+    nextTournamentSimulBoard,
+    tournamentSimulCounts,
+  } from "../game/tournamentSimulNavigation";
 
   let {
     simul,
@@ -21,22 +26,21 @@
     onAutoAdvanceChange: (enabled: boolean) => void;
   } = $props();
 
-  const boards = $derived(simul.boards.map((board) => board.gameId === gameId
-    ? { ...board, turn: gameTurn, status: gameStatus, deadlineAt: gameDeadlineAt }
-    : board));
+  const boards = $derived(boardsForCurrentGame(simul.boards, gameId, gameTurn, gameStatus, gameDeadlineAt));
   const here = $derived(boards.find((board) => board.gameId === gameId));
-  const left = $derived(boards.filter((board) => board.status === "started").length);
-  const toMove = $derived(boards.filter((board) => board.status === "started" && board.turn === board.hostColor).length);
-  const nextId = $derived(nextBoardForHost(boards, gameId));
+  const counts = $derived(tournamentSimulCounts(boards));
+  const nextId = $derived(nextTournamentSimulBoard(boards, gameId));
   const go = (id: string | null) => { if (id) navigate(`/game/${id}`); };
+  const goAdjacent = (delta: 1 | -1) =>
+    manuallyNavigateAdjacentTournamentBoard(boards, gameId, delta, (nextId) => navigate(`/game/${nextId}`));
 </script>
 
 <div class="simul-bar">
   <a class="title" href={`#/tournament/${simul.tournamentId}`}>{simul.tournamentName} · Simul²</a>
   <div class="controls">
-    <button class="compact step" aria-label="Previous board" onclick={() => go(adjacentBoard(boards, gameId, -1))}>‹</button>
-    <span class="count">{here ? `Board ${here.seat} · ` : ""}{left} left · {toMove} to move</span>
-    <button class="compact step" aria-label="Next board" onclick={() => go(adjacentBoard(boards, gameId, 1))}>›</button>
+    <button class="compact step" aria-label="Previous board" onclick={() => goAdjacent(-1)}>‹</button>
+    <span class="count">{here ? `Board ${here.seat} · ` : ""}{counts.left} left · {counts.toMove} to move</span>
+    <button class="compact step" aria-label="Next board" onclick={() => goAdjacent(1)}>›</button>
     <button disabled={!nextId} onclick={() => go(nextId)}>Next to move</button>
     <label class="opt"><input type="checkbox" checked={autoAdvance} onchange={(e) => onAutoAdvanceChange(e.currentTarget.checked)} /> Auto-advance</label>
   </div>

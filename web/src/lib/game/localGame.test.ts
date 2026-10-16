@@ -38,3 +38,41 @@ describe("hasResumableLocalGame", () => {
     expect(hasResumableLocalGame()).toBe(false);
   });
 });
+
+describe("local first-move timing", () => {
+  it("allows the first move after the initial deadline", () => {
+    const save = startLocalGame({ minutes: 5, incrementSec: 0 });
+
+    const result = applyMove(save.game, "e2e4", save.game.deadlineAt + 1);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    expect(result.state.ply).toBe(1);
+    expect(result.state.status).toBe("started");
+  });
+
+  it("allows Black's first move past its deadline, then enforces the clock", () => {
+    const save = startLocalGame({ minutes: 5, incrementSec: 0 });
+    const whiteMove = applyMove(save.game, "e2e4", save.game.deadlineAt);
+    if (!whiteMove.ok) throw new Error(whiteMove.error);
+
+    const blackMove = applyMove(
+      whiteMove.state,
+      "e7e5",
+      whiteMove.state.deadlineAt + 1,
+    );
+
+    expect(blackMove.ok).toBe(true);
+    if (!blackMove.ok) throw new Error(blackMove.error);
+    expect(blackMove.state.ply).toBe(2);
+    expect(blackMove.state.status).toBe("started");
+
+    const lateMove = applyMove(blackMove.state, "g1f3", blackMove.state.deadlineAt);
+
+    expect(lateMove.ok).toBe(true);
+    if (!lateMove.ok) throw new Error(lateMove.error);
+    expect(lateMove.state.ply).toBe(2);
+    expect(lateMove.state.status).toBe("finished");
+    expect(lateMove.state.termination).toBe("timeout");
+  });
+});

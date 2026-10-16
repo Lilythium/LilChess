@@ -231,6 +231,13 @@ return {
 
 });
 
+app.get("/api/games/:id/tournament-simul", { preHandler: requireAuth }, async (req, reply) => {
+  const params = parse(IdParams, req.params, reply);
+  if (!params) return reply;
+
+  return { ok: true, tournamentSimul: getTournamentSimulForGame(params.id, req.user!.id) };
+});
+
 // Lightweight read for the client-side analysis page. Finished games never change, so the
 // browser may reuse the response. Games in progress are refused, so the page can't be used
 // as an engine feed during play.

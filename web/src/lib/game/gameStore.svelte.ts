@@ -58,6 +58,17 @@ export function createGameStore(gameId: string) {
     }
   }
 
+  async function resyncTournamentSimul(): Promise<void> {
+    try {
+      const body = await api<{ tournamentSimul: TournamentSimulInfo | null }>(
+        `/api/games/${gameId}/tournament-simul`,
+      );
+      view.tournamentSimul = body.tournamentSimul;
+    } catch {
+      // A transient summary refresh failure should not disrupt the active game view.
+    }
+  }
+
   function checkLowTimeWarning(): void {
     const game = view.game;
 
@@ -121,6 +132,7 @@ export function createGameStore(gameId: string) {
       return view;
     },
     resync,
+    resyncTournamentSimul,
     applyEvent,
   };
 }

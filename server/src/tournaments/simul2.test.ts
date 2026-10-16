@@ -85,6 +85,11 @@ describe("Simul2 tournaments", () => {
           hostId: simul.hostId,
           boards: expect.arrayContaining([expect.objectContaining({ gameId: simul.boards[0]!.gameId, status: "started" })]),
         });
+        const summaryResponse = await call(
+          "GET", `/api/games/${simul.boards[0]!.gameId}/tournament-simul`, nameOf(simul.hostId),
+        );
+        expect(summaryResponse.statusCode).toBe(200);
+        expect(summaryResponse.json().tournamentSimul).toMatchObject({ tournamentId: id, hostId: simul.hostId });
         for (const board of simul.boards) {
           const reverse = (body.simuls as { hostId: number; boards: { challengerId: number; gameId: string }[] }[])
             .find((other) => other.hostId === board.challengerId)?.boards.find((other) => other.challengerId === simul.hostId);
@@ -147,6 +152,23 @@ describe("Simul2 tournaments", () => {
     expect((await detail(id)).tournament.status).toBe("running");
     await call("POST", `/api/games/${last!.game}/resign`, nameOf(last!.black));
     expect((await detail(id)).tournament.status).toBe("completed");
+  });
+
+  it("refreshes the host summary when another Simul2 board finishes", async () => {
+    const id = await simul2(["alice", "bob", "carol"]);
+    await start(id);
+    const simul = (await detail(id)).simuls.find((entry: { hostId: number }) => entry.hostId === uid("alice"));
+    const [summaryBoard, completedBoard] = simul.boards as { gameId: string }[];
+
+    const resign = await call("POST", `/api/games/${completedBoard!.gameId}/resign`, "alice");
+    expect(resign.statusCode).toBe(200);
+
+    const response = await call(
+      "GET", `/api/games/${summaryBoard!.gameId}/tournament-simul`, "alice",
+    );
+    expect(response.json().tournamentSimul.boards).toEqual(
+      expect.arrayContaining([expect.objectContaining({ gameId: completedBoard!.gameId, status: "finished" })]),
+    );
   });
 
   it("snapshots each player's rating at the start for the tiebreak", async () => {

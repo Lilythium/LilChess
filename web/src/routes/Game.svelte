@@ -21,6 +21,7 @@
   import SimulBar from "../lib/components/SimulBar.svelte";
   import TournamentSimulBar from "../lib/components/TournamentSimulBar.svelte";
   import { navigate } from "../lib/router.svelte";
+  import { resyncAndAdvanceAfterHostMove } from "../lib/game/tournamentSimulNavigation";
 
   let { id }: { id: string } = $props();
 
@@ -28,6 +29,9 @@
   // svelte-ignore state_referenced_locally
   const store = createGameStore(id);
   const view = store.view;
+  const isTournamentSimulHost = $derived(
+    Boolean(view.tournamentSimul && auth.user && view.tournamentSimul.hostId === auth.user.id),
+  );
 
   let resetKey = $state(0);
   let socketStatus = $state<"connecting" | "open" | "closed">("connecting");
@@ -159,10 +163,20 @@
   );
   $effect(() => { if (keepScreenOn) return keepAwake(); });
 
+  $effect(() => {
+    if (!isTournamentSimulHost) return;
+
+    const interval = setInterval(() => {
+      if (!document.hidden) void store.resyncTournamentSimul();
+    }, 3000);
+    return () => clearInterval(interval);
+  });
+
   async function sendMove(uci: string) {
     if (!view.game) return;
     const board = view.tournamentSimul?.boards.find((candidate) => candidate.gameId === id);
-    const advanceAfterMove = Boolean(autoAdvance && board && view.game.turn === board.hostColor);
+    const gameTurn = view.game.turn;
+    const advanceEnabled = autoAdvance;
 
     try {
       await api(`/api/games/${id}/move`, {
@@ -173,11 +187,18 @@
       });
 
       if (view.tournamentSimul) {
-        await store.resync();
-        if (advanceAfterMove && view.status === "ready") {
-          const nextId = nextBoardForHost(view.tournamentSimul.boards, id);
-          if (nextId) navigate(`/game/${nextId}`);
-        }
+        await resyncAndAdvanceAfterHostMove({
+          autoAdvance: advanceEnabled,
+          hostColor: board?.hostColor,
+          gameTurn,
+          gameId: id,
+          refresh: async () => {
+            await store.resync();
+            return view.status === "ready";
+          },
+          getBoards: () => view.tournamentSimul?.boards ?? [],
+          navigate: (nextId) => navigate(`/game/${nextId}`),
+        });
       } else if (socketStatus !== "open") {
         await store.resync();
       }

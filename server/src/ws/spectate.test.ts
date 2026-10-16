@@ -23,9 +23,12 @@ afterEach(async () => {
   closeDb();
 });
 
-function connect(gameId: string, sid?: string): WebSocket {
+function connect(gameId: string, sid?: string, token?: string): WebSocket {
+  const headers: Record<string, string> = {};
+  if (sid) headers.Cookie = `sessionId=${sid}`;
+  if (token) headers.Authorization = `Bearer ${token}`;
   const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/games/${gameId}`, {
-    headers: sid ? { Cookie: `sessionId=${sid}` } : {},
+    headers,
     // Disable compression to prevent the "RSV1 must be clear" frame error in tests
     perMessageDeflate: false,
   });
@@ -149,5 +152,20 @@ describe("spectating", () => {
 
     expect(await rejectedWith(connect(gameId))).toBe(401);
     expect(await rejectedWith(connect("deadbeef", alice))).toBe(404);
+  });
+
+  it("authenticates native WebSocket upgrades with a bearer session", async () => {
+    const alice = await registerUser(app, "alice");
+    const bob = await registerUser(app, "bob");
+    const gameId = await startGame(app, alice, bob);
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/native/login",
+      payload: { username: "alice", password: "hunter22!" },
+    });
+
+    const socket = connect(gameId, undefined, login.json().sessionToken as string);
+    await opened(socket);
+    expect(socket.readyState).toBe(WebSocket.OPEN);
   });
 });
