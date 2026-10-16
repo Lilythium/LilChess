@@ -234,6 +234,39 @@ export function getGamePlayers(gameId: string) {
   };
 }
 
+export function getTournamentSimulForGame(gameId: string, hostId: number) {
+  const db = getDb();
+  const simul = db.prepare(`
+    SELECT t.id AS tournamentId, t.name AS tournamentName,
+           ts.host_id AS hostId, u.username AS hostName
+    FROM tournament_simul_boards current
+    JOIN tournament_simuls ts ON ts.tournament_id = current.tournament_id AND ts.host_id = current.host_id
+    JOIN tournaments t ON t.id = current.tournament_id
+    JOIN users u ON u.id = ts.host_id
+    WHERE current.game_id = ? AND current.host_id = ?
+  `).get(gameId, hostId) as {
+    tournamentId: string; tournamentName: string; hostId: number; hostName: string;
+  } | undefined;
+  if (!simul) return null;
+
+  const boards = db.prepare(`
+    SELECT b.game_id AS gameId, b.seat AS seat,
+           CASE WHEN g.white_id = b.host_id THEN 'white' ELSE 'black' END AS hostColor,
+           g.status AS status,
+           CASE WHEN g.ply % 2 = 0 THEN 'white' ELSE 'black' END AS turn,
+           g.deadline_at AS deadlineAt
+    FROM tournament_simul_boards b
+    JOIN games g ON g.id = b.game_id
+    WHERE b.tournament_id = ? AND b.host_id = ?
+    ORDER BY b.seat
+  `).all(simul.tournamentId, hostId) as {
+    gameId: string; seat: number; hostColor: "white" | "black";
+    status: "started" | "finished" | "aborted"; turn: "white" | "black"; deadlineAt: number;
+  }[];
+
+  return { ...simul, boards };
+}
+
 export function listChallenges(userId: number) {
   const rows = getDb().prepare(`
     SELECT c.*, u.username AS from_name

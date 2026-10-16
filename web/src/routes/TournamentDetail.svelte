@@ -2,6 +2,8 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { displayName, timeControl } from "../lib/format";
+  import { auth } from "../lib/auth.svelte";
+  import TournamentSimulBoards from "../lib/components/TournamentSimulBoards.svelte";
 
   let { id }: { id: string } = $props();
 
@@ -36,6 +38,12 @@
     gamesPlayed: number; buchholz: number; sonnebornBerger: number; performance?: number; onFire: boolean; eliminatedIn: number | null;
   };
 
+  type SimulBoard = {
+    challengerId: number; challengerName: string; gameId: string; seat: number;
+    hostColor: "white" | "black"; status: string; result: string | null;
+  };
+  type SimulView = { hostId: number; hostName: string; boards: SimulBoard[] };
+
   type Detail = {
     tournament: {
       id: string; name: string; description: string | null; rated: boolean; status: string; format: Format;
@@ -51,6 +59,7 @@
     games: GameRow[];
     skipped: SkippedRow[];
     byes: { round: number; playerId: number; name: string }[];
+    simuls?: SimulView[];
     bracket?: { round: number; matches: BracketMatch[] }[];
   };
 
@@ -188,6 +197,10 @@
     {/if}
     {#if data.byes.length}
       <p class="muted byes">Byes: {data.byes.map((bye) => `${displayName(bye.name)} (R${bye.round})`).join(", ")}</p>
+    {/if}
+
+    {#if tournament.format === "simul2" && data.simuls}
+      <TournamentSimulBoards simuls={data.simuls} viewerId={auth.user?.id ?? null} />
     {/if}
 
     <div class="columns">

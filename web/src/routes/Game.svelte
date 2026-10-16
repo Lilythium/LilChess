@@ -9,7 +9,7 @@
   import GameSidebar from "../lib/components/GameSidebar.svelte";
   import { selectPly, stepView, type NavAction } from "../lib/game/history";
   import { playSound } from "../lib/audio/audio";
-  import type { Color, GameState } from "@lilchess/shared";
+  import { nextBoardForHost, type Color, type GameState } from "@lilchess/shared";
   import { viewport } from "../lib/viewport.svelte";
   import { gameTitle } from "../lib/format";
   import PlayerStrip from "../lib/components/PlayerStrip.svelte";
@@ -19,6 +19,8 @@
   import GameResult from "../lib/components/GameResult.svelte";
   import { keepAwake } from "../lib/wakeLock";
   import SimulBar from "../lib/components/SimulBar.svelte";
+  import TournamentSimulBar from "../lib/components/TournamentSimulBar.svelte";
+  import { navigate } from "../lib/router.svelte";
 
   let { id }: { id: string } = $props();
 
@@ -29,6 +31,14 @@
 
   let resetKey = $state(0);
   let socketStatus = $state<"connecting" | "open" | "closed">("connecting");
+  function readAutoAdvance(): boolean {
+    try { return localStorage.getItem("simul.autoAdvance") !== "0"; } catch { return true; }
+  }
+  let autoAdvance = $state(readAutoAdvance());
+  function setAutoAdvance(on: boolean) {
+    autoAdvance = on;
+    try { localStorage.setItem("simul.autoAdvance", on ? "1" : "0"); } catch { /* private mode */ }
+  }
 
   let viewPly = $state<number | null>(null);
   let lastPly = 0;
@@ -151,6 +161,8 @@
 
   async function sendMove(uci: string) {
     if (!view.game) return;
+    const board = view.tournamentSimul?.boards.find((candidate) => candidate.gameId === id);
+    const advanceAfterMove = Boolean(autoAdvance && board && view.game.turn === board.hostColor);
 
     try {
       await api(`/api/games/${id}/move`, {
@@ -160,7 +172,13 @@
         },
       });
 
-      if (socketStatus !== "open") {
+      if (view.tournamentSimul) {
+        await store.resync();
+        if (advanceAfterMove && view.status === "ready") {
+          const nextId = nextBoardForHost(view.tournamentSimul.boards, id);
+          if (nextId) navigate(`/game/${nextId}`);
+        }
+      } else if (socketStatus !== "open") {
         await store.resync();
       }
     } catch {
@@ -187,7 +205,7 @@
   {@const p = view.players}
 
   {#if viewport.mobile}
-    <div class="game-mobile" style:--simul-h={view.simul ? "56px" : "0px"}>
+    <div class="game-mobile" style:--simul-h={view.simul || view.tournamentSimul ? "56px" : "0px"}>
       {#if view.simul}
         <div class="simul-area">
           <SimulBar
@@ -196,6 +214,18 @@
             name={view.simul.name}
             hostName={view.simul.hostName}
             isHost={view.simul.hostId === auth.user?.id}
+          />
+        </div>
+      {:else if view.tournamentSimul}
+        <div class="simul-area">
+          <TournamentSimulBar
+            simul={view.tournamentSimul}
+            gameId={id}
+            gameTurn={g.turn}
+            gameStatus={g.status}
+            gameDeadlineAt={g.deadlineAt}
+            {autoAdvance}
+            onAutoAdvanceChange={setAutoAdvance}
           />
         </div>
       {/if}
@@ -260,6 +290,18 @@
           name={view.simul.name}
           hostName={view.simul.hostName}
           isHost={view.simul.hostId === auth.user?.id}
+        />
+      </div>
+    {:else if view.tournamentSimul}
+      <div class="simul-area">
+        <TournamentSimulBar
+          simul={view.tournamentSimul}
+          gameId={id}
+          gameTurn={g.turn}
+          gameStatus={g.status}
+          gameDeadlineAt={g.deadlineAt}
+          {autoAdvance}
+          onAutoAdvanceChange={setAutoAdvance}
         />
       </div>
     {/if}

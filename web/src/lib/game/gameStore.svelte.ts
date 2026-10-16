@@ -1,5 +1,5 @@
 import type { GameEvent, GameState } from "@lilchess/shared";
-import type { GameResponse, H2H, Players, SimulInfo } from "../types";
+import type { GameResponse, H2H, Players, SimulInfo, TournamentSimulInfo } from "../types";
 import { api } from "../api";
 import { applyGameEvent } from "./applyEvent";
 import { playSound } from "../audio/audio";
@@ -14,6 +14,7 @@ export interface GameView {
   status: "loading" | "ready" | "error";
   error: string | null;
   simul: SimulInfo | null;
+  tournamentSimul: TournamentSimulInfo | null;
 }
 
 export function createGameStore(gameId: string) {
@@ -26,6 +27,7 @@ export function createGameStore(gameId: string) {
     status: "loading",
     error: null,
     simul: null,
+    tournamentSimul: null,
   });
 
   const lowTimeWarningPlayed = {
@@ -45,6 +47,7 @@ export function createGameStore(gameId: string) {
       view.players = body.players;
       view.h2h = body.h2h;
       view.simul = body.simul;
+      view.tournamentSimul = body.tournamentSimul;
       view.serverOffset = body.serverNow - Date.now();
       view.sanByPly = Object.fromEntries(body.sans.map((s, i) => [i + 1, s]));
       view.status = "ready";

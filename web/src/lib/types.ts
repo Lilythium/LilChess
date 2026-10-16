@@ -7,6 +7,13 @@ export interface Players {
 }
 export interface H2H { wins: number; draws: number; losses: number }
 export interface SimulInfo { id: string; name: string; hostId: number; hostName: string }
+export interface TournamentSimulBoard {
+  gameId: string; seat: number; hostColor: "white" | "black";
+  status: "started" | "finished" | "aborted"; turn: "white" | "black"; deadlineAt: number;
+}
+export interface TournamentSimulInfo {
+  tournamentId: string; tournamentName: string; hostId: number; hostName: string; boards: TournamentSimulBoard[];
+}
 
 export interface SimulSummary extends SimulInfo {
   isPublic: boolean;
@@ -35,7 +42,7 @@ export interface SimulDetail {
 
 export interface GameResponse {
   ok: true; game: GameState; sans: string[]; players: Players; h2h: H2H | null; serverNow: number;
-  simul: SimulInfo | null;
+  simul: SimulInfo | null; tournamentSimul: TournamentSimulInfo | null;
 }
 
 export interface GameRow {

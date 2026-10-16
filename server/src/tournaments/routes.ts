@@ -17,6 +17,7 @@ const CreateBody = z.object({
   mode: z.enum(["live", "correspondence"]),
   initialMs: LiveInitialMs.optional(),
   incrementMs: LiveIncrementMs.optional(),
+  whiteExtraMs: z.number().int().min(0).max(600_000).optional(),
   daysPerMove: z.number().int().min(1).max(14).optional(),
   variant: z.enum(VARIANTS).default("standard"),
   rated: z.boolean().default(false),
@@ -36,6 +37,10 @@ const CreateBody = z.object({
     { message: "Duration only applies to arenas" })
   .refine((body) => body.format === "swiss" || body.rounds === undefined,
     { message: "Rounds only apply to swiss tournaments" })
+  .refine((body) => body.format === "simul2" || body.whiteExtraMs === undefined,
+    { message: "White's extra time only applies to Simul² tournaments" })
+  .refine((body) => body.mode === "live" || body.whiteExtraMs === undefined,
+    { message: "White's extra time only applies to live tournaments" })
   .refine((body) => body.maxPlayers <= MAX_PLAYERS[body.format],
     { message: "Too many players for this format" })
   .refine((body) => body.rounds === undefined || body.rounds <= body.maxPlayers - 1,

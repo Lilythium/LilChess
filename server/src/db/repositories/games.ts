@@ -148,14 +148,29 @@ export function headToHead(meId: number, themId: number) {
 
 export function getExpiredStartedGameIds(now: number): string[] {
   return (getDb()
-    .prepare(`SELECT id FROM games WHERE status = 'started' AND deadline_at <= ? ORDER BY deadline_at ASC`)
+    .prepare(`
+      SELECT g.id FROM games g
+      WHERE g.status = 'started' AND g.deadline_at <= ?
+        AND NOT (g.mode = 'live' AND g.ply < 2 AND EXISTS (
+          SELECT 1 FROM tournament_pairings p JOIN tournaments t ON t.id = p.tournament_id
+          WHERE p.game_id = g.id AND t.format = 'simul2'
+        ))
+      ORDER BY g.deadline_at ASC
+    `)
     .all(now) as { id: string }[])
     .map((r) => r.id);
 }
 
 export function getEarliestActiveDeadline(): number | undefined {
   const row = getDb()
-    .prepare(`SELECT MIN(deadline_at) AS deadline FROM games WHERE status = 'started'`)
+    .prepare(`
+      SELECT MIN(g.deadline_at) AS deadline FROM games g
+      WHERE g.status = 'started'
+        AND NOT (g.mode = 'live' AND g.ply < 2 AND EXISTS (
+          SELECT 1 FROM tournament_pairings p JOIN tournaments t ON t.id = p.tournament_id
+          WHERE p.game_id = g.id AND t.format = 'simul2'
+        ))
+    `)
     .get() as { deadline: number | null };
   return row.deadline ?? undefined;
 }
@@ -177,29 +192,41 @@ function colorOf(userId: number, p: { whiteId: number; blackId: number }): Color
   return undefined;
 }
 
+function isTournamentSimul2Game(gameId: string): boolean {
+  return getDb().prepare(`
+    SELECT 1 FROM tournament_pairings p JOIN tournaments t ON t.id = p.tournament_id
+    WHERE p.game_id = ? AND t.format = 'simul2' LIMIT 1
+  `).get(gameId) !== undefined;
+}
+
 function applyMoveCore(id: string, uci: string, now: number) {
   const before = getGame(id);
   if (!before) return { ok: false as const, error: "not_found" as const };
 
-  const result = applyMove(before, uci, now);
+  const noOpeningAbort = before.clock.mode === "live" && before.ply < 2 && isTournamentSimul2Game(id);
+  const gameForMove = noOpeningAbort ? { ...before, deadlineAt: Number.MAX_SAFE_INTEGER } : before;
+  const result = applyMove(gameForMove, uci, now);
   if (!result.ok) return result;
+  const state = noOpeningAbort && result.state.status === "started" && result.state.ply < 2
+    ? { ...result.state, deadlineAt: Number.MAX_SAFE_INTEGER }
+    : result.state;
 
-  const movePlayed = result.state.moves.length > before.moves.length;
+  const movePlayed = state.moves.length > before.moves.length;
   let san: string | null = null;
   
-  if (movePlayed && result.state.termination !== "timeout") {
+  if (movePlayed && state.termination !== "timeout") {
     san = sanForNextMove(before, uci);
     if (!san) {
       throw new Error(`no SAN for ${uci} in game ${id} at ply ${before.ply}`);
     }
     // Never write a ply without its moves row. Throwing rolls back the surrounding transaction.
-    appendMove(id, result.state.ply, uci, san);
-    assertMoveRows(id, result.state.ply);
+    appendMove(id, state.ply, uci, san);
+    assertMoveRows(id, state.ply);
   }
   
-  updateGameState(id, result.state);
+  updateGameState(id, state);
 
-  return { ...result, san, movePlayed };
+  return { ...result, state, san, movePlayed };
 }
 
 function broadcastGameOver(gameId: string, state: GameState): void {
@@ -436,6 +463,9 @@ export function claimTimeoutAndPersist(gameId: string, now: number) {
   const outcome = getDb().transaction(() => {
     const game = getGame(gameId);
     if (!game) return { ok: false as const, error: "not_found" as const };
+    if (game.clock.mode === "live" && game.ply < 2 && isTournamentSimul2Game(gameId)) {
+      return { ok: false as const, error: "not_yet_expired" as const };
+    }
     const result = claimTimeout(game, now);
     if (result.ok) updateGameState(gameId, result.state);
     return result;

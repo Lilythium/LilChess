@@ -35,6 +35,7 @@
   let clockPreset = $state("300000:2000"); // "custom" = the minutes/increment inputs below
   let customMinutes = $state(7);
   let customIncrement = $state(0);
+  let whiteExtraSeconds = $state(30);
   let daysPerMove = $state(3);
   let maxPlayers = $state(8);
   let variant = $state<Variant>("standard");
@@ -80,6 +81,7 @@
           format,
           mode,
           ...(mode === "live" ? { initialMs, incrementMs } : { daysPerMove }),
+          ...(format === "simul2" && mode === "live" ? { whiteExtraMs: whiteExtraSeconds * 1000 } : {}),
           maxPlayers,
           variant,
           rated,
@@ -155,6 +157,8 @@
           {:else if format === "arena"}
             <label>Duration<select bind:value={durationMinutes}>{#each [10, 30, 60, 90, 120, 180] as minutes}<option value={minutes}>{minutes} min</option>{/each}</select></label>
             <label class="rated-toggle"><input type="checkbox" bind:checked={streakBonus} /> Streak bonus</label>
+          {:else if format === "simul2" && mode === "live"}
+            <label>White extra time (seconds)<input type="number" min="0" max="600" step="5" bind:value={whiteExtraSeconds} /></label>
           {/if}
           <label>Variant<select bind:value={variant}>{#each VARIANTS as v (v)}<option value={v}>{VARIANT_LABELS[v]}</option>{/each}</select></label>
           <label>Starts at<input type="datetime-local" bind:value={startsAt} /></label>

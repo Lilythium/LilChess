@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../app.js";
 import { closeDb, getDb, openDb } from "../db/connection.js";
 import { registerUser } from "../testing/helpers.js";
+import { getExpiredStartedGameIds } from "../db/repositories/games.js";
 
 let app: FastifyInstance;
 const sids: Record<string, string> = {};
@@ -57,9 +58,39 @@ describe("Simul2 tournaments", () => {
       expect(rows).toHaveLength(6); // 4 players: everyone meets everyone once
       expect(rows.every((r) => r.round === 1 && r.game !== null)).toBe(true);
       expect(startedGames(id)).toHaveLength(6);
+      if (_label === "live") {
+        const initialClock = getDb().prepare(`SELECT white_ms AS whiteMs, deadline_at AS deadlineAt FROM games WHERE id = ?`)
+          .get(rows[0]!.game) as { whiteMs: number; deadlineAt: number };
+        expect(initialClock.whiteMs).toBe(330_000);
+        expect(initialClock.deadlineAt).toBe(Number.MAX_SAFE_INTEGER);
+      }
 
       const { tournament } = await detail(id);
       expect(tournament).toMatchObject({ status: "running", rounds: 1, currentRound: 1, format: "simul2" });
+
+      const body = await detail(id);
+      expect(body.simuls).toHaveLength(4);
+      expect(body.simuls.every((simul: { boards: unknown[] }) => simul.boards.length === 3)).toBe(true);
+      const references = body.simuls.flatMap((simul: { boards: { gameId: string }[] }) => simul.boards);
+      expect(references).toHaveLength(12);
+      expect(new Set(references.map((board: { gameId: string }) => board.gameId)).size).toBe(6);
+
+      for (const simul of body.simuls as { hostId: number; boards: { challengerId: number; gameId: string }[] }[]) {
+        expect(new Set(simul.boards.map((board) => board.challengerId)).size).toBe(3);
+        expect(simul.boards.every((board) => board.challengerId !== simul.hostId)).toBe(true);
+        const gameResponse = await call("GET", `/api/games/${simul.boards[0]!.gameId}`, nameOf(simul.hostId));
+        expect(gameResponse.statusCode).toBe(200);
+        expect(gameResponse.json().tournamentSimul).toMatchObject({
+          tournamentId: id,
+          hostId: simul.hostId,
+          boards: expect.arrayContaining([expect.objectContaining({ gameId: simul.boards[0]!.gameId, status: "started" })]),
+        });
+        for (const board of simul.boards) {
+          const reverse = (body.simuls as { hostId: number; boards: { challengerId: number; gameId: string }[] }[])
+            .find((other) => other.hostId === board.challengerId)?.boards.find((other) => other.challengerId === simul.hostId);
+          expect(reverse?.gameId).toBe(board.gameId);
+        }
+      }
 
       for (const name of NAMES) {
         const mine = rows.filter((r) => r.white === uid(name) || r.black === uid(name));
@@ -69,6 +100,28 @@ describe("Simul2 tournaments", () => {
       }
     },
   );
+
+  it("accepts late opening moves without auto-aborting and applies configurable White time", async () => {
+    const id = await simul2(NAMES, { whiteExtraMs: 90_000 });
+    await start(id);
+    const pairing = pairings(id)[0]!;
+    const whiteName = nameOf(pairing.white);
+    const blackName = nameOf(pairing.black);
+
+    getDb().prepare(`UPDATE games SET deadline_at = 0 WHERE id = ?`).run(pairing.game);
+    expect(getExpiredStartedGameIds(Date.now())).not.toContain(pairing.game);
+    const whiteMove = await call("POST", `/api/games/${pairing.game}/move`, whiteName, { ply: 0, uci: "e2e4" });
+    expect(whiteMove.statusCode, whiteMove.body).toBe(200);
+    expect(getDb().prepare(`SELECT white_ms AS whiteMs, ply, deadline_at AS deadlineAt FROM games WHERE id = ?`)
+      .get(pairing.game)).toMatchObject({ whiteMs: 390_000, ply: 1, deadlineAt: Number.MAX_SAFE_INTEGER });
+
+    getDb().prepare(`UPDATE games SET deadline_at = 0 WHERE id = ?`).run(pairing.game);
+    const blackMove = await call("POST", `/api/games/${pairing.game}/move`, blackName, { ply: 1, uci: "e7e5" });
+    expect(blackMove.statusCode, blackMove.body).toBe(200);
+    expect(getDb().prepare(`SELECT ply, deadline_at AS deadlineAt FROM games WHERE id = ?`).get(pairing.game))
+      .toMatchObject({ ply: 2 });
+    expect(getDb().prepare(`SELECT deadline_at FROM games WHERE id = ?`).pluck().get(pairing.game)).toBeLessThan(Number.MAX_SAFE_INTEGER);
+  });
 
   it("finishes once every game is done and ranks by points, then performance rating", async () => {
     const id = await simul2(NAMES, { rated: false });

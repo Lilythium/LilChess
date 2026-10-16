@@ -27,6 +27,7 @@ export interface TournamentConfig {
   mode: "live" | "correspondence";
   initialMs?: number;
   incrementMs?: number;
+  whiteExtraMs?: number;
   daysPerMove?: number;
   variant: Variant;
   rated: boolean;
@@ -62,13 +63,14 @@ export function createTournament(creatorId: number, config: TournamentConfig): s
     db.prepare(`
       INSERT INTO tournaments (
         id, created_by, name, description, format, mode, initial_ms, increment_ms, days_per_move,
-        variant, rated, max_players, rounds, duration_ms, streak_bonus, starts_at, ends_at, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        white_extra_ms, variant, rated, max_players, rounds, duration_ms, streak_bonus, starts_at, ends_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, creatorId, config.name, config.description?.trim() || null, format, config.mode,
       config.mode === "live" ? config.initialMs : null,
       config.mode === "live" ? config.incrementMs ?? 0 : null,
       config.mode === "correspondence" ? config.daysPerMove : null,
+      format === "simul2" && config.mode === "live" ? config.whiteExtraMs ?? 30_000 : 0,
       config.variant, config.rated ? 1 : 0, config.maxPlayers,
       format === "swiss" ? config.rounds ?? null : null,
       format === "arena" ? config.durationMs : null,
@@ -230,14 +232,35 @@ function startTournamentInTransaction(tournamentId: string, organizerId: number 
       // Colours come from the round-robin schedule so they stay balanced; only the round number is flattened.
       const pairings = roundRobinPairings(idsBySeed).map((pairing, index) => ({ ...pairing, round: 1, board: index + 1 }));
       markRunning(1, null);
+      const createSimul = db.prepare(`
+        INSERT INTO tournament_simuls (tournament_id, host_id, created_at)
+        VALUES (?, ?, ?)
+      `);
+      for (const playerId of idsBySeed) createSimul.run(tournamentId, playerId, now);
+
+      const insertBoard = db.prepare(`
+        INSERT INTO tournament_simul_boards
+          (tournament_id, host_id, challenger_id, game_id, seat)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      const nextSeatByHost = new Map<number, number>();
       for (const pairing of pairings) {
         db.prepare(`
           INSERT INTO tournament_pairings (tournament_id, round_number, board_number, white_id, black_id)
           VALUES (?, ?, ?, ?, ?)
         `).run(tournamentId, pairing.round, pairing.board, pairing.whiteId, pairing.blackId);
-        const gameId = startPairingGame(tournament, pairing.whiteId, pairing.blackId, 1, now);
+        const gameId = startPairingGame(tournament, pairing.whiteId, pairing.blackId, 1, now, {
+          whiteExtraMs: tournament.white_extra_ms,
+          disableFirstMoveAutoAbort: true,
+        });
         db.prepare(`UPDATE tournament_pairings SET game_id = ? WHERE tournament_id = ? AND board_number = ?`)
           .run(gameId, tournamentId, pairing.board);
+        const hostViews: [number, number][] = [[pairing.whiteId, pairing.blackId], [pairing.blackId, pairing.whiteId]];
+        for (const [hostId, challengerId] of hostViews) {
+          const seat = (nextSeatByHost.get(hostId) ?? 0) + 1;
+          nextSeatByHost.set(hostId, seat);
+          insertBoard.run(tournamentId, hostId, challengerId, gameId, seat);
+        }
       }
       return pairings.length;
     }
@@ -442,6 +465,36 @@ export function getTournament(tournamentId: string, viewerId: number) {
     result: row.voided ? null : row.forfeitBy === row.whiteId ? "0-1" : "1-0",
   }));
   const byes = rows.filter((row) => row.isBye).map((row) => ({ round: row.round, playerId: row.whiteId, name: name(row.whiteId)! }));
+  const simuls = tournament.format === "simul2"
+    ? (() => {
+        const boardRows = db.prepare(`
+          SELECT b.host_id AS hostId, b.challenger_id AS challengerId,
+                 b.game_id AS gameId, b.seat AS seat,
+                 g.white_id AS whiteId, g.black_id AS blackId,
+                 g.status AS status, g.result AS result
+          FROM tournament_simul_boards b
+          JOIN games g ON g.id = b.game_id
+          WHERE b.tournament_id = ?
+          ORDER BY b.host_id, b.seat
+        `).all(tournamentId) as {
+          hostId: number; challengerId: number; gameId: string; seat: number;
+          whiteId: number; blackId: number; status: string; result: string | null;
+        }[];
+        return participants.map((host) => ({
+          hostId: host.id,
+          hostName: host.username,
+          boards: boardRows.filter((board) => board.hostId === host.id).map((board) => ({
+            challengerId: board.challengerId,
+            challengerName: name(board.challengerId)!,
+            gameId: board.gameId,
+            seat: board.seat,
+            hostColor: board.whiteId === host.id ? "white" : "black",
+            status: board.status,
+            result: board.result,
+          })),
+        }));
+      })()
+    : undefined;
 
   const standingRows: (StandingRow & { username: string })[] = [];
   let bracket: ReturnType<typeof buildBracket> | undefined;
@@ -475,6 +528,7 @@ export function getTournament(tournamentId: string, viewerId: number) {
     games,
     skipped,
     byes,
+    ...(simuls ? { simuls } : {}),
     bracket,
   };
 }

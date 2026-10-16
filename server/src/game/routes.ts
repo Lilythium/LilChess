@@ -14,6 +14,7 @@ getUserRatingHistory,
 listChallenges,
 cancelChallenge,
 getGamePlayers,
+getTournamentSimulForGame,
 getLiveGames,
 getInvitePreview,
 ChallengeError,
@@ -223,6 +224,7 @@ return {
   players,
   h2h,
   simul: simulInfoForGame(id),
+  tournamentSimul: getTournamentSimulForGame(id, req.user!.id),
   serverNow: Date.now(),
 };
 

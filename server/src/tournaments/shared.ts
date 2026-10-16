@@ -28,6 +28,7 @@ export interface TournamentRow {
   mode: "live" | "correspondence";
   initial_ms: number | null;
   increment_ms: number | null;
+  white_extra_ms: number;
   days_per_move: number | null;
   variant: Variant;
   rated: number;
@@ -51,11 +52,26 @@ function gameClock(tournament: TournamentRow): ClockConfig {
 }
 
 /** Creates the game for a pairing and queues "pairing_ready" for live tournaments. Returns the game id. */
-export function startPairingGame(tournament: TournamentRow, whiteId: number, blackId: number, round: number, now: number): string {
+export function startPairingGame(
+  tournament: TournamentRow,
+  whiteId: number,
+  blackId: number,
+  round: number,
+  now: number,
+  options: { whiteExtraMs?: number; disableFirstMoveAutoAbort?: boolean } = {},
+): string {
   const gameId = randomBytes(5).toString("hex");
-  insertGame(gameId, whiteId, blackId, createGame({
+  const baseGame = createGame({
     clock: gameClock(tournament), now, variant: tournament.variant, rated: tournament.rated === 1,
-  }));
+  });
+  const game = {
+    ...baseGame,
+    whiteMs: baseGame.whiteMs + (tournament.mode === "live" ? options.whiteExtraMs ?? 0 : 0),
+    ...(tournament.mode === "live" && options.disableFirstMoveAutoAbort
+      ? { deadlineAt: Number.MAX_SAFE_INTEGER }
+      : {}),
+  };
+  insertGame(gameId, whiteId, blackId, game);
   if (tournament.mode === "live") {
     const event: UserEvent = { type: "pairing_ready", tournamentId: tournament.id, gameId, round };
     pendingUserEvents.push({ userId: whiteId, event }, { userId: blackId, event });
