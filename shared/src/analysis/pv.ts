@@ -1,8 +1,10 @@
 import { Chess } from "chessops/chess";
-import { makeFen, parseFen } from "chessops/fen";
+import { parseFen } from "chessops/fen";
 import { makeSan } from "chessops/san";
 import { parseUci } from "chessops/util";
 import type { Chess as ChessPosition } from "chessops/chess";
+import { fenOf, positionFromFen as variantPositionFromFen } from "../core/position.js";
+import type { Variant } from "../core/types.js";
 
 function positionFromFen(fen: string): ChessPosition | null {
   const setup = parseFen(fen);
@@ -45,14 +47,19 @@ export function formatPv(fen: string, pv: string[], maxPlies = 8): string {
  * True when two UCI strings are the same move in this position. Compares the
  * resulting positions, so castling written as e1g1 or e1h1 counts as equal.
  */
-export function sameMove(fen: string, a: string, b: string): boolean {
+export function sameMove(fen: string, a: string, b: string, variant: Variant = "standard"): boolean {
   if (a === b) return true;
-  const pa = positionFromFen(fen);
-  const pb = positionFromFen(fen);
   const ma = parseUci(a);
   const mb = parseUci(b);
-  if (!pa || !pb || !ma || !mb || !pa.isLegal(ma) || !pb.isLegal(mb)) return false;
-  pa.play(ma);
-  pb.play(mb);
-  return makeFen(pa.toSetup()) === makeFen(pb.toSetup());
+  if (!ma || !mb) return false;
+  try {
+    const pa = variantPositionFromFen(fen, variant);
+    const pb = variantPositionFromFen(fen, variant);
+    if (!pa.isLegal(ma) || !pb.isLegal(mb)) return false;
+    pa.play(ma);
+    pb.play(mb);
+    return fenOf(pa) === fenOf(pb);
+  } catch {
+    return false;
+  }
 }

@@ -1,4 +1,5 @@
 import { getDb } from "../db/connection.js";
+import { createAdminResetToken } from "../auth/passwordReset.js";
 import { createUser, type User } from "../auth/queries.js";
 import { recordAudit } from "./audit.js";
 
@@ -71,6 +72,21 @@ export function revokeUserSessions(actorId: number, userId: number): number {
     const revoked = getDb().prepare(`DELETE FROM sessions WHERE user_id = ?`).run(userId).changes;
     recordAudit(actorId, "user.revoke_sessions", `user:${target.username}`, { userId, revoked });
     return revoked;
+  }).immediate();
+}
+
+/**
+ * Issues a one-time password reset token for an account, to be passed on privately by the administrator.
+ * The token itself is never logged: the audit entry only says that a link was issued.
+ */
+export function issuePasswordResetLink(actorId: number, userId: number): { token: string; expiresAt: number; username: string } {
+  return getDb().transaction(() => {
+    const target = loadTarget(userId);
+    if (target.is_guest) throw new AdminError("Guest accounts have no password to reset");
+    if (target.disabled_at !== null) throw new AdminError("Enable this account before resetting its password");
+    const { token, expiresAt } = createAdminResetToken(userId);
+    recordAudit(actorId, "user.reset_link", `user:${target.username}`, { userId, expiresAt });
+    return { token, expiresAt, username: target.username };
   }).immediate();
 }
 

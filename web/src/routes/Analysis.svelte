@@ -11,6 +11,8 @@
   import { parseAnalysisInput } from "../lib/analysis/importText";
   import { gameCacheKey, type LoadedGame } from "../lib/analysis/loadedGame";
   import { displayName } from "../lib/format";
+  import { engineSupports } from "../lib/game/variantUi";
+  import { VARIANT_LABELS } from "@lilchess/shared";
   import { selectPly, stepView, type NavAction } from "../lib/game/history";
   import { commonPrefix, playOnLine } from "../lib/analysis/line";
   import { createAnalysisSession } from "../lib/analysis/analysisSession.svelte";
@@ -42,13 +44,16 @@
 
   const initialFen = $derived(loaded?.initialFen ?? START_FEN);
   const chess960 = $derived(loaded?.variant === "chess960");
+  const variant = $derived(loaded?.variant ?? "standard");
+  // Stockfish only knows standard rules (and Chess960), so other variants are replay-only.
+  const engineOk = $derived(engineSupports(variant));
   const gameMoves = $derived(loaded?.moves ?? []);
 
   // Every position of the game, built once. The full-game run and the move marks use it.
   const gameTimeline = $derived.by(() => {
     if (!loaded) return null;
     try {
-      const tl = new PositionTimeline(loaded.initialFen);
+      const tl = new PositionTimeline(loaded.initialFen, loaded.variant);
       return tl.sync(loaded.moves) ? tl : null;
     } catch {
       return null;
@@ -62,7 +67,9 @@
 
   let lineTimeline: PositionTimeline | null = null; // extended in place, never rebuilt per step
   const lineView = $derived.by(() => {
-    if (!lineTimeline || lineTimeline.initialFen !== initialFen) lineTimeline = new PositionTimeline(initialFen);
+    if (!lineTimeline || lineTimeline.initialFen !== initialFen || lineTimeline.variant !== variant) {
+      lineTimeline = new PositionTimeline(initialFen, variant);
+    }
     lineTimeline.sync(line);
     return { fens: lineTimeline.fens, sans: lineTimeline.sans, squares: lineTimeline.squares, length: lineTimeline.length };
   });
@@ -89,7 +96,7 @@
   );
 
   // ---- evaluation ----
-  const terminal = $derived(terminalScore(viewFen));
+  const terminal = $derived(engineOk ? terminalScore(viewFen) : null);
   const liveLines = $derived(s.live.fen === viewFen ? s.live.lines : []);
   const mainEval = $derived(ply <= prefix ? s.full.evals[ply] : undefined); // stored eval only on the game line
   const viewScore = $derived(terminal ?? liveLines[0]?.score ?? mainEval?.score);
@@ -120,7 +127,7 @@
     const on = s.enabled;
     const running = s.full.running;
     const done = terminal !== null;
-    if (!on || running) return;
+    if (!on || running || !engineOk) return;
     if (done) { session.clearLive(fen); return; }
     const timer = setTimeout(() => void session.analysePosition(fen, chess960), 150);
     return () => clearTimeout(timer);
@@ -157,7 +164,7 @@
   }
 
   function playMove(uci: string) {
-    const next = playOnLine(line, ply, uci, viewFen);
+    const next = playOnLine(line, ply, uci, viewFen, variant);
     if (next !== line) line = next;
     viewPly = selectPly(ply + 1, next.length);
   }
@@ -228,7 +235,7 @@
   <div class="analysis">
     <div class="board-col">
       <div class="bar-slot"><EvalBar score={viewScore} {orientation} /></div>
-      <AnalysisBoard fen={viewFen} {orientation} {lastMove} {arrow} {chess960} onMove={playMove} />
+      <AnalysisBoard fen={viewFen} {orientation} {lastMove} {arrow} {chess960} {variant} onMove={playMove} />
     </div>
 
     <aside class="side">
@@ -243,6 +250,12 @@
         {/if}
       </h2>
 
+      {#if !engineOk}
+        <p class="notice" role="status">
+          Stockfish analysis isn't available for {VARIANT_LABELS[variant]} at the moment.
+          You can still step through the game and play moves on the board.
+        </p>
+      {:else}
       <AnalysisPanel
         enabled={s.enabled}
         autoOff={s.autoOff}
@@ -260,10 +273,11 @@
         onRun={() => void runAnalysis()}
         onCancel={() => session.cancelFull()}
       />
+      {/if}
 
       {#if !gameId || loadError}<LoadPositionPanel onLoad={loadText} />{/if}
 
-      {#if s.enabled && s.status !== "error"}
+      {#if engineOk && s.enabled && s.status !== "error"}
         <EngineLines
           lines={s.full.running ? [] : liveLines}
           fen={viewFen}
@@ -308,6 +322,7 @@
   .bar-slot { min-height: 0; }
   .side { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
   .title { margin: 0; font-size: 1.1rem; }
+  .notice { margin: 0; padding: 0.6rem 0.75rem; font-size: 0.9rem; border: 1px solid var(--border); border-left: 3px solid var(--green); border-radius: var(--radius); background: var(--panel); }
   .title small { display: block; color: var(--muted); font-weight: 400; font-size: 0.8rem; }
   .moves { background: var(--panel); border-radius: var(--radius); overflow: hidden; }
   .actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }

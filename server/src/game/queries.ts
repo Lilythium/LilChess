@@ -1,7 +1,7 @@
 import { getDb } from "../db/connection.js";
 import { randomBytes } from "node:crypto";
 import {
-  RATING_HISTORY_RANGES, createGame, normalizeUsername,
+  RATING_HISTORY_RANGES, VARIANTS, createGame, normalizeUsername,
   type ClockConfig, type RatingHistoryRange, type Variant,
 } from "@lilchess/shared";
 import { config } from "../config.js";
@@ -103,7 +103,7 @@ export function acceptChallengeTx(challengeId: string, acceptingUserId: number) 
         ? { mode: "live", initialMs: challenge.initial_ms, incrementMs: challenge.increment_ms ?? 0 }
         : { mode: "correspondence", daysPerMove: challenge.days_per_move };
 
-    const variant: Variant = challenge.variant === "chess960" ? "chess960" : "standard";
+    const variant: Variant = (VARIANTS as readonly string[]).includes(challenge.variant) ? (challenge.variant as Variant) : "standard";
     insertGame(gameId, whiteId, blackId, createGame({ clock, now: Date.now(), variant, rated: challenge.rated === 1 }));
 
     // Delete the consumed challenge

@@ -71,6 +71,7 @@
     <a href="#/tournaments" class="nav-item">TOURNAMENTS</a>
     <a href="#/simuls" class="nav-item">SIMULS{#if simulInvites > 0} <span class="badge">{simulInvites}</span>{/if}</a>
     <a href="#/leaderboard" class="nav-item">LEADERBOARD</a>
+    <a href="#/openings" class="nav-item">OPENINGS</a>
     {#if auth.user?.is_admin}<a href="#/admin" class="nav-item">ADMIN</a>{/if}
     <a href={profileHref} class="nav-item">{displayName(auth.user?.username ?? "").toUpperCase()}</a>
     {#if !auth.user?.is_guest}<a href="#/settings" class="nav-item">SETTINGS</a>{/if}

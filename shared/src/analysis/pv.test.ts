@@ -44,3 +44,24 @@ describe("sameMove", () => {
     expect(sameMove(fen, "e1g1", "zzzz")).toBe(false);
   });
 });
+
+describe("sameMove in variants", () => {
+  const pocketFen = "rnbqkb1r/ppp1pppp/5n2/3P4/8/8/PPPP1PPP/RNBQKBNR[P] w KQkq - 1 3";
+
+  it("recognises the same Crazyhouse drop, and tells different drops apart", () => {
+    expect(sameMove(pocketFen, "P@e4", "P@e4", "crazyhouse")).toBe(true);
+    expect(sameMove(pocketFen, "P@e4", "P@e5", "crazyhouse")).toBe(false);
+  });
+
+  it("rejects a drop that is illegal (nothing in the pocket) instead of throwing", () => {
+    expect(sameMove(pocketFen, "N@e4", "P@e4", "crazyhouse")).toBe(false);
+  });
+
+  it("treats a drop as illegal in standard chess", () => {
+    expect(sameMove(pocketFen.replace("[P]", ""), "P@e4", "P@e5")).toBe(false);
+  });
+
+  it("returns false for an unreadable position rather than throwing", () => {
+    expect(sameMove("not a fen", "e2e4", "e2e3", "antichess")).toBe(false);
+  });
+});

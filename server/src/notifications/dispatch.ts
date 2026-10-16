@@ -1,35 +1,52 @@
 import { opponent, type ClockConfig, type GameState, type NotificationKind } from "@lilchess/shared";
 import { getDb } from "../db/connection.js";
 import { logger } from "../logger.js";
+import { discordEnabled, sendDiscord } from "./discord.js";
 import { emailEnabled, sendMail } from "./mailer.js";
-import { claimNotification, recipientFor, type Recipient } from "./queries.js";
+import { claimNotification, discordRecipientFor, recipientFor, type Recipient } from "./queries.js";
 import * as t from "./templates.js";
 
 const log = logger.child({ mod: "notify" });
 
-// The one door every email goes through (Phase 4's "tournament starting" will use it too).
-// Call it AFTER the database transaction has committed. It never throws and never awaits the send.
+// The one door every notification goes through, email and Discord alike. Call it AFTER the database
+// transaction has committed. It never throws and never awaits a send. Each channel is independent:
+// a user can have either, both or neither, and a failure on one never blocks the other.
 export function notifyUser(
   userId: number,
   kind: NotificationKind,
   dedupKey: string,
   build: (r: Recipient) => t.Message,
 ): void {
-  if (!emailEnabled()) return;
-  try {
-    const r = recipientFor(userId, kind);
-    if (!r || !claimNotification(userId, dedupKey, kind)) return;
-    const { subject, text } = build(r);
-    void sendMail({
-      to: r.email,
-      subject,
-      text: text + t.footer(r.unsubscribeToken),
-      headers: r.unsubscribeToken
-        ? { "List-Unsubscribe": `<${t.link("/unsubscribe/" + r.unsubscribeToken)}>` }
-        : undefined,
-    });
-  } catch (err) {
-    log.warn({ err, kind }, "notification failed");
+  if (emailEnabled()) {
+    try {
+      const r = recipientFor(userId, kind);
+      if (r && claimNotification(userId, dedupKey, kind)) {
+        const { subject, text } = build(r);
+        void sendMail({
+          to: r.email,
+          subject,
+          text: text + t.footer(r.unsubscribeToken),
+          headers: r.unsubscribeToken
+            ? { "List-Unsubscribe": `<${t.link("/unsubscribe/" + r.unsubscribeToken)}>` }
+            : undefined,
+        });
+      }
+    } catch (err) {
+      log.warn({ err, kind }, "email notification failed");
+    }
+  }
+
+  if (discordEnabled()) {
+    try {
+      const d = discordRecipientFor(userId, kind);
+      // Same dedup table as email, with a channel prefix so the two don't suppress each other.
+      if (d && claimNotification(userId, `discord:${dedupKey}`, kind)) {
+        const { subject, text } = build({ id: d.id, username: d.username, email: "", unsubscribeToken: null });
+        void sendDiscord(d.discordId, subject, text);
+      }
+    } catch (err) {
+      log.warn({ err, kind }, "discord notification failed");
+    }
   }
 }
 

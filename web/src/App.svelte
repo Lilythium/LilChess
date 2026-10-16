@@ -19,7 +19,8 @@
   import Unsubscribe from "./routes/Unsubscribe.svelte";
   import Tournaments from "./routes/Tournaments.svelte";
   import TournamentDetail from "./routes/TournamentDetail.svelte";
-  import Leaderboard from "./routes/Leaderboard.svelte";  
+  import Leaderboard from "./routes/Leaderboard.svelte";
+  import Openings from "./routes/Openings.svelte";  
   import { connectUserSocket } from "./lib/ws/userSocket";
   import Simuls from "./routes/Simuls.svelte";
   import SimulDetail from "./routes/SimulDetail.svelte";
@@ -39,6 +40,7 @@
   const tournament = $derived(matchRoute(route.path, "/tournament/:id"));
   const simul = $derived(matchRoute(route.path, "/simul/:id"));
   const leaderboard = $derived(matchRoute(route.path, "/leaderboard/:variant"));
+  const openings = $derived(matchRoute(route.path, "/openings/:variant"));
   const analysisGame = $derived(matchRoute(route.path, "/analysis/:id"));
   const importedGame = $derived(matchRoute(route.path, "/analysis/imported/:id"));
   const forgot = $derived(route.path === "/forgot");
@@ -161,7 +163,9 @@
     {:else if route.path === "/simuls"}<Simuls />
     {:else if simul}{#key simul.id}<SimulDetail id={simul.id} />{/key}
     {:else if route.path === "/leaderboard"}<Leaderboard /> 
-    {:else if leaderboard}<Leaderboard variant={leaderboard.variant} />  
+    {:else if leaderboard}<Leaderboard variant={leaderboard.variant} />
+    {:else if route.path === "/openings"}<Openings />
+    {:else if openings}<Openings variant={openings.variant} />  
     {:else if tournament}{#key tournament.id}<TournamentDetail id={tournament.id} />{/key}
     {:else}<Lobby />{/if}
   </main>

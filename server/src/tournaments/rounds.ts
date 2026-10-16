@@ -216,6 +216,7 @@ export function repairRound(tournament: TournamentRow): boolean {
     case "round_robin": return startNextRound(tournament, tournament.current_round - 1);
     case "swiss": return startNextRound(tournament, hasRows(tournament.current_round) ? tournament.current_round : tournament.current_round - 1);
     case "knockout": return startNextRound(tournament, tournament.current_round);
+    case "simul2": completeTournament(tournament.id); return false; // all its games exist from the start
     default: return true;
   }
 }

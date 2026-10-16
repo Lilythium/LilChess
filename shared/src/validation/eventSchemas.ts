@@ -4,7 +4,7 @@ import type { GameEvent, SimulEvent, UserEvent } from "../ws/events.js";
 const Color = z.enum(["white", "black"]);
 const GameResult = z.enum(["1-0", "0-1", "1/2-1/2"]);
 const Termination = z.enum([
-  "checkmate", "stalemate", "insufficient_material", "fifty_move", "repetition",
+  "checkmate", "stalemate", "insufficient_material", "fifty_move", "repetition", "three_check", "variant_end",
   "resignation", "agreement", "timeout", "abort",
 ]);
 

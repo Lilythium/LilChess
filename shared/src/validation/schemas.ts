@@ -3,7 +3,8 @@ import { normalizeUsername } from "./username.js";
 import { VARIANTS } from "../core/types.js";
 import { NOTIFICATION_KINDS } from "./notifications.js";
 
-export const Uci = z.string().regex(/^[a-h][1-8][a-h][1-8][qrbn]?$/, "Invalid move");
+// Normal moves (promotion piece: q r b n, plus k for Antichess) and Crazyhouse drops like "N@f3".
+export const Uci = z.string().regex(/^(?:[a-h][1-8][a-h][1-8][qrbnk]?|[PNBRQ]@[a-h][1-8])$/, "Invalid move");
 export const Ply = z.number().int().min(0).max(10_000);
 
 const Password = z
@@ -36,6 +37,19 @@ export const LoginBody = z.object({
   password: z.string().min(1, "Enter your password").max(128),
 });
 
+/**
+ * Live time control limits shared by challenges, tournaments and simuls. "Custom" clocks may be anything
+ * inside these bounds: any starting time under 6 hours and an increment of up to 3 minutes.
+ */
+export const LIVE_TC_LIMITS = {
+  minInitialMs: 10_000,
+  maxInitialMs: 6 * 60 * 60 * 1000 - 1000, // strictly under 6 hours
+  maxIncrementMs: 3 * 60 * 1000,
+} as const;
+
+export const LiveInitialMs = z.number().int().min(LIVE_TC_LIMITS.minInitialMs).max(LIVE_TC_LIMITS.maxInitialMs);
+export const LiveIncrementMs = z.number().int().min(0).max(LIVE_TC_LIMITS.maxIncrementMs);
+
 const Common = {
   colorPref: z.enum(["white", "black", "random"]).optional(),
   toUsername: z.string().trim().min(1).max(64).transform(normalizeUsername).optional(),
@@ -47,8 +61,8 @@ const Common = {
 export const ChallengeBody = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("live"),
-    initialMs: z.number().int().min(10_000).max(3 * 60 * 60 * 1000),
-    incrementMs: z.number().int().min(0).max(3 * 60 * 1000).default(0),
+    initialMs: LiveInitialMs,
+    incrementMs: LiveIncrementMs.default(0),
     ...Common,
   }),
   z.object({
@@ -67,9 +81,15 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
 // ---- email ----
 
 // email: "" or null removes it; omitted leaves it alone. prefs: only the kinds you send change.
+// A Discord user ID is a 17-20 digit snowflake (Settings > Advanced > Developer Mode > right-click yourself > Copy User ID).
+export const DiscordId = z.string().trim().regex(/^\d{17,20}$/, "A Discord user ID is 17–20 digits");
+
 export const NotificationSettingsBody = z.object({
   email: z.union([z.literal(""), z.null(), Email]).optional(),
   prefs: z.partialRecord(z.enum(NOTIFICATION_KINDS), z.boolean()).optional(),
+  // "" or null removes the ID (opts out of Discord). Omitted leaves it alone.
+  discordId: z.union([z.literal(""), z.null(), DiscordId]).optional(),
+  discordPrefs: z.partialRecord(z.enum(NOTIFICATION_KINDS), z.boolean()).optional(),
 });
 
 export const ForgotPasswordBody = z.object({

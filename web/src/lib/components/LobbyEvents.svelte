@@ -15,7 +15,7 @@
   };
 
   const FORMAT_LABELS: Record<string, string> = {
-    round_robin: "Round robin", swiss: "Swiss", knockout: "Knockout", arena: "Arena",
+    round_robin: "Round robin", swiss: "Swiss", knockout: "Knockout", arena: "Arena", simul2: "Simul²",
   };
 
   let tournaments = $state<Row[] | null>(null);

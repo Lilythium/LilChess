@@ -30,6 +30,8 @@ const Env = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
+  // Optional: a Discord channel webhook. Users who give their Discord ID get notifications as @mentions there.
+  DISCORD_WEBHOOK_URL: z.string().optional(),
 });
 
 export interface SmtpConfig {
@@ -61,6 +63,7 @@ export interface Config {
   leaderboardMinGames: number;
   leaderboardInactiveDays: number;
   smtp: SmtpConfig | undefined;
+  discordWebhookUrl: string | undefined;
 }
 
 function parseTrustProxy(v: string | undefined): boolean | number | string {
@@ -95,6 +98,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     if (Boolean(e.SMTP_USER) !== Boolean(e.SMTP_PASS)) problems.push("SMTP_USER / SMTP_PASS: set both or neither");
     if (problems.length > 0) throw new Error(`Invalid configuration:\n  ${problems.join("\n  ")}`);
   }
+  if (e.DISCORD_WEBHOOK_URL) {
+    const problems: string[] = [];
+    if (!isDiscordWebhook(e.DISCORD_WEBHOOK_URL)) problems.push("DISCORD_WEBHOOK_URL: must be a https://discord.com/api/webhooks/... URL");
+    if (!baseOrigin) problems.push("BASE_URL: required when DISCORD_WEBHOOK_URL is set (messages contain links)");
+    if (problems.length > 0) throw new Error(`Invalid configuration:\n  ${problems.join("\n  ")}`);
+  }
   return {
     nodeEnv: e.NODE_ENV,
     port: e.PORT,
@@ -123,9 +132,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       pass: e.SMTP_PASS,
       from: e.SMTP_FROM ?? "noreply@example.com",
     } : undefined,
+    discordWebhookUrl: e.DISCORD_WEBHOOK_URL || undefined,
   };
 }
 
+function isDiscordWebhook(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    const hostOk = /^(?:[a-z]+\.)?(?:discord|discordapp)\.com$/.test(u.hostname);
+    return u.protocol === "https:" && hostOk && u.pathname.startsWith("/api/webhooks/");
+  } catch {
+    return false;
+  }
+}
+
 export const config: Config = loadConfig(
-  process.env.VITEST ? { ...process.env, BASE_URL: undefined, SMTP_HOST: undefined } : process.env,
+  process.env.VITEST ? { ...process.env, BASE_URL: undefined, SMTP_HOST: undefined, DISCORD_WEBHOOK_URL: undefined } : process.env,
 );

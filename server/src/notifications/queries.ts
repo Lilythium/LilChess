@@ -27,19 +27,22 @@ export function setUserEmail(userId: number, email: string | null): void {
     .run({ id: userId, email, token: randomBytes(16).toString("hex") });
 }
 
-export function getPrefs(userId: number): Prefs {
+export type Channel = "email" | "discord";
+const PREF_TABLE: Record<Channel, string> = { email: "notification_prefs", discord: "notification_prefs_discord" };
+
+export function getPrefs(userId: number, channel: Channel = "email"): Prefs {
   const prefs = Object.fromEntries(NOTIFICATION_KINDS.map((k) => [k, true])) as Prefs;
   const rows = getDb()
-    .prepare(`SELECT kind, enabled FROM notification_prefs WHERE user_id = ?`)
+    .prepare(`SELECT kind, enabled FROM ${PREF_TABLE[channel]} WHERE user_id = ?`)
     .all(userId) as { kind: string; enabled: number }[];
   for (const r of rows) if (r.kind in prefs) prefs[r.kind as NotificationKind] = r.enabled === 1;
   return prefs;
 }
 
-export function setPrefs(userId: number, changes: Partial<Prefs>): void {
+export function setPrefs(userId: number, changes: Partial<Prefs>, channel: Channel = "email"): void {
   const db = getDb();
   const upsert = db.prepare(
-    `INSERT INTO notification_prefs (user_id, kind, enabled) VALUES (?, ?, ?)
+    `INSERT INTO ${PREF_TABLE[channel]} (user_id, kind, enabled) VALUES (?, ?, ?)
      ON CONFLICT(user_id, kind) DO UPDATE SET enabled = excluded.enabled`,
   );
   db.transaction(() => {
@@ -72,4 +75,25 @@ export function unsubscribeByToken(token: string): boolean {
   if (!row) return false;
   setPrefs(row.id, Object.fromEntries(NOTIFICATION_KINDS.map((k) => [k, false])) as Prefs);
   return true;
+}
+
+// ---- Discord ----
+
+export function getUserDiscordId(userId: number): string | null {
+  const row = getDb().prepare(`SELECT discord_id FROM users WHERE id = ?`).get(userId) as { discord_id: string | null } | undefined;
+  return row?.discord_id ?? null;
+}
+
+// Passing null opts out: the ID is dropped and nothing more is sent.
+export function setUserDiscordId(userId: number, discordId: string | null): void {
+  getDb().prepare(`UPDATE users SET discord_id = ? WHERE id = ?`).run(discordId, userId);
+}
+
+// Who should get this kind of Discord ping? Undefined: no ID given, a guest, a disabled account, or they turned it off.
+export function discordRecipientFor(userId: number, kind: NotificationKind): { id: number; username: string; discordId: string } | undefined {
+  const row = getDb()
+    .prepare(`SELECT id, username, discord_id FROM users WHERE id = ? AND discord_id IS NOT NULL AND is_guest = 0 AND disabled_at IS NULL`)
+    .get(userId) as { id: number; username: string; discord_id: string } | undefined;
+  if (!row || !getPrefs(userId, "discord")[kind]) return undefined;
+  return { id: row.id, username: row.username, discordId: row.discord_id };
 }

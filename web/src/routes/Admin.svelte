@@ -118,6 +118,34 @@
     void act(() => api(`/api/admin/users/${user.id}`, { method: "PATCH", body: { isAdmin } }));
   }
 
+  // The link is shown once, here only: the server keeps just a hash of its token.
+  let resetLink = $state<{ username: string; link: string; expiresAt: number } | null>(null);
+  let copied = $state(false);
+
+  function issueResetLink(user: UserRow) {
+    if (!confirm(
+      `Create a password reset link for ${user.username}? Any earlier link stops working. `
+      + `Whoever opens it can set a new password, so send it to ${user.username} privately.`,
+    )) return;
+    void act(async () => {
+      const res = await api<{ username: string; link: string; expiresAt: number }>(
+        `/api/admin/users/${user.id}/reset-link`, { method: "POST" },
+      );
+      resetLink = res;
+      copied = false;
+    });
+  }
+
+  async function copyResetLink() {
+    if (!resetLink) return;
+    try {
+      await navigator.clipboard.writeText(resetLink.link);
+      copied = true;
+    } catch {
+      copied = false; // the field is selectable, so it can still be copied by hand
+    }
+  }
+
   function revokeSessions(user: UserRow) {
     if (!confirm(`Revoke all active sessions for ${user.username}?`)) return;
     void act(() => api(`/api/admin/users/${user.id}/revoke-sessions`, { method: "POST" }));
@@ -207,7 +235,7 @@
   const ACTION_LABELS: Record<string, string> = {
     "user.create": "Created user", "user.disable": "Disabled user", "user.enable": "Enabled user",
     "user.grant_admin": "Made administrator", "user.revoke_admin": "Removed administrator",
-    "user.revoke_sessions": "Revoked sessions", "guests.purge": "Purged guests",
+    "user.revoke_sessions": "Revoked sessions", "user.reset_link": "Created password reset link", "guests.purge": "Purged guests",
     "invite.create": "Created invite code", "invite.revoke": "Revoked invite code",
     "challenge.delete": "Deleted challenge", "tournament.start": "Started tournament",
     "tournament.cancel": "Cancelled tournament", "game.terminate": "Terminated game",
@@ -271,6 +299,18 @@
         </form>
         <p class="muted">Works whatever the registration mode is. Hand the password to them yourself; it isn't shown again.</p>
       </details>
+      {#if resetLink}
+        <div class="reset-link" role="status">
+          <p><strong>Password reset link for {resetLink.username}</strong>
+            <span class="muted">(valid until {new Date(resetLink.expiresAt).toLocaleString()}, shown only once)</span></p>
+          <div class="reset-row">
+            <input readonly value={resetLink.link} onfocus={(e) => e.currentTarget.select()} aria-label="Password reset link" />
+            <button class="primary" type="button" onclick={copyResetLink}>{copied ? "Copied" : "Copy"}</button>
+            <button type="button" onclick={() => (resetLink = null)}>Dismiss</button>
+          </div>
+          <p class="muted">Send it to {resetLink.username} privately. Using it signs them out everywhere.</p>
+        </div>
+      {/if}
       <div class="user-tools">
         <label class="guest-toggle"><input type="checkbox" bind:checked={showGuests} /> Show guest accounts <span>{hiddenGuestCount} hidden</span></label>
         <button class="danger" disabled={busy} onclick={purgeGuests}>Purge unused guests</button>
@@ -287,6 +327,7 @@
             <td class="actions">
               <button disabled={busy || (Boolean(user.isGuest) && !user.isAdmin) || Boolean(user.disabledAt && !user.isAdmin)} onclick={() => changeRole(user)}>{user.isAdmin ? "Remove admin" : "Make admin"}</button>
               <button disabled={busy || user.activeSessions === 0} onclick={() => revokeSessions(user)}>Revoke sessions</button>
+              <button disabled={busy || Boolean(user.isGuest) || Boolean(user.disabledAt)} onclick={() => issueResetLink(user)} title="Create a one-time link to hand to the account owner">Reset link</button>
               {#if user.disabledAt}
                 <button disabled={busy} onclick={() => enable(user)}>Enable</button>
               {:else}
@@ -423,4 +464,8 @@
     .stats > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
     .tabs { margin-inline: -1rem; padding-inline: 1rem; }
   }
+  .reset-link { border: 1px solid var(--green); background: var(--panel-hi); border-radius: var(--radius); padding: 0.75rem; margin-bottom: 0.75rem; }
+  .reset-link p { margin: 0 0 0.4rem; }
+  .reset-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .reset-row input { flex: 1 1 260px; min-width: 0; font-family: monospace; }
 </style>

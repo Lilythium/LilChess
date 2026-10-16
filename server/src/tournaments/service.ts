@@ -18,7 +18,7 @@ export { flushTournamentEvents, TournamentError } from "./shared.js";
 const log = logger.child({ mod: "tournaments" });
 
 export const MAX_ACTIVE_TOURNAMENTS_PER_USER = 3;
-export const MAX_PLAYERS: Record<TournamentFormat, number> = { round_robin: 16, swiss: 64, knockout: 64, arena: 64 };
+export const MAX_PLAYERS: Record<TournamentFormat, number> = { round_robin: 16, swiss: 64, knockout: 64, arena: 64, simul2: 12 };
 
 export interface TournamentConfig {
   name: string;
@@ -225,6 +225,23 @@ function startTournamentInTransaction(tournamentId: string, organizerId: number 
       return startKnockoutFirstRound({ ...running(), rounds }, idsBySeed);
     }
 
+    case "simul2": {
+      // One round: every pair plays at the same moment, so each player is in a simul against the whole field.
+      // Colours come from the round-robin schedule so they stay balanced; only the round number is flattened.
+      const pairings = roundRobinPairings(idsBySeed).map((pairing, index) => ({ ...pairing, round: 1, board: index + 1 }));
+      markRunning(1, null);
+      for (const pairing of pairings) {
+        db.prepare(`
+          INSERT INTO tournament_pairings (tournament_id, round_number, board_number, white_id, black_id)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(tournamentId, pairing.round, pairing.board, pairing.whiteId, pairing.blackId);
+        const gameId = startPairingGame(tournament, pairing.whiteId, pairing.blackId, 1, now);
+        db.prepare(`UPDATE tournament_pairings SET game_id = ? WHERE tournament_id = ? AND board_number = ?`)
+          .run(gameId, tournamentId, pairing.board);
+      }
+      return pairings.length;
+    }
+
     case "round_robin": {
       const pairings = roundRobinPairings(idsBySeed);
       markRunning(Math.max(...pairings.map((pairing) => pairing.round)), null);
@@ -319,8 +336,8 @@ export function advanceTournamentAfterGame(gameId: string, noShowId: number | nu
     return false;
   }
 
-  // Round robin by post: every game exists from the start, so it is over when none are left.
-  if (tournament.format === "round_robin" && tournament.mode === "correspondence") {
+  // Simul2 (any clock) and round robin by post: every game exists from the start, so it is over when none are left.
+  if (tournament.format === "simul2" || (tournament.format === "round_robin" && tournament.mode === "correspondence")) {
     if (!hasStartedGame(tournament.id)) completeTournament(tournament.id);
     return false;
   }

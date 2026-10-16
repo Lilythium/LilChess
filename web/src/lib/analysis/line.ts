@@ -1,4 +1,4 @@
-import { sameMove } from "@lilchess/shared";
+import { sameMove, type Variant } from "@lilchess/shared";
 
 /** How many leading plies two move lists share. */
 export function commonPrefix(a: string[], b: string[]): number {
@@ -12,8 +12,8 @@ export function commonPrefix(a: string[], b: string[]): number {
  * Replaying the move that is already next in the line just returns the same line
  * (the user steps forward); anything else cuts the line there and starts a sideline.
  */
-export function playOnLine(line: string[], atPly: number, uci: string, fenAtPly: string): string[] {
+export function playOnLine(line: string[], atPly: number, uci: string, fenAtPly: string, variant: Variant = "standard"): string[] {
   const existing = line[atPly];
-  if (existing !== undefined && sameMove(fenAtPly, existing, uci)) return line;
+  if (existing !== undefined && sameMove(fenAtPly, existing, uci, variant)) return line;
   return [...line.slice(0, atPly), uci];
 }

@@ -1,4 +1,4 @@
-import { START_FEN } from "./types.js";
+import { fixedStartFen } from "./position.js";
 import type { Variant } from "./types.js";
 
 // Which 2 of the 5 squares left after bishops and queen get the knights (Scharnagl numbering).
@@ -42,5 +42,5 @@ export function randomChess960Fen(rnd: () => number = Math.random): string {
 }
 
 export function startFenFor(variant: Variant): string {
-  return variant === "chess960" ? randomChess960Fen() : START_FEN;
+  return variant === "chess960" ? randomChess960Fen() : fixedStartFen(variant);
 }

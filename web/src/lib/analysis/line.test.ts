@@ -32,3 +32,20 @@ describe("playOnLine", () => {
     expect(playOnLine(l, 0, "e1g1", fen)).toBe(l);
   });
 });
+
+describe("playOnLine in variants", () => {
+  const fen = "rnbqkb1r/ppp1pppp/5n2/3P4/8/8/PPPP1PPP/RNBQKBNR[P] w KQkq - 1 3";
+
+  it("steps forward when the same drop is replayed", () => {
+    const line = ["P@e4", "e7e6"];
+    expect(playOnLine(line, 0, "P@e4", fen, "crazyhouse")).toBe(line);
+  });
+
+  it("starts a sideline when a different drop is played", () => {
+    expect(playOnLine(["P@e4", "e7e6"], 0, "P@e5", fen, "crazyhouse")).toEqual(["P@e5"]);
+  });
+
+  it("appends a drop at the end of the line", () => {
+    expect(playOnLine([], 0, "P@e4", fen, "crazyhouse")).toEqual(["P@e4"]);
+  });
+});

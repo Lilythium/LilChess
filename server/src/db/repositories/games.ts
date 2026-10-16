@@ -21,6 +21,7 @@ import { broadcastGameEvent } from "../../ws/hub.js";
 import { sendWebhook } from "../../notifications/webhook.js";
 import { notifyDeadlineChanged } from "../../game/deadlineBus.js";
 import { settleRatings } from "./ratings.js";
+import { recordOpeningGame } from "../../openings/stats.js";
 import { notifyGameOver, notifyYourTurn } from "../../notifications/dispatch.js";
 import { advanceTournamentSafely, flushTournamentEvents } from "../../tournaments/service.js";
 import { flushSimulEvents, queueSimulBoard } from "../../simuls/events.js";
@@ -90,7 +91,7 @@ function updateGameState(
   suppressTournamentForfeit = false,
 ): void {
   const row = gameStateToRow(game);
-  const fen = fenAfterMoves(game.initialFen, game.moves);
+  const fen = fenAfterMoves(game.initialFen, game.moves, game.variant);
   if (fen === null) throw new Error(`game ${id}: moves do not replay from initial_fen`);
   getDb()
     .prepare(
@@ -111,6 +112,7 @@ function updateGameState(
       advanceTournamentSafely(id, game.status === "aborted" && !suppressTournamentForfeit ? abortFaultId(id, game, actorId) : null);
   }
   if (game.status === "finished" && game.rated) settleRatings(id);
+  if (game.status === "finished") recordOpeningGame(id);
 }
 
 function abortFaultId(gameId: string, game: GameState, actorId: number | null): number | null {

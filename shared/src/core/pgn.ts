@@ -1,4 +1,5 @@
-import { START_FEN } from "./types.js";
+import { fixedStartFen } from "./position.js";
+import { VARIANT_LABELS } from "./types.js";
 import type { GameState } from "./types.js";
 
 export interface BuildPgnOptions {
@@ -42,8 +43,9 @@ function wrap(tokens: string[], width = 80): string {
   return lines.join("\n");
 }
 
-// Standard or 960 games from the start position (black-to-move
-// starting FENs are not handled yet).
+// Any supported variant, from the start position (black-to-move
+// starting FENs are not handled yet). Variant games carry a Variant header and a FEN so
+// Crazyhouse pockets and Three-check counters round-trip.
 export function buildPgn(o: BuildPgnOptions): string {
   const { game } = o;
   const d = new Date(o.createdAt);
@@ -61,8 +63,8 @@ export function buildPgn(o: BuildPgnOptions): string {
     ["TimeControl", timeControlTag(game)],
     ["Termination", terminationTag(game)],
   ];
-  if (game.variant === "chess960") headers.push(["Variant", "Chess960"]);
-  if (game.variant === "chess960" || game.initialFen !== START_FEN) {
+  if (game.variant !== "standard") headers.push(["Variant", VARIANT_LABELS[game.variant]]);
+  if (game.variant === "chess960" || game.initialFen !== fixedStartFen(game.variant)) {
     headers.push(["SetUp", "1"], ["FEN", game.initialFen]);
   }
 

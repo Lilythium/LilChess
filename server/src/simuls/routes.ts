@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
-import { HOST_COLORS, MAX_SIMUL_PLAYERS, VARIANTS, normalizeUsername } from "@lilchess/shared";
+import { HOST_COLORS, LiveIncrementMs, LiveInitialMs, MAX_SIMUL_PLAYERS, VARIANTS, normalizeUsername } from "@lilchess/shared";
 import { requireAuth } from "../auth/routes.js";
 import { notifyDeadlineChanged } from "../game/deadlineBus.js";
 import { notifySimulInvited } from "../notifications/dispatch.js";
@@ -12,8 +12,8 @@ import {
 const CreateBody = z.object({
   name: z.string().trim().min(3).max(60),
   mode: z.enum(["live", "correspondence"]),
-  initialMs: z.number().int().min(60_000).max(3_600_000).optional(),
-  incrementMs: z.number().int().min(0).max(60_000).optional(),
+  initialMs: LiveInitialMs.optional(),
+  incrementMs: LiveIncrementMs.optional(),
   daysPerMove: z.number().int().min(1).max(14).optional(),
   hostExtraMinutes: z.number().int().min(0).max(240).default(0),
   variant: z.enum(VARIANTS).default("standard"),

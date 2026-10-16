@@ -6,6 +6,8 @@
   import { displayName } from "../lib/format";
   import { navigate } from "../lib/router.svelte";
   import { simulClock } from "../lib/simul/format";
+  import CustomClock from "../lib/components/CustomClock.svelte";
+  import { parseCustomClock } from "../lib/timeControl";
   import type { SimulLists, SimulSummary } from "../lib/simul/types";
 
   let lists = $state<SimulLists | null>(null);
@@ -39,11 +41,13 @@
     error = null;
     try {
       const live = form.mode === "live";
+      const clock = live ? parseCustomClock(form.minutes, form.increment) : null;
+      if (clock && !clock.ok) { error = clock.error; return; }
       const res = await api<{ simulId: string }>("/api/simuls", {
         body: {
           name: form.name, mode: form.mode, variant: form.variant, maxPlayers: form.maxPlayers, public: form.isPublic,
           ...(live
-            ? { initialMs: form.minutes * 60_000, incrementMs: form.increment * 1000, hostExtraMinutes: form.extraMinutes }
+            ? { initialMs: clock!.ok ? clock!.initialMs : 0, incrementMs: clock!.ok ? clock!.incrementMs : 0, hostExtraMinutes: form.extraMinutes }
             : { daysPerMove: form.days, hostColor: form.hostColor }),
         },
       });
@@ -122,8 +126,7 @@
           Public: anyone can join from the Simuls list. Untick for invite-only (people need your link or an invitation).
         </label>
         {#if form.mode === "live"}
-          <label>Minutes per board<input type="number" min="1" max="60" bind:value={form.minutes} /></label>
-          <label>Increment (s)<input type="number" min="0" max="60" bind:value={form.increment} /></label>
+          <CustomClock bind:minutes={form.minutes} bind:increment={form.increment} />
           <label>Extra minutes for you<input type="number" min="0" max="240" bind:value={form.extraMinutes} /></label>
         {:else}
           <label>Days per move<input type="number" min="1" max="14" bind:value={form.days} /></label>

@@ -155,7 +155,7 @@ describe("GET /api/leaderboard/:variant", () => {
 
   it("rejects an unknown variant or period", async () => {
     const { sid } = await user("alice");
-    const badVariant = await app.inject({ method: "GET", url: "/api/leaderboard/crazyhouse", cookies: { sessionId: sid } });
+    const badVariant = await app.inject({ method: "GET", url: "/api/leaderboard/atomic", cookies: { sessionId: sid } });
     expect(badVariant.statusCode).toBe(400);
     const badPeriod = await app.inject({ method: "GET", url: "/api/leaderboard/standard?period=decade", cookies: { sessionId: sid } });
     expect(badPeriod.statusCode).toBe(400);

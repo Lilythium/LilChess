@@ -1,7 +1,7 @@
-import { Chess } from "chessops/chess";
-import { makeFen, parseFen } from "chessops/fen";
 import { makeSan } from "chessops/san";
 import { makeSquare, parseUci, squareFile } from "chessops/util";
+import { fenOf, positionFromFen } from "./position.js";
+import type { Variant } from "./types.js";
 
 /**
  * Every position of a game, built once and extended incrementally.
@@ -19,11 +19,8 @@ export class PositionTimeline {
   readonly sans: string[] = [];
   readonly squares: ([string, string] | null)[] = [null];
 
-  constructor(readonly initialFen: string) {
-    const setup = parseFen(initialFen);
-    const pos = setup.isOk ? Chess.fromSetup(setup.value) : undefined;
-    if (!pos || pos.isErr) throw new Error("invalid_initial_fen");
-    this.fens = [makeFen(pos.value.toSetup())];
+  constructor(readonly initialFen: string, readonly variant: Variant = "standard") {
+    this.fens = [fenOf(positionFromFen(initialFen, variant))]; // throws "invalid_initial_fen"
   }
 
   get length(): number {
@@ -39,7 +36,7 @@ export class PositionTimeline {
     this.fens.length = keep + 1;
     this.squares.length = keep + 1;
 
-    const pos = Chess.fromSetup(parseFen(this.fens[keep]!).unwrap()).unwrap();
+    const pos = positionFromFen(this.fens[keep]!, this.variant);
     for (let i = keep; i < moves.length; i++) {
       const uci = moves[i]!;
       const move = parseUci(uci);
@@ -55,7 +52,7 @@ export class PositionTimeline {
       this.sans.push(makeSan(pos, move));
       pos.play(move);
       this.moves.push(uci);
-      this.fens.push(makeFen(pos.toSetup()));
+      this.fens.push(fenOf(pos));
 
       if (!isNormal) this.squares.push([makeSquare(move.to), makeSquare(move.to)]);
       else if (castled) this.squares.push([makeSquare(move.from), makeSquare(pos.board.kingOf(mover)!)]);

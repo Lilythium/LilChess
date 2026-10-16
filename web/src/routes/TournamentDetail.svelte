@@ -5,9 +5,9 @@
 
   let { id }: { id: string } = $props();
 
-  type Format = "round_robin" | "swiss" | "knockout" | "arena";
+  type Format = "round_robin" | "swiss" | "knockout" | "arena" | "simul2";
   const FORMAT_LABELS: Record<Format, string> = {
-    round_robin: "ROUND ROBIN", swiss: "SWISS", knockout: "KNOCKOUT", arena: "ARENA",
+    round_robin: "ROUND ROBIN", swiss: "SWISS", knockout: "KNOCKOUT", arena: "ARENA", simul2: "SIMUL²",
   };
 
   type GameRow = {
@@ -33,7 +33,7 @@
 
   type Standing = {
     id: number; username: string; seed: number; points: number; wins: number; draws: number; losses: number;
-    gamesPlayed: number; buchholz: number; sonnebornBerger: number; onFire: boolean; eliminatedIn: number | null;
+    gamesPlayed: number; buchholz: number; sonnebornBerger: number; performance?: number; onFire: boolean; eliminatedIn: number | null;
   };
 
   type Detail = {
@@ -198,7 +198,7 @@
             <thead><tr>
               <th>#</th><th>Player</th><th>{tournament.format === "knockout" ? "Won" : "Played"}</th>
               {#if tournament.format === "knockout"}<th>Status</th>
-              {:else}<th>W</th>{#if tournament.format === "swiss"}<th title="Sum of opponents' scores">Bch</th>{:else if tournament.format === "round_robin"}<th title="Sonneborn-Berger">SB</th>{/if}<th>Pts</th>{/if}
+              {:else}<th>W</th>{#if tournament.format === "swiss"}<th title="Sum of opponents' scores">Bch</th>{:else if tournament.format === "round_robin"}<th title="Sonneborn-Berger">SB</th>{:else if tournament.format === "simul2"}<th title="Performance rating: average opponent rating plus the gap your score implies. Breaks ties.">Perf</th>{/if}<th>Pts</th>{/if}
             </tr></thead>
             <tbody>{#each data.standings as player, index (player.id)}
               <tr>
@@ -208,7 +208,7 @@
                   <td>{player.wins}</td><td>{standingNote(player, tournament.status)}</td>
                 {:else}
                   <td>{player.gamesPlayed}</td><td>{player.wins}</td>
-                  {#if tournament.format === "swiss"}<td>{num(player.buchholz)}</td>{:else if tournament.format === "round_robin"}<td>{num(player.sonnebornBerger)}</td>{/if}
+                  {#if tournament.format === "swiss"}<td>{num(player.buchholz)}</td>{:else if tournament.format === "round_robin"}<td>{num(player.sonnebornBerger)}</td>{:else if tournament.format === "simul2"}<td>{player.performance ?? "–"}</td>{/if}
                   <td class="points">{num(player.points)}</td>
                 {/if}
               </tr>

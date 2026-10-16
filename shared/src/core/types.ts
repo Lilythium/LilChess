@@ -4,12 +4,15 @@ export function opponent(color: Color): Color {
   return color === "white" ? "black" : "white";
 }
 
-export const VARIANTS = ["standard", "chess960"] as const;
+export const VARIANTS = ["standard", "chess960", "crazyhouse", "threecheck", "antichess"] as const;
 export type Variant = (typeof VARIANTS)[number];
 
 export const VARIANT_LABELS: Record<Variant, string> = {
   standard: "Standard",
   chess960: "Chess960",
+  crazyhouse: "Crazyhouse",
+  threecheck: "Three-check",
+  antichess: "Antichess",
 };
 
 export type ClockMode = "live" | "correspondence";
@@ -29,6 +32,8 @@ export type Termination =
   | "insufficient_material"
   | "fifty_move"
   | "repetition"
+  | "three_check" // Three-check: a side gave its third check
+  | "variant_end" // Antichess: a side lost all its pieces or has no legal move (that side wins)
   | "resignation"
   | "agreement"
   | "timeout"

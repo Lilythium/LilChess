@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { fenAfterMoves, VARIANTS } from "@lilchess/shared";
+import { fenAfterMoves, VARIANTS, type Variant } from "@lilchess/shared";
 import { latestVersion } from "./migrate.js";
 
 export interface IntegrityIssue {
@@ -71,12 +71,12 @@ export function checkIntegrity(db: Database.Database, opts: { deep?: boolean } =
   }
 
   if (opts.deep) {
-    const games = db.prepare(`SELECT id, initial_fen, fen, last_move FROM games`).all() as
-      { id: string; initial_fen: string; fen: string | null; last_move: string | null }[];
+    const games = db.prepare(`SELECT id, variant, initial_fen, fen, last_move FROM games`).all() as
+      { id: string; variant: Variant; initial_fen: string; fen: string | null; last_move: string | null }[];
     const movesFor = db.prepare(`SELECT uci FROM moves WHERE game_id = ? ORDER BY ply`);
     for (const g of games) {
       const moves = (movesFor.all(g.id) as { uci: string }[]).map((m) => m.uci);
-      const fen = fenAfterMoves(g.initial_fen, moves);
+      const fen = fenAfterMoves(g.initial_fen, moves, g.variant);
       if (fen === null) add("replay", `game ${g.id}: moves do not replay from the initial position`);
       else if (fen !== g.fen) add("fen", `game ${g.id}: stored position differs from the replayed one`);
       if ((moves.at(-1) ?? null) !== g.last_move) add("last_move", `game ${g.id}: last_move does not match the moves`);

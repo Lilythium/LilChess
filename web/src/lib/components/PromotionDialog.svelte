@@ -1,13 +1,19 @@
 <script lang="ts">
-  type Role = "q" | "r" | "b" | "n";
-  let { onPick, onCancel }: { onPick: (role: Role) => void; onCancel: () => void } = $props();
+  import type { PromotionRole } from "../game/variantUi";
+  type Role = PromotionRole;
+  // `roles` lets Antichess offer a king as well.
+  let { onPick, onCancel, roles = ["q", "r", "b", "n"] }: {
+    onPick: (role: Role) => void; onCancel: () => void; roles?: Role[];
+  } = $props();
 
-  const options: { role: Role; glyph: string; name: string }[] = [
-    { role: "q", glyph: "♕", name: "Queen" },
-    { role: "r", glyph: "♖", name: "Rook" },
-    { role: "b", glyph: "♗", name: "Bishop" },
-    { role: "n", glyph: "♘", name: "Knight" },
-  ];
+  const ALL: Record<Role, { glyph: string; name: string }> = {
+    q: { glyph: "♕", name: "Queen" },
+    r: { glyph: "♖", name: "Rook" },
+    b: { glyph: "♗", name: "Bishop" },
+    n: { glyph: "♘", name: "Knight" },
+    k: { glyph: "♔", name: "King" },
+  };
+  const options = $derived(roles.map((role) => ({ role, ...ALL[role] })));
 </script>
 
 <div class="overlay">

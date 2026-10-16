@@ -5,12 +5,15 @@
   import type { Key, MoveMetadata } from "chessground/types";
   import { chessgroundDests } from "chessops/compat";
   import { makeFen } from "chessops/fen";
-  import { parseSquare, squareRank } from "chessops/util";
+  import type { Role } from "chessops/types";
+  import { opposite, parseSquare, parseUci, squareRank } from "chessops/util";
   import { replay, type Color, type GameState } from "@lilchess/shared";
   import { boardMode } from "../game/boardMode";
   import { gameAtPly } from "../game/history";
+  import { dropSquares, dropUci, hasStrips, promotionRoles, type PromotionRole } from "../game/variantUi";
   import PromotionDialog from "./PromotionDialog.svelte";
-  
+  import VariantStrip from "./VariantStrip.svelte";
+
 
   let { game, myColor, orientation, resetKey, onMove, onCancel, viewPly = null }:
     { game: GameState; myColor: Color | null; orientation?: Color; resetKey: number;
@@ -21,29 +24,95 @@
   let cg: Api | undefined;
   let promo = $state<{ orig: Key; dest: Key } | null>(null);
 
+  // ---- variants: Crazyhouse pockets / Three-check counters sit in strips above and below the board ----
+  const shown = $derived(gameAtPly(game, viewPly));
+  const shownPosition = $derived.by(() => {
+    const r = replay(shown);
+    return r.ok ? r.position : null;
+  });
+  const boardOrientation = $derived<Color>(orientation ?? myColor ?? "white");
+  const strips = $derived(hasStrips(game.variant) && shownPosition !== null);
+  const mode = $derived(boardMode(game, myColor, shown === game));
+  const canDrop = $derived(game.variant === "crazyhouse" && myColor !== null && mode.movesEnabled && shown.turn === myColor);
+  let dropRole = $state<Role | null>(null);
+  let shownFen = "";
+
+  // chessground's runtime config accepts `dropmode` (it is part of its state) but its Config type omits it.
+  function setCg(config: object) {
+    cg?.set(config as Parameters<Api["set"]>[0]);
+  }
+
+  function setDropMode(role: Role | null) {
+    dropRole = role;
+    if (!cg) return;
+    const pos = replay(game);
+    if (role && myColor && pos.ok) {
+      cg.selectSquare(null); // forget any selected piece
+      setCg({
+        dropmode: { active: true, piece: { role, color: myColor } },
+        highlight: { custom: new Map(dropSquares(pos.position, role).map((sq) => [sq as Key, "move-dest"])) },
+      });
+    } else {
+      setCg({ dropmode: { active: false }, highlight: { custom: new Map() } });
+    }
+  }
+
+  function pickPocket(role: Role) {
+    if (canDrop) setDropMode(dropRole === role ? null : role);
+  }
+
+  // Mark where `role` may be dropped (the same dots a selected piece shows for its moves), or clear the marks.
+  function showDropSquares(role: Role | null) {
+    const r = replay(game);
+    const squares = role && r.ok ? dropSquares(r.position, role) : [];
+    setCg({ highlight: { custom: new Map(squares.map((sq) => [sq as Key, "move-dest"])) } });
+  }
+
+  function dragFromPocket(role: Role, event: MouseEvent) {
+    if (!canDrop || !cg || !myColor) return;
+    setDropMode(null);
+    showDropSquares(role);
+    // The drag ends with a drop (handleDrop clears the marks) or with the mouse released somewhere else.
+    window.addEventListener("mouseup", () => showDropSquares(null), { once: true });
+    cg.dragNewPiece({ role, color: myColor }, event, true);
+  }
+
+  // Chessground reports a dropped piece; only a legal drop is sent on, anything else snaps back.
+  function handleDrop(role: Role, key: Key) {
+    setDropMode(null);
+    const r = replay(game);
+    const uci = dropUci(role, key);
+    const move = parseUci(uci);
+    if (r.ok && move && r.position.isLegal(move)) onMove(uci);
+    else onCancel();
+  }
+
   $effect(() => {
     void resetKey; // a bump forces a re-sync after a rejected/cancelled move
-    const shown = gameAtPly(game, viewPly); // earlier position while browsing history
-    const r = replay(shown);
-    if (!r.ok) return;
-    const pos = r.position;
+    const pos = shownPosition; // earlier position while browsing history
+    if (!pos) return;
     const last = shown.moves.at(-1);
-    const mode = boardMode(game, myColor, shown === game);
 
     const api = (cg ??= Chessground(el, {
       premovable: { showDests: true, castle: true },
-      movable: { free: false, events: { after: handleAfter } },
+      movable: { free: false, events: { after: handleAfter, afterNewPiece: handleDrop } },
     }));
+    const fen = makeFen(pos.toSetup());
+    if (fen !== shownFen) {
+      shownFen = fen;
+      untrack(() => { if (dropRole !== null) setDropMode(null); }); // a new position cancels a half-made drop
+    }
     api.set({
-      fen: makeFen(pos.toSetup()),
-      orientation: orientation ?? myColor ?? "white",
+      fen,
+      orientation: boardOrientation,
       turnColor: shown.turn,
       check: pos.isCheck(),
-      lastMove: last ? [last.slice(0, 2) as Key, last.slice(2, 4) as Key] : undefined,
+      // A drop has only a target square ("N@f3"); a normal move has origin and target.
+      lastMove: last ? (last.includes("@") ? [last.slice(2, 4) as Key] : [last.slice(0, 2) as Key, last.slice(2, 4) as Key]) : undefined,
       premovable: { enabled: mode.premovesEnabled },
       movable: {
         color: mode.movableColor,
-        dests: mode.movesEnabled ? chessgroundDests(pos, { chess960: String(shown.variant) === "chess960" }) : new Map(),
+        dests: mode.movesEnabled ? chessgroundDests(pos, { chess960: shown.variant === "chess960" }) : new Map(),
       },
     });
 
@@ -68,7 +137,7 @@
     } else onMove(orig + dest);
   }
 
-  function pick(role: "q" | "r" | "b" | "n") {
+  function pick(role: PromotionRole) {
     if (promo) onMove(promo.orig + promo.dest + role);
     promo = null;
   }
@@ -77,12 +146,29 @@
 </script>
 
 <div class="wrap">
-  <div bind:this={el} class="board"></div>
-  {#if promo}<PromotionDialog onPick={pick} onCancel={cancel} />{/if}
+  {#if strips && shownPosition}
+    <VariantStrip pos={shownPosition} color={opposite(boardOrientation)} variant={game.variant} />
+  {/if}
+  <div class="boardbox">
+    <div bind:this={el} class="board"></div>
+    {#if promo}<PromotionDialog roles={promotionRoles(game.variant)} onPick={pick} onCancel={cancel} />{/if}
+  </div>
+  {#if strips && shownPosition}
+    <VariantStrip
+      pos={shownPosition}
+      color={boardOrientation}
+      variant={game.variant}
+      interactive={canDrop && myColor === boardOrientation}
+      selected={dropRole}
+      onPick={pickPocket}
+      onDrag={dragFromPocket}
+    />
+  {/if}
 </div>
 
 <style>
   .wrap { position: relative; width: 100%; container-type: inline-size; }
+  .boardbox { position: relative; width: 100%; }
   .board {
     width: 100%;
     aspect-ratio: 1;

@@ -4,6 +4,8 @@
   --panel: #262421;  
   --panel-hi: #302e2c;  
   --border: #3c3a37;
+  --pocket-bg: #d0d0d0;
+  --pocket-border: #969696;
   --text: #bababa;  
   --text-hi: #e8e8e8;  
   --muted: #7d7b78;
@@ -189,8 +191,8 @@ html:has(.game-mobile) { overscroll-behavior-y: contain; } /* no pull-to-refresh
     --strip-h: 46px;
     --move-h: 44px;
     --dock-h: 56px;
-    --board: min(100cqw, 640px, max(260px, calc(100dvh - var(--header-h) - 2 * var(--strip-h)
-              - var(--move-h) - var(--dock-h) - var(--simul-h) - env(safe-area-inset-bottom, 0px))));
+        --board: min(100cqw, 640px, max(260px, calc(100dvh - var(--header-h) - 2 * var(--strip-h)
+          - var(--move-h) - var(--dock-h) - var(--simul-h) - env(safe-area-inset-bottom, 0px))));
     display: grid;
     grid-template-columns: var(--board);
     grid-template-areas: "simul" "top" "board" "bottom" "moves" "dock";

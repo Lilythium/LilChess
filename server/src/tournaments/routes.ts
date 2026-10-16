@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { TOURNAMENT_FORMATS } from "@lilchess/shared";
+import { LiveIncrementMs, LiveInitialMs, TOURNAMENT_FORMATS, VARIANTS } from "@lilchess/shared";
 import { requireAuth } from "../auth/routes.js";
 import { IdParams, parse } from "../validation.js";
 import { notifyDeadlineChanged } from "../game/deadlineBus.js";
@@ -15,10 +15,10 @@ const CreateBody = z.object({
   description: z.string().trim().max(500).optional(),
   format: z.enum(TOURNAMENT_FORMATS).default("round_robin"),
   mode: z.enum(["live", "correspondence"]),
-  initialMs: z.number().int().min(30_000).max(86_400_000).optional(),
-  incrementMs: z.number().int().min(0).max(60_000).optional(),
+  initialMs: LiveInitialMs.optional(),
+  incrementMs: LiveIncrementMs.optional(),
   daysPerMove: z.number().int().min(1).max(14).optional(),
-  variant: z.enum(["standard", "chess960"]).default("standard"),
+  variant: z.enum(VARIANTS).default("standard"),
   rated: z.boolean().default(false),
   maxPlayers: z.number().int().min(2).max(64),
   rounds: z.number().int().min(1).max(20).optional(), // swiss only

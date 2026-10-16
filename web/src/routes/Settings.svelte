@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Email, NOTIFICATION_KINDS, NOTIFICATION_LABELS, type NotificationKind } from "@lilchess/shared";
+  import { DiscordId, Email, NOTIFICATION_KINDS, NOTIFICATION_LABELS, type NotificationKind } from "@lilchess/shared";
   import { api } from "../lib/api";
   import { auth } from "../lib/auth.svelte";
   import { validate } from "../lib/validate";
@@ -9,10 +9,15 @@
     emailAvailable: boolean;
     email: string | null;
     prefs: Record<NotificationKind, boolean>;
+    discordAvailable: boolean;
+    discordId: string | null;
+    discordPrefs: Record<NotificationKind, boolean>;
   }
+  type Prefs = Partial<Record<NotificationKind, boolean>>;
 
   let data = $state<Settings | null>(null);
   let email = $state("");
+  let discordId = $state("");
   let error = $state<string | null>(null);
   let notice = $state<string | null>(null);
   let busy = $state(false);
@@ -21,18 +26,20 @@
     try {
       data = await api<Settings>("/api/me/notifications");
       email = data.email ?? "";
+      discordId = data.discordId ?? "";
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
   });
 
-  async function save(body: { email?: string; prefs?: Partial<Record<NotificationKind, boolean>> }) {
+  async function save(body: { email?: string; prefs?: Prefs; discordId?: string; discordPrefs?: Prefs }) {
     busy = true;
     error = null;
     notice = null;
     try {
       data = await api<Settings>("/api/me/notifications", { method: "PUT", body });
       email = data.email ?? "";
+      discordId = data.discordId ?? "";
       notice = "Saved.";
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -52,6 +59,17 @@
   }
 
   const toggle = (kind: NotificationKind, enabled: boolean) => save({ prefs: { [kind]: enabled } });
+  const toggleDiscord = (kind: NotificationKind, enabled: boolean) => save({ discordPrefs: { [kind]: enabled } });
+
+  function saveDiscord(e: SubmitEvent) {
+    e.preventDefault();
+    const value = discordId.trim();
+    if (value !== "") {
+      const v = validate(DiscordId, value);
+      if (!v.ok) { error = v.error; notice = null; return; }
+    }
+    void save({ discordId: value });
+  }
 </script>
 
 <div class="stack">
@@ -83,6 +101,43 @@
       {#if notice}<p class="muted">{notice}</p>{/if}
     {/if}
   </div>
+
+  {#if data && !auth.user?.is_guest}
+    <div class="panel">
+      <h2>Discord</h2>
+      <p class="muted">
+        Optional. Give your Discord user ID and this server will @mention you in its Discord channel for the
+        events below. It isn't verified, so double-check the digits. (In Discord: Settings → Advanced → turn on
+        Developer Mode, then right-click your name → Copy User ID.) Discord can't be used to reset a password.
+      </p>
+      {#if !data.discordAvailable}
+        <p class="muted">This server hasn't been connected to a Discord channel yet, so nothing will arrive for now.</p>
+      {/if}
+      <form onsubmit={saveDiscord}>
+        <input inputmode="numeric" placeholder="123456789012345678" autocomplete="off" bind:value={discordId} />
+        <button class="primary" disabled={busy}>Save</button>
+        {#if data.discordId}
+          <button type="button" disabled={busy} onclick={() => save({ discordId: "" })}>Remove</button>
+        {/if}
+      </form>
+
+      <h3>Ping me on Discord when…</h3>
+      {#if !data.discordId}<p class="muted">Add your Discord user ID above to use these.</p>{/if}
+      <div class="options">
+        {#each NOTIFICATION_KINDS as kind (kind)}
+          <label class="opt">
+            <input
+              type="checkbox"
+              checked={data.discordPrefs[kind]}
+              disabled={busy || !data.discordId}
+              onchange={(e) => toggleDiscord(kind, e.currentTarget.checked)}
+            />
+            {NOTIFICATION_LABELS[kind]}
+          </label>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   {#if data && !auth.user?.is_guest}
     <div class="panel">

@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
+import { config } from "../config.js";
 import { getDb } from "../db/connection.js";
 import { terminateGameAsAdmin } from "../db/repositories/games.js";
 import { requireAdmin } from "../auth/routes.js";
@@ -18,7 +19,7 @@ import { IdParams, RegisterBody, parse } from "../validation.js";
 import { purgeUnusedGuests } from "../maintenance.js";
 import { closeUserSockets } from "../ws/hub.js";
 import { recordAudit } from "./audit.js";
-import { AdminError, createUserAsAdmin, revokeUserSessions, setUserAdmin, setUserDisabled } from "./users.js";
+import { AdminError, createUserAsAdmin, issuePasswordResetLink, revokeUserSessions, setUserAdmin, setUserDisabled } from "./users.js";
 
 const DAY_MS = 86_400_000;
 
@@ -118,6 +119,16 @@ export async function adminRoutes(app: FastifyInstance) {
     if (!params) return reply;
     if (!guarded(reply, () => setUserDisabled(req.user!.id, params.id, false))) return reply;
     return { ok: true };
+  });
+
+  // Returns the link once; only a hash of the token is stored, so it can't be shown again.
+  app.post("/api/admin/users/:id/reset-link", { preHandler: requireAdmin }, async (req, reply) => {
+    const params = parse(UserParams, req.params, reply);
+    if (!params) return reply;
+    const issued = guarded(reply, () => issuePasswordResetLink(req.user!.id, params.id));
+    if (!issued) return reply;
+    const origin = config.baseOrigin ?? `${req.protocol}://${req.hostname}`;
+    return { ok: true, username: issued.username, link: `${origin}/#/reset/${issued.token}`, expiresAt: issued.expiresAt };
   });
 
   app.post("/api/admin/users/:id/revoke-sessions", { preHandler: requireAdmin }, async (req, reply) => {

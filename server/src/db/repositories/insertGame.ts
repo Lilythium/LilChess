@@ -4,7 +4,7 @@ import { gameStateToRow } from "../mappers.js";
 
 export function insertGame(id: string, whiteId: number, blackId: number, game: GameState): void {
   const row = gameStateToRow(game);
-  const fen = fenAfterMoves(game.initialFen, game.moves) ?? game.initialFen;
+  const fen = fenAfterMoves(game.initialFen, game.moves, game.variant) ?? game.initialFen;
   getDb()
     .prepare(
       `INSERT INTO games (

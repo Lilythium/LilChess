@@ -2,8 +2,11 @@ import type { FastifyInstance } from "fastify";
 import { NotificationSettingsBody, UnsubscribeBody } from "@lilchess/shared";
 import { requireAuth } from "../auth/routes.js";
 import { parse } from "../validation.js";
+import { discordEnabled } from "./discord.js";
 import { emailEnabled } from "./mailer.js";
-import { getPrefs, getUserEmail, setPrefs, setUserEmail, unsubscribeByToken } from "./queries.js";
+import {
+  getPrefs, getUserDiscordId, getUserEmail, setPrefs, setUserDiscordId, setUserEmail, unsubscribeByToken,
+} from "./queries.js";
 
 export async function notificationRoutes(app: FastifyInstance) {
   const current = (userId: number) => ({
@@ -11,18 +14,23 @@ export async function notificationRoutes(app: FastifyInstance) {
     emailAvailable: emailEnabled(), // false = the server has no SMTP, so nothing will be sent
     email: getUserEmail(userId),
     prefs: getPrefs(userId),
+    discordAvailable: discordEnabled(), // false = the server has no Discord webhook, so nothing will be sent
+    discordId: getUserDiscordId(userId),
+    discordPrefs: getPrefs(userId, "discord"),
   });
 
   app.get("/api/me/notifications", { preHandler: requireAuth }, async (req) => current(req.user!.id));
 
   app.put("/api/me/notifications", { preHandler: requireAuth }, async (req, reply) => {
     if (req.user!.is_guest) {
-      return reply.code(403).send({ error: "Guests can't set an email. Register an account first." });
+      return reply.code(403).send({ error: "Guests can't set an email or Discord ID. Register an account first." });
     }
     const body = parse(NotificationSettingsBody, req.body, reply);
     if (!body) return reply;
     if (body.email !== undefined) setUserEmail(req.user!.id, body.email || null);
     if (body.prefs) setPrefs(req.user!.id, body.prefs);
+    if (body.discordId !== undefined) setUserDiscordId(req.user!.id, body.discordId || null);
+    if (body.discordPrefs) setPrefs(req.user!.id, body.discordPrefs, "discord");
     return current(req.user!.id);
   });
 

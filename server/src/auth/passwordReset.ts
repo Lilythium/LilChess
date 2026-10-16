@@ -4,6 +4,8 @@ import { generateSessionToken, hashSessionToken } from "./crypto.js";
 
 const RESET_TTL_MS = 60 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 5 * 60 * 1000;
+/** Links an administrator hands over by hand live longer than emailed ones: delivery isn't instant. */
+export const ADMIN_RESET_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_TARGETS = 5;
 
 export interface ResetTarget { id: number; username: string; email: string }
@@ -28,6 +30,20 @@ export function createResetToken(userId: number, now = Date.now()): string | nul
   db.prepare(`INSERT INTO password_resets (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`)
     .run(hashSessionToken(token), userId, now, now + RESET_TTL_MS);
   return token;
+}
+
+// For administrators: no email needed and no resend cooldown. Any link already outstanding for the user is
+// revoked, so there is only ever one live link. Returns the plaintext token (only its hash is stored).
+export function createAdminResetToken(userId: number, now = Date.now()): { token: string; expiresAt: number } {
+  const db = getDb();
+  const token = generateSessionToken();
+  const expiresAt = now + ADMIN_RESET_TTL_MS;
+  db.transaction(() => {
+    db.prepare(`DELETE FROM password_resets WHERE user_id = ?`).run(userId);
+    db.prepare(`INSERT INTO password_resets (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`)
+      .run(hashSessionToken(token), userId, now, expiresAt);
+  })();
+  return { token, expiresAt };
 }
 
 // Sets the new password, burns every outstanding link and logs the user out everywhere.

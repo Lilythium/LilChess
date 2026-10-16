@@ -1,4 +1,4 @@
-export const TOURNAMENT_FORMATS = ["round_robin", "swiss", "knockout", "arena"] as const;
+export const TOURNAMENT_FORMATS = ["round_robin", "swiss", "knockout", "arena", "simul2"] as const;
 export type TournamentFormat = (typeof TOURNAMENT_FORMATS)[number];
 
 export type MatchResult = "1-0" | "0-1" | "1/2-1/2";
@@ -17,6 +17,8 @@ export interface ScoredGame {
 export interface StandingPlayer {
   id: number;
   seed: number; // 1 = first to join
+  /** Rating when the tournament started. Only Simul2 uses it (performance rating tiebreak). */
+  rating?: number;
 }
 
 export interface StandingRow {
@@ -34,4 +36,6 @@ export interface StandingRow {
   onFire: boolean;
   /** Knockout only: round the player lost in, null while still alive or for the champion. */
   eliminatedIn: number | null;
+  /** Simul2 only: performance rating (average opponent rating + the rating gap that score implies). */
+  performance?: number;
 }

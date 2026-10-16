@@ -1,4 +1,4 @@
-import type { Chess } from "chessops/chess";
+import type { Position } from "chessops/chess";
 import type { Color, GameResult, Termination } from "./types.js";
 
 const REPETITION_THRESHOLD = 3;
@@ -12,26 +12,29 @@ export interface EndCheck {
 
 // `mover` is the color that just moved — position.turn has already
 // flipped to whoever must move next by the time this is called.
+// chessops' outcome() covers every variant's own ending (three checks, Antichess losing all pieces or
+// being stalemated, Crazyhouse mate with no blocking drop) as well as plain mate, stalemate and
+// insufficient material.
 export function checkGameEnd(
-  position: Chess,
+  position: Position,
   mover: Color,
   positionKeys: string[],
 ): EndCheck {
-  if (position.isCheckmate()) {
+  const outcome = position.outcome();
+  if (outcome) {
+    if (outcome.winner === undefined) {
+      return {
+        ended: true,
+        result: "1/2-1/2",
+        termination: position.isStalemate() ? "stalemate" : "insufficient_material",
+      };
+    }
+    const result: GameResult = outcome.winner === "white" ? "1-0" : "0-1";
+    if (position.isCheckmate()) return { ended: true, result, termination: "checkmate" };
     return {
       ended: true,
-      result: mover === "white" ? "1-0" : "0-1",
-      termination: "checkmate",
-    };
-  }
-  if (position.isStalemate()) {
-    return { ended: true, result: "1/2-1/2", termination: "stalemate" };
-  }
-  if (position.isInsufficientMaterial()) {
-    return {
-      ended: true,
-      result: "1/2-1/2",
-      termination: "insufficient_material",
+      result,
+      termination: position.rules === "3check" ? "three_check" : "variant_end",
     };
   }
   if (position.halfmoves >= FIFTY_MOVE_HALFMOVES) {

@@ -132,6 +132,7 @@ LilChess can be configured with environment variables.
 | `SMTP_USER`       | —                   | SMTP login (set with `SMTP_PASS`)             |
 | `SMTP_PASS`       | —                   | SMTP password                                 |
 | `SMTP_FROM`       | —                   | From address, e.g. `noreply@chess.example.com`|
+| `DISCORD_WEBHOOK_URL` | —               | Discord channel webhook; enables Discord notifications (needs `BASE_URL`). Players opt in with their Discord user ID in Settings |
 
 See `.env.example` for the available configuration options.
 

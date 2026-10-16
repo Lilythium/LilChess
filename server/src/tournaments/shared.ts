@@ -100,15 +100,15 @@ export function nextBoardNumber(tournamentId: string, round: number): number {
 export function assignSeeds(tournament: TournamentRow): StandingPlayer[] {
   const db = getDb();
   const ordered = db.prepare(`
-    SELECT p.user_id AS id FROM tournament_participants p
+    SELECT p.user_id AS id, ROUND(COALESCE(r.rating, 1500)) AS rating FROM tournament_participants p
     LEFT JOIN ratings r ON r.user_id = p.user_id AND r.variant = ?
     WHERE p.tournament_id = ?
     ORDER BY COALESCE(r.rating, 1500) DESC, p.joined_at, p.user_id
-  `).all(tournament.variant, tournament.id) as { id: number }[];
-  const update = db.prepare(`UPDATE tournament_participants SET seed = ? WHERE tournament_id = ? AND user_id = ?`);
-  return ordered.map(({ id }, index) => {
-    update.run(index + 1, tournament.id, id);
-    return { id, seed: index + 1 };
+  `).all(tournament.variant, tournament.id) as { id: number; rating: number }[];
+  const update = db.prepare(`UPDATE tournament_participants SET seed = ?, start_rating = ? WHERE tournament_id = ? AND user_id = ?`);
+  return ordered.map(({ id, rating }, index) => {
+    update.run(index + 1, rating, tournament.id, id);
+    return { id, seed: index + 1, rating };
   });
 }
 
@@ -119,12 +119,15 @@ export interface ParticipantRow extends StandingPlayer {
 
 export function loadParticipants(tournamentId: string): ParticipantRow[] {
   const rows = getDb().prepare(`
-    SELECT p.user_id AS id, u.username, p.paused, p.seed, p.joined_at
+    SELECT p.user_id AS id, u.username, p.paused, p.seed, p.start_rating, p.joined_at
     FROM tournament_participants p JOIN users u ON u.id = p.user_id
     WHERE p.tournament_id = ?
     ORDER BY COALESCE(p.seed, 1000000), p.joined_at, p.user_id
-  `).all(tournamentId) as { id: number; username: string; paused: number; seed: number | null }[];
-  return rows.map((row, index) => ({ id: row.id, username: row.username, paused: row.paused === 1, seed: row.seed ?? index + 1 }));
+  `).all(tournamentId) as { id: number; username: string; paused: number; seed: number | null; start_rating: number | null }[];
+  return rows.map((row, index) => ({
+    id: row.id, username: row.username, paused: row.paused === 1, seed: row.seed ?? index + 1,
+    ...(row.start_rating !== null ? { rating: row.start_rating } : {}),
+  }));
 }
 
 /** Every scoring result in a tournament, in the shape the standings code wants. */

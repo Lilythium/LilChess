@@ -9,6 +9,8 @@
   import HoverDropdown from "../lib/components/HoverDropdown.svelte";
   import ModeToggle from "../lib/components/ModeToggle.svelte";
   import LobbyEvents from "../lib/components/LobbyEvents.svelte";
+  import CustomClock from "../lib/components/CustomClock.svelte";
+  import { parseCustomClock } from "../lib/timeControl";
   import { ChallengeBody, VARIANTS, VARIANT_LABELS, type Variant } from "@lilchess/shared";
   import { validate } from "../lib/validate";
   import { playSound } from "../lib/audio/audio";
@@ -24,7 +26,9 @@
   let localVariant = $state<Variant>("standard");
 
   let mode = $state<"live" | "correspondence">("live");
-  let preset = $state(2); // 5+3
+  let preset = $state(2); // 5+3; -1 = custom
+  let customMinutes = $state(7);
+  let customIncrement = $state(0);
   let days = $state(3);
   let rated = $state(false);
   let color = $state<"random" | "white" | "black">("random");
@@ -95,14 +99,30 @@
     busy = true;
     error = null;
 
-    const [min, inc] = PRESETS[preset]!;
+    let initialMs = 0;
+    let incrementMs = 0;
+    if (mode === "live") {
+      if (preset === -1) {
+        const custom = parseCustomClock(customMinutes, customIncrement);
+        if (!custom.ok) {
+          error = custom.error;
+          busy = false;
+          return;
+        }
+        ({ initialMs, incrementMs } = custom);
+      } else {
+        const [min, inc] = PRESETS[preset]!;
+        initialMs = min * 60_000;
+        incrementMs = inc * 1000;
+      }
+    }
 
     const clock =
       mode === "live"
         ? {
             mode,
-            initialMs: min * 60_000,
-            incrementMs: inc * 1000,
+            initialMs,
+            incrementMs,
           }
         : {
             mode,
@@ -258,7 +278,9 @@
                   {m}+{i}
                 </button>
               {/each}
+              <button class:primary={preset === -1} onclick={() => (preset = -1)}>Custom</button>
             </div>
+            {#if preset === -1}<CustomClock bind:minutes={customMinutes} bind:increment={customIncrement} />{/if}
           {:else}
             <select bind:value={days}>
               {#each DAYS as d (d)}
