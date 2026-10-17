@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import { onDestroy, untrack } from "svelte";
   import { Chessground } from "chessground";
   import type { Api } from "chessground/api";
@@ -12,7 +13,8 @@
   import PromotionDialog from "./PromotionDialog.svelte";
   import VariantStrip from "./VariantStrip.svelte";
 
-  let { fen, orientation, lastMove = null, arrow = null, chess960 = false, variant = "standard", interactive = true, onMove }: {
+  let { fen, orientation, lastMove = null, arrow = null, chess960 = false, variant = "standard", interactive = true,
+    stripPlacement = "stacked", railContent, onMove }: {
     fen: string;
     orientation: Color;
     /** Every variant is playable here, including Crazyhouse drops (pocket pieces) and Antichess king promotion. */
@@ -22,10 +24,12 @@
     lastMove?: [string, string] | null;
     arrow?: [string, string] | null; // the engine's suggestion
     chess960?: boolean;
+    stripPlacement?: "stacked" | "rail";
+    railContent?: Snippet;
     onMove: (uci: string) => void;
   } = $props();
 
-  let el: HTMLDivElement;
+  let el = $state<HTMLDivElement>();
   let cg: Api | undefined;
   let position = $state.raw<Position | null>(null); // current position: promotion, drops and the strips read it
   let promo = $state<{ orig: Key; dest: Key } | null>(null);
@@ -89,6 +93,7 @@
       return;
     }
     position = pos;
+    if (!el) return;
 
     const api = (cg ??= Chessground(el, {
       premovable: { enabled: false },
@@ -135,27 +140,56 @@
   onDestroy(() => cg?.destroy());
 </script>
 
-<div class="wrap">
-  {#if strips && position}
-    <VariantStrip pos={position} color={opposite(orientation)} {variant}
-      interactive={interactive && position.turn === opposite(orientation)}
-      selected={position.turn === opposite(orientation) ? dropRole : null}
-      onPick={pickPocket} onDrag={dragFromPocket} />
-  {/if}
-  <div class="boardbox">
-    <div bind:this={el} class="board"></div>
-    {#if promo}<PromotionDialog roles={promotionRoles(variant)} onPick={pick} onCancel={cancelPromo} />{/if}
-  </div>
-  {#if strips && position}
-    <VariantStrip pos={position} color={orientation} {variant}
-      interactive={interactive && position.turn === orientation}
-      selected={position.turn === orientation ? dropRole : null}
-      onPick={pickPocket} onDrag={dragFromPocket} />
+<div class="wrap" class:rail-layout={stripPlacement === "rail"}>
+  {#if stripPlacement === "rail"}
+    <aside class="variant-tools" class:empty={!strips && variant !== "chess960"} aria-hidden={!strips && variant !== "chess960"}>
+      {#if railContent}{@render railContent()}{/if}
+      {#if strips && position}
+        <div class="strips">
+          <VariantStrip pos={position} color={opposite(orientation)} {variant} layout="vertical"
+            interactive={interactive && position.turn === opposite(orientation)}
+            selected={position.turn === opposite(orientation) ? dropRole : null}
+            onPick={pickPocket} onDrag={dragFromPocket} />
+          <VariantStrip pos={position} color={orientation} {variant} layout="vertical"
+            interactive={interactive && position.turn === orientation}
+            selected={position.turn === orientation ? dropRole : null}
+            onPick={pickPocket} onDrag={dragFromPocket} />
+        </div>
+      {/if}
+    </aside>
+    <div class="boardbox">
+      <div bind:this={el} class="board"></div>
+      {#if promo}<PromotionDialog roles={promotionRoles(variant)} onPick={pick} onCancel={cancelPromo} />{/if}
+    </div>
+  {:else}
+    {#if strips && position}
+      <VariantStrip pos={position} color={opposite(orientation)} {variant}
+        interactive={interactive && position.turn === opposite(orientation)}
+        selected={position.turn === opposite(orientation) ? dropRole : null}
+        onPick={pickPocket} onDrag={dragFromPocket} />
+    {/if}
+    <div class="boardbox">
+      <div bind:this={el} class="board"></div>
+      {#if promo}<PromotionDialog roles={promotionRoles(variant)} onPick={pick} onCancel={cancelPromo} />{/if}
+    </div>
+    {#if strips && position}
+      <VariantStrip pos={position} color={orientation} {variant}
+        interactive={interactive && position.turn === orientation}
+        selected={position.turn === orientation ? dropRole : null}
+        onPick={pickPocket} onDrag={dragFromPocket} />
+    {/if}
   {/if}
 </div>
 
 <style>
   .wrap { position: relative; width: 100%; container-type: inline-size; }
+  .wrap.rail-layout {
+    display: grid; grid-template-columns: var(--variant-tools-width, 96px) minmax(0, 1fr);
+    gap: var(--variant-tools-gap, 0.5rem); align-items: stretch;
+  }
+  .variant-tools { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; }
+  .variant-tools.empty { visibility: hidden; }
+  .strips { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; }
   .boardbox { position: relative; width: 100%; }
   .board {
     width: 100%; aspect-ratio: 1; touch-action: none; container-type: inline-size;
@@ -180,4 +214,11 @@
   .board :global(coords.ranks.black coord:nth-child(odd)),
   .board :global(coords.files:not(.black) coord:nth-child(even)),
   .board :global(coords.files.black coord:nth-child(odd)) { color: var(--coord-dark); }
+
+  @media (max-width: 900px) {
+    .wrap.rail-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: 72px auto; gap: 0; }
+    .variant-tools { grid-row: 1; width: 100%; }
+    .strips { position: static; display: grid; grid-template-rows: 1fr 1fr; width: 100%; height: 100%; }
+    .boardbox { grid-row: 2; }
+  }
 </style>

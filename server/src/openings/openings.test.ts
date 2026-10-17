@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../app.js";
 import { closeDb, getDb, openDb } from "../db/connection.js";
 import { registerUser } from "../testing/helpers.js";
-import { backfillOpenings, OPENING_MAX_PLY, openingExplorer, recordOpeningGame } from "./stats.js";
+import { backfillOpeningPositions, backfillOpenings, OPENING_MAX_PLY, openingExplorer, openingGamesAtPosition, recordOpeningGame } from "./stats.js";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -53,6 +53,9 @@ describe("opening explorer", () => {
 
     const root = await explorer();
     expect(root).toMatchObject({ total: 4, white: 1, draws: 2, black: 1, fen: START });
+    expect(root.gamesTotal).toBe(4);
+    expect(root.games).toHaveLength(4);
+    expect(root.games[0]).toMatchObject({ white_name: "alice", black_name: "bob", result: expect.any(String), fen: expect.any(String), last_move: expect.any(String) });
     expect(root.moves.map((m: { san: string; total: number }) => [m.san, m.total])).toEqual([["e4", 3], ["d4", 1]]);
     const e4 = root.moves[0];
     expect([e4.white, e4.draws, e4.black]).toEqual([1, 1, 1]);
@@ -93,6 +96,14 @@ describe("opening explorer", () => {
     expect(backfillOpenings()).toBe(1);
     expect((await explorer()).total).toBe(1);
     expect(getDb().prepare(`SELECT COUNT(*) FROM opening_games WHERE game_id = ?`).pluck().get(id)).toBe(1);
+  });
+
+  it("backfills position indexes for games already counted before the game list existed", async () => {
+    const id = await play(["e2e4", "e7e5"], "white");
+    getDb().exec(`DELETE FROM opening_positions`);
+    expect(backfillOpeningPositions()).toBe(1);
+    expect(backfillOpeningPositions()).toBe(0);
+    expect(openingGamesAtPosition("standard", START).games[0]?.id).toBe(id);
   });
 
   it("only explores the opening: later moves are not counted", () => {

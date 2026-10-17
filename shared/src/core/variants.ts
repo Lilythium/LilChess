@@ -6,9 +6,12 @@ const KNIGHT_SLOTS: [number, number][] = [
   [0, 1], [0, 2], [0, 3], [0, 4], [1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4],
 ];
 
+export const CHESS960_MIN_ID = 0;
+export const CHESS960_MAX_ID = 959;
+
 /** Chess960 start position by Scharnagl id (0..959). 518 is the standard array. */
 export function chess960Fen(id: number): string {
-  if (!Number.isInteger(id) || id < 0 || id > 959) {
+  if (!Number.isInteger(id) || id < CHESS960_MIN_ID || id > CHESS960_MAX_ID) {
     throw new RangeError(`Chess960 id out of range: ${id}`);
   }
   const rank: string[] = Array(8).fill("");
@@ -38,7 +41,7 @@ export function chess960Fen(id: number): string {
 }
 
 export function randomChess960Fen(rnd: () => number = Math.random): string {
-  return chess960Fen(Math.floor(rnd() * 960));
+  return chess960Fen(CHESS960_MIN_ID + Math.floor(rnd() * (CHESS960_MAX_ID - CHESS960_MIN_ID + 1)));
 }
 
 export function startFenFor(variant: Variant): string {

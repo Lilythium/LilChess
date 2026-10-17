@@ -3,7 +3,7 @@ import { z } from "zod";
 import { VARIANTS, startFenFor } from "@lilchess/shared";
 import { requireAuth } from "../auth/routes.js";
 import { parse } from "../validation.js";
-import { openingExplorer } from "./stats.js";
+import { openingExplorer, openingGamesAtPosition } from "./stats.js";
 
 const Query = z.object({
   variant: z.enum(VARIANTS).default("standard"),
@@ -16,7 +16,8 @@ export async function openingsRoutes(app: FastifyInstance) {
     const query = parse(Query, req.query, reply);
     if (!query) return reply;
     try {
-      return { ok: true, ...openingExplorer(query.variant, query.fen ?? startFenFor(query.variant)) };
+      const fen = query.fen ?? startFenFor(query.variant);
+      return { ok: true, ...openingExplorer(query.variant, fen), ...openingGamesAtPosition(query.variant, fen) };
     } catch {
       return reply.code(400).send({ error: "Invalid position" });
     }

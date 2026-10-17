@@ -5,13 +5,14 @@
   import { checksLeft, POCKET_ROLES, pocketOf } from "../game/variantUi";
 
   // The row above/below the board for variants with extra state: Crazyhouse pockets, Three-check counters.
-  let { pos, color, variant, interactive = false, selected = null, onPick, onDrag }: {
+  let { pos, color, variant, interactive = false, selected = null, layout = "horizontal", onPick, onDrag }: {
     pos: Position;
     color: Color;
     variant: Variant;
     /** Only the player's own pocket, on their own turn, can be used. */
     interactive?: boolean;
     selected?: Role | null;
+    layout?: "horizontal" | "vertical";
     onPick?: (role: Role) => void;
     onDrag?: (role: Role, event: MouseEvent) => void;
   } = $props();
@@ -21,7 +22,7 @@
   const left = $derived(checks ? checks[color] : 0);
 </script>
 
-<div class="strip" data-color={color}>
+<div class="strip" class:vertical={layout === "vertical"} data-color={color}>
   {#if variant === "crazyhouse"}
     <div class="pocket" role="group" aria-label={`${color} pocket`}>
       {#each POCKET_ROLES as role (role)}
@@ -53,12 +54,15 @@
 <style>
   /* A pocket slot is exactly one board square (the strip is as wide as the board), so pieces match the board's. */
   .strip { --pocket-slot-size: 9cqw; display: flex; align-items: center; margin-block: 0.2rem; container-type: inline-size; min-height: var(--pocket-slot-size); }
+  .strip.vertical { width: 100%; min-height: 0; height: auto; margin: 0; }
     .pocket { display: flex; gap: 0; align-items: center; width: fit-content; margin-inline: auto; padding: 0.1rem;
         background: var(--pocket-bg); border: 1px solid var(--pocket-border); border-radius: var(--radius);
         box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.28), inset -2px -2px 5px rgba(255, 255, 255, 0.55); }
     .slot { position: relative; width: var(--pocket-slot-size); height: var(--pocket-slot-size); flex: 0 0 var(--pocket-slot-size); padding: 0; border: 0; border-radius: 0;
       background: transparent; touch-action: manipulation; }
     .slot.selected { background: transparent; box-shadow: inset 0 0 0 2px var(--green-hi); }
+    .strip.vertical .pocket { flex-direction: column; }
+    .strip.vertical .slot { --pocket-slot-size: 36px; }
     .slot:hover:not(:disabled) { background: transparent; border-color: transparent; }
   .slot:disabled { opacity: 1; cursor: default; }
   .slot .cg-wrap { position: absolute; inset: 0; display: block; }
@@ -70,4 +74,10 @@
   .checks { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--muted); }
   .pip { width: 0.7rem; height: 0.7rem; border-radius: 50%; border: 1px solid var(--muted); }
   .pip.on { background: var(--green-hi); border-color: var(--green-hi); }
+
+  @media (max-width: 900px) {
+    .strip.vertical { min-height: var(--pocket-slot-size); height: auto; }
+    .strip.vertical .pocket { flex-direction: row; }
+    .strip.vertical .slot { --pocket-slot-size: 9cqw; }
+  }
 </style>

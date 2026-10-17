@@ -53,7 +53,7 @@ for (const size of SIZES) {
   test(`no horizontal overflow at ${size.name}`, async ({ browser }) => {
     const ctx = await browser.newContext({ storageState: storageA, viewport: size, hasTouch: true });
     const page = await ctx.newPage();
-    const routes = ["/", "/games", "/watch", "/simuls", "/tournaments", "/leaderboard", "/leaderboard/chess960",
+    const routes = ["/", "/games", "/watch", "/simuls", "/tournaments", "/leaderboard", "/leaderboard/chess960", "/games-db",
       "/settings", "/local", `/u/${A.username}`, `/game/${gameId}`, `/tournament/${tournamentId}`];
 
     for (const route of routes) {

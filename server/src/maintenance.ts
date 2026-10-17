@@ -1,6 +1,6 @@
 import { getDb } from "./db/connection.js";
 import { logger } from "./logger.js";
-import { backfillOpenings } from "./openings/stats.js";
+import { backfillOpeningPositions, backfillOpenings } from "./openings/stats.js";
 import { expirePendingSimuls } from "./simuls/service.js";
 
 const log = logger.child({ mod: "maintenance" });
@@ -59,6 +59,8 @@ function run(): void {
     // Counts games that finished before the explorer existed, or were ended by an admin, so it never misses one.
     const openings = backfillOpenings();
     if (openings > 0) log.info({ openings }, "added games to the opening explorer");
+    const positions = backfillOpeningPositions();
+    if (positions > 0) log.info({ positions }, "indexed existing opening-game positions");
   } catch (err) {
     log.error({ err }, "maintenance failed");
   }

@@ -40,13 +40,23 @@
   const tournament = $derived(matchRoute(route.path, "/tournament/:id"));
   const simul = $derived(matchRoute(route.path, "/simul/:id"));
   const leaderboard = $derived(matchRoute(route.path, "/leaderboard/:variant"));
-  const openings = $derived(matchRoute(route.path, "/openings/:variant"));
+  const gamesDbChess960Line = $derived(matchRoute(route.path, "/games-db/chess960/:startId/line/:fen/:moves"));
+  const gamesDbLine = $derived(matchRoute(route.path, "/games-db/:variant/line/:fen/:moves"));
+  const gamesDbChess960Position = $derived(matchRoute(route.path, "/games-db/chess960/:startId/:fen"));
+  const gamesDbPosition = $derived(matchRoute(route.path, "/games-db/:variant/:fen"));
+  const gamesDb = $derived(matchRoute(route.path, "/games-db/:variant"));
+  const legacyOpenings = $derived(matchRoute(route.path, "/openings/:variant"));
   const analysisGame = $derived(matchRoute(route.path, "/analysis/:id"));
   const importedGame = $derived(matchRoute(route.path, "/analysis/imported/:id"));
   const forgot = $derived(route.path === "/forgot");
   // Reachable without logging in (the user is locked out, or clicked a link in an email).
   const publicPage = $derived(forgot || !!reset || !!unsub);
   const simulInvite = $derived(matchRoute(route.path, "/s/:code"));
+
+  $effect(() => {
+    if (route.path === "/openings") navigate("/games-db");
+    else if (legacyOpenings) navigate(`/games-db/${encodeURIComponent(legacyOpenings.variant)}`);
+  });
 
   $effect(() => {
     if (!auth.ready) return;
@@ -164,8 +174,12 @@
     {:else if simul}{#key simul.id}<SimulDetail id={simul.id} />{/key}
     {:else if route.path === "/leaderboard"}<Leaderboard /> 
     {:else if leaderboard}<Leaderboard variant={leaderboard.variant} />
-    {:else if route.path === "/openings"}<Openings />
-    {:else if openings}<Openings variant={openings.variant} />  
+    {:else if route.path === "/games-db"}<Openings />
+    {:else if gamesDbChess960Line}<Openings variant="chess960" positionFen={gamesDbChess960Line.fen} initialMoves={gamesDbChess960Line.moves} startId={gamesDbChess960Line.startId} />
+    {:else if gamesDbLine}<Openings variant={gamesDbLine.variant} positionFen={gamesDbLine.fen} initialMoves={gamesDbLine.moves} />
+    {:else if gamesDbChess960Position}<Openings variant="chess960" positionFen={gamesDbChess960Position.fen} startId={gamesDbChess960Position.startId} />
+    {:else if gamesDbPosition}<Openings variant={gamesDbPosition.variant} positionFen={gamesDbPosition.fen} />
+    {:else if gamesDb}<Openings variant={gamesDb.variant} />
     {:else if tournament}{#key tournament.id}<TournamentDetail id={tournament.id} />{/key}
     {:else}<Lobby />{/if}
   </main>
