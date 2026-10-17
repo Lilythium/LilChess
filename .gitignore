@@ -154,3 +154,9 @@ white.txt
 
 # Stockfish WASM is copied from node_modules by web/scripts/copy-stockfish.mjs
 web/public/stockfish/
+
+# Test runner output (Playwright and reporters). Never commit generated results.
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
