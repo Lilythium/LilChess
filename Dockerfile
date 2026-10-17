@@ -14,6 +14,7 @@ COPY package.json package-lock.json ./
 COPY shared/package.json ./shared/
 COPY server/package.json ./server/
 COPY web/package.json ./web/
+COPY mobile/package.json ./mobile/
 
 RUN npm ci
 
@@ -22,6 +23,11 @@ COPY . .
 RUN npm run build
 
 RUN npm prune --omit=dev
+
+# The mobile workspace (Capacitor CLI, Android and iOS projects) is not part of the image.
+# Only its manifest is needed above so that `npm ci` accepts the lockfile. Drop the dangling
+# workspace link so nothing in the production stage refers to it.
+RUN rm -f node_modules/mobile
 
 
 FROM node:22-slim AS production

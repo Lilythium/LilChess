@@ -17,3 +17,46 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm run check -w web
+      - run: npm run check -w mobile
+
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # The server's native module (better-sqlite3) is not needed to build the web bundle.
+      - run: npm ci --ignore-scripts
+      - run: npm run check -w mobile
+      - run: npm run sync -w mobile
+      # `cap sync` rewrites generated files in android/ and ios/. Fail if they were not committed.
+      - name: Native projects are in sync
+        run: |
+          if [ -n "$(git status --porcelain -- mobile)" ]; then
+            git status --porcelain -- mobile
+            echo "Run 'npm run sync -w mobile' and commit the result." >&2
+            exit 1
+          fi
+
+  mobile-android:
+    runs-on: ubuntu-latest
+    needs: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci --ignore-scripts
+      - run: npm run sync -w mobile
+      - name: Build debug APK
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug

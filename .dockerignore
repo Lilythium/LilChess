@@ -1,0 +1,22 @@
+# Keep the build context small and stop host artefacts overwriting the container's own.
+.git
+**/node_modules
+**/dist
+web/dist-native
+
+# Local data, secrets and logs
+data
+.env
+.env.*
+**/*.log
+
+# Generated test output
+test-results
+playwright-report
+blob-report
+playwright/.cache
+
+# Mobile client: only mobile/package.json is needed by the image build (for `npm ci`).
+# The native projects and their build output never belong in the server image.
+mobile/android
+mobile/ios

@@ -9,7 +9,8 @@
   "workspaces": [
     "shared",
     "server",
-    "web"
+    "web",
+    "mobile"
   ],
   "scripts": {
     "predev": "npm run build -w shared",

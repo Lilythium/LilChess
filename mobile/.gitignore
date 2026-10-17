@@ -1,0 +1,37 @@
+# Never commit signing material or release credentials.
+# (The generated android/.gitignore and ios/.gitignore leave these commented out or unlisted.)
+
+# Android signing
+*.jks
+*.keystore
+key.properties
+keystore.properties
+signing.properties
+release-signing.*
+google-services.json
+service-account*.json
+
+# iOS signing and distribution
+*.p12
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.provisionprofile
+*.p8
+ExportOptions*.plist
+GoogleService-Info.plist
+
+# Fastlane and other release tooling secrets
+.env
+.env.*
+fastlane/report.xml
+
+# Build output
+android/build/
+android/app/build/
+android/app/release/
+ios/App/build/
+*.apk
+*.aab
+*.ipa
+*.xcarchive

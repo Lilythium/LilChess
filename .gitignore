@@ -160,3 +160,6 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+
+# Mobile client: web build used by Capacitor (see mobile/README.md)
+web/dist-native/

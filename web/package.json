@@ -8,6 +8,7 @@
     "dev": "vite",
     "prebuild": "node scripts/copy-stockfish.mjs",
     "build": "vite build",
+    "build:native": "node scripts/copy-stockfish.mjs && vite build --mode native --outDir dist-native",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"
   },
