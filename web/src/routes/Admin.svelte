@@ -38,6 +38,7 @@
   let activeTab = $state<Tab>("overview");
   let showGuests = $state(false);
   let stats = $state<Stats | null>(null);
+  let registrationMode = $state<string | null>(null);
   let users = $state<UserRow[]>([]);
   let tournaments = $state<TournamentRow[]>([]);
   let invites = $state<InviteRow[]>([]);
@@ -59,11 +60,12 @@
 
   const visibleUsers = $derived(showGuests ? users : users.filter((user) => !user.isGuest));
   const hiddenGuestCount = $derived(users.length - visibleUsers.length);
+  const visibleTabs = $derived(tabs.filter((tab) => tab.id !== "invitations" || registrationMode === "invite"));
 
   async function refresh() {
     loading = true;
     try {
-      const [s, u, t, i, c, g, a] = await Promise.all([
+      const [s, u, t, i, c, g, a, health] = await Promise.all([
         api<{ stats: Stats }>("/api/admin/stats"),
         api<{ users: UserRow[] }>("/api/admin/users"),
         api<{ tournaments: TournamentRow[] }>("/api/admin/tournaments"),
@@ -71,8 +73,10 @@
         api<{ challenges: ChallengeRow[] }>("/api/admin/challenges"),
         api<{ games: GameRow[] }>("/api/admin/games"),
         api<{ entries: AuditRow[] }>("/api/admin/audit"),
+        api<{ features: { registration: string } }>("/api/health"),
       ]);
       stats = s.stats;
+      registrationMode = health.features.registration;
       users = u.users;
       tournaments = t.tournaments;
       invites = i.invites;
@@ -267,7 +271,7 @@
   </header>
 
   <nav class="tabs" aria-label="Administration sections">
-    {#each tabs as tab}
+    {#each visibleTabs as tab}
       <button class:active={activeTab === tab.id} aria-pressed={activeTab === tab.id} onclick={() => (activeTab = tab.id)}>{tab.label}</button>
     {/each}
   </nav>
@@ -351,7 +355,7 @@
           </tr>
         {/each}</tbody>
       </table></div>
-    {:else if activeTab === "invitations"}
+    {:else if activeTab === "invitations" && registrationMode === "invite"}
       <details class="create" open>
         <summary>Create invite code</summary>
         <form class="form" onsubmit={createInvite}>
@@ -403,7 +407,7 @@
           </tr>
         {/each}</tbody>
       </table></div>
-    {:else}
+    {:else if activeTab === "audit"}
       <div class="table-wrap"><table>
         <thead><tr><th>Time</th><th>Administrator</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
         <tbody>{#each audit as entry (entry.id)}
@@ -412,7 +416,7 @@
         {/each}</tbody>
       </table></div>
     {/if}
-    {#if activeTab !== "overview" && ((activeTab === "users" && visibleUsers.length === 0) || (activeTab === "tournaments" && tournaments.length === 0) || (activeTab === "invitations" && invites.length === 0) || (activeTab === "challenges" && challenges.length === 0) || (activeTab === "games" && games.length === 0) || (activeTab === "audit" && audit.length === 0))}
+    {#if activeTab !== "overview" && ((activeTab === "users" && visibleUsers.length === 0) || (activeTab === "tournaments" && tournaments.length === 0) || (activeTab === "invitations" && registrationMode === "invite" && invites.length === 0) || (activeTab === "challenges" && challenges.length === 0) || (activeTab === "games" && games.length === 0) || (activeTab === "audit" && audit.length === 0))}
       <p class="empty">Nothing to show.</p>
     {/if}
   {/if}

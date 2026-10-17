@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { login, register } from "../lib/auth.svelte";
+  import { api } from "../lib/api";
   import { LoginBody, RegisterBody } from "@lilchess/shared";
   import { validate } from "../lib/validate";
 
@@ -12,6 +14,13 @@
   let error = $state<string | null>(null);
   let busy = $state(false);
   let loginFailed = $state(false);
+  let registrationMode = $state<string | null>(null);
+
+  onMount(() => {
+    void api<{ features: { registration: string } }>("/api/health")
+      .then((health) => (registrationMode = health.features.registration))
+      .catch(() => {});
+  });
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -47,7 +56,9 @@
     <input type="password" placeholder="Password" bind:value={password} required
            autocomplete={mode === "login" ? "current-password" : "new-password"} />
     {#if mode === "register"}
-      <input placeholder="Invite code (if required)" bind:value={inviteCode} />
+      {#if registrationMode === "invite"}
+        <input placeholder="Invite code" bind:value={inviteCode} />
+      {/if}
       <span class="muted">Password must be at least 8 characters.</span>
     {/if}
     {#if error}<span class="error">{error}</span>{/if}
