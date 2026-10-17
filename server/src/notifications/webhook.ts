@@ -29,14 +29,20 @@ export function webhookEnabled(): boolean {
   return config() !== undefined;
 }
 
-export async function sendWebhook(message: string): Promise<void> {
+export async function sendWebhook(message: string, discordUserId?: string): Promise<void> {
   const cfg = config();
   if (!cfg) return;
   try {
+    const content = discordUserId ? `<@${discordUserId}> ${message}` : message;
     const res = await fetch(cfg.url, {
       method: "POST",
       headers: cfg.kind === "discord" ? { "content-type": "application/json" } : undefined,
-      body: cfg.kind === "discord" ? JSON.stringify({ content: message, allowed_mentions: { parse: [] } }) : message,
+      body: cfg.kind === "discord"
+        ? JSON.stringify({
+            content,
+            allowed_mentions: { parse: [], users: discordUserId ? [discordUserId] : [] },
+          })
+        : message,
       signal: AbortSignal.timeout(5_000), 
     });
     if (!res.ok) log.warn({ status: res.status, kind: cfg.kind }, "webhook returned non-2xx");

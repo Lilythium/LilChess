@@ -57,7 +57,8 @@ export function notifyUser(
         .get(userId) as { id: number; username: string } | undefined;
       if (user && claimNotification(userId, `webhook:${dedupKey}`, kind)) {
         const { subject, text } = build({ id: user.id, username: user.username, email: "", unsubscribeToken: null });
-        void sendWebhook(`For ${user.username}: ${subject}\n${text}`);
+        const discord = discordRecipientFor(userId, kind);
+        void sendWebhook(`For ${user.username}: ${subject}\n${text}`, discord?.discordId);
       }
     } catch (err) {
       log.warn({ err, kind }, "webhook notification failed");

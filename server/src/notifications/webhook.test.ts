@@ -47,7 +47,7 @@ describe("sendWebhook", () => {
       "https://discord.com/api/webhooks/x/y",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ content: "game over", allowed_mentions: { parse: [] } }),
+        body: JSON.stringify({ content: "game over", allowed_mentions: { parse: [], users: [] } }),
       }),
     );
   });
@@ -75,7 +75,24 @@ describe("sendWebhook", () => {
       expect.objectContaining({
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ content: "game over", allowed_mentions: { parse: [] } }),
+        body: JSON.stringify({ content: "game over", allowed_mentions: { parse: [], users: [] } }),
+      }),
+    );
+  });
+
+  it("pings only the specified Discord user", async () => {
+    process.env.WEBHOOK_URL = "https://discord.com/api/webhooks/x/y";
+    process.env.WEBHOOK_KIND = "discord";
+
+    await sendWebhook("Your turn", "123456789012345678");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://discord.com/api/webhooks/x/y",
+      expect.objectContaining({
+        body: JSON.stringify({
+          content: "<@123456789012345678> Your turn",
+          allowed_mentions: { parse: [], users: ["123456789012345678"] },
+        }),
       }),
     );
   });

@@ -36,10 +36,10 @@ beforeEach(() => {
   config.baseOrigin = "https://chess.test";
   openDb(":memory:");
   getDb().exec(`
-    INSERT INTO users (id, username, password_hash, created_at, email, unsubscribe_token) VALUES
-      (1,'alice','x',0,'alice@example.com','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
-      (2,'bob','x',0,'bob@example.com','bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'),
-      (3,'carol','x',0,NULL,NULL);
+    INSERT INTO users (id, username, password_hash, created_at, email, unsubscribe_token, discord_id) VALUES
+      (1,'alice','x',0,'alice@example.com','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',NULL),
+      (2,'bob','x',0,'bob@example.com','bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',NULL),
+      (3,'carol','x',0,NULL,NULL,'123456789012345678');
   `);
   sent.mockClear();
   vi.mocked(sendWebhook).mockClear();
@@ -120,6 +120,7 @@ describe("challenges", () => {
 
     expect(sendWebhook).toHaveBeenCalledTimes(1);
     expect(vi.mocked(sendWebhook).mock.calls[0]![0]).toContain("For carol: Alice challenged you");
+    expect(vi.mocked(sendWebhook).mock.calls[0]![1]).toBe("123456789012345678");
   });
 
   it("emails each targeted challenge once, without suppressing later challenges", () => {
