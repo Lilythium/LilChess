@@ -47,4 +47,13 @@ describe("ending a game with offers pending", () => {
     expect((await post(bob, "abort")).statusCode).toBe(200);
     expect(row()).toEqual({ status: "aborted", draw_offered_by: null, takeback_offered_by: null });
   });
+
+  it("does not include aborted games in game history", async () => {
+    await post(bob, "abort");
+    const finishedGameId = await startGame(app, alice, bob);
+    await app.inject({ method: "POST", url: `/api/games/${finishedGameId}/resign`, cookies: { sessionId: bob } });
+
+    const history = await app.inject({ method: "GET", url: "/api/games/my-games", cookies: { sessionId: alice } });
+    expect(history.json().finished.map((game: { id: string }) => game.id)).toEqual([finishedGameId]);
+  });
 });

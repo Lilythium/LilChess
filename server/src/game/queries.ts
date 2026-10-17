@@ -149,7 +149,7 @@ export function getMyGames(userId: number) {
 
   const finished = db.prepare(`
     SELECT ${GAME_ROW_COLUMNS} ${GAME_ROW_FROM}
-    WHERE g.status <> 'started' AND (g.white_id = :me OR g.black_id = :me)
+    WHERE g.status = 'finished' AND (g.white_id = :me OR g.black_id = :me)
     ORDER BY g.ended_at DESC LIMIT 50
   `).all({ me: userId }) as GameListRow[];
 
