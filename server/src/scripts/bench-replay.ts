@@ -93,7 +93,10 @@ async function main() {
   for (let i = 1; i <= WARMUP_SEEDS; i++) {
     await runGame(999 + i);
   }
-  global.gc && global.gc();
+
+  if (typeof global.gc === "function") {
+    global.gc();
+  }
 
   console.log(`Running benchmark (${SEEDS} games, concurrency: ${CONCURRENCY})...`);
   const allSamples: Sample[] = [];
