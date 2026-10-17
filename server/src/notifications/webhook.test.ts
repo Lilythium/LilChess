@@ -37,6 +37,21 @@ describe("sendWebhook", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("infers Discord for a Discord webhook URL when WEBHOOK_KIND is omitted", async () => {
+    process.env.WEBHOOK_URL = "https://discord.com/api/webhooks/x/y";
+    process.env.WEBHOOK_KIND = "";
+
+    await sendWebhook("game over");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://discord.com/api/webhooks/x/y",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ content: "game over", allowed_mentions: { parse: [] } }),
+      }),
+    );
+  });
+
   it("posts a plain-text body for ntfy", async () => {
     process.env.WEBHOOK_URL = "https://ntfy.sh/lilchess";
     process.env.WEBHOOK_KIND = "ntfy";
@@ -60,7 +75,7 @@ describe("sendWebhook", () => {
       expect.objectContaining({
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ content: "game over" }),
+        body: JSON.stringify({ content: "game over", allowed_mentions: { parse: [] } }),
       }),
     );
   });

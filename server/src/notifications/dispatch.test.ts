@@ -5,12 +5,17 @@ vi.mock("./mailer.js", () => ({
   emailEnabled: () => true,
   sendMail: vi.fn().mockResolvedValue(true),
 }));
+vi.mock("./webhook.js", () => ({
+  webhookEnabled: () => true,
+  sendWebhook: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { config } from "../config.js";
 import { closeDb, getDb, openDb } from "../db/connection.js";
 import { insertGame } from "../db/repositories/games.js";
 import { notifyChallengeAccepted, notifyChallengeReceived, notifyGameOver, notifyTournamentStarting, notifyYourTurn } from "./dispatch.js";
 import { sendMail } from "./mailer.js";
+import { sendWebhook } from "./webhook.js";
 import { setPrefs } from "./queries.js";
 
 const CORR: ClockConfig = { mode: "correspondence", daysPerMove: 3 };
@@ -37,6 +42,7 @@ beforeEach(() => {
       (3,'carol','x',0,NULL,NULL);
   `);
   sent.mockClear();
+  vi.mocked(sendWebhook).mockClear();
 });
 afterEach(() => {
   closeDb();
@@ -109,6 +115,13 @@ describe("game completed", () => {
 });
 
 describe("challenges", () => {
+  it("forwards notifications to the global webhook, even when the user has no email", () => {
+    notifyChallengeReceived({ challengeId: "challenge-1", fromName: "alice", toId: 3, clock: CORR });
+
+    expect(sendWebhook).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(sendWebhook).mock.calls[0]![0]).toContain("For carol: Alice challenged you");
+  });
+
   it("emails each targeted challenge once, without suppressing later challenges", () => {
     const o = { challengeId: "challenge-1", fromName: "alice", toId: 2, clock: CORR };
     notifyChallengeReceived(o);

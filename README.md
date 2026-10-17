@@ -123,8 +123,8 @@ LilChess can be configured with environment variables.
 | `BACKUP_HOUR_UTC` | `3`                 | Daily backup hour in UTC                      |
 | `LEADERBOARD_MIN_GAMES` | `5`           | Minimum rated games required for leaderboard eligibility |
 | `LEADERBOARD_INACTIVE_DAYS` | `30`      | Hide inactive players from the rating leaderboard after this many days; `0` disables hiding |
-| `WEBHOOK_URL`     | —                   | Optional notification webhook                 |
-| `WEBHOOK_KIND`    | —                   | Webhook type, such as `ntfy` or `discord`     |
+| `WEBHOOK_URL`     | —                   | Optional server-wide webhook for notifications and correspondence-game events |
+| `WEBHOOK_KIND`    | —                   | `ntfy` or `discord`; Discord is inferred from its webhook URL if omitted |
 | `ALLOW_GUESTS`    | `true`              | Let invite-link visitors play as guests       |
 | `SMTP_HOST`       | —                   | SMTP server; enables email (needs `SMTP_FROM` and `BASE_URL`) |
 | `SMTP_PORT`       | `587`               | SMTP port                                     |

@@ -4,13 +4,14 @@ import { logger } from "../logger.js";
 import { discordEnabled, sendDiscord } from "./discord.js";
 import { emailEnabled, sendMail } from "./mailer.js";
 import { claimNotification, discordRecipientFor, recipientFor, type Recipient } from "./queries.js";
+import { sendWebhook, webhookEnabled } from "./webhook.js";
 import * as t from "./templates.js";
 
 const log = logger.child({ mod: "notify" });
 
-// The one door every notification goes through, email and Discord alike. Call it AFTER the database
-// transaction has committed. It never throws and never awaits a send. Each channel is independent:
-// a user can have either, both or neither, and a failure on one never blocks the other.
+// The one door every notification goes through. Call it AFTER the database transaction has committed.
+// It never throws and never awaits a send. Each channel is independent, and a failure on one never
+// blocks the others.
 export function notifyUser(
   userId: number,
   kind: NotificationKind,
@@ -46,6 +47,20 @@ export function notifyUser(
       }
     } catch (err) {
       log.warn({ err, kind }, "discord notification failed");
+    }
+  }
+
+  if (webhookEnabled()) {
+    try {
+      const user = getDb()
+        .prepare(`SELECT id, username FROM users WHERE id = ? AND is_guest = 0 AND disabled_at IS NULL`)
+        .get(userId) as { id: number; username: string } | undefined;
+      if (user && claimNotification(userId, `webhook:${dedupKey}`, kind)) {
+        const { subject, text } = build({ id: user.id, username: user.username, email: "", unsubscribeToken: null });
+        void sendWebhook(`For ${user.username}: ${subject}\n${text}`);
+      }
+    } catch (err) {
+      log.warn({ err, kind }, "webhook notification failed");
     }
   }
 }

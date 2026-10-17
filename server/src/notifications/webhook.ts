@@ -5,9 +5,28 @@ const log = logger.child({ mod: "webhook" });
 
 function config(): { url: string; kind: WebhookKind } | undefined {
   const url = process.env.WEBHOOK_URL;
-  const kind = process.env.WEBHOOK_KIND as WebhookKind | undefined;
-  if (!url || !kind) return undefined;
+  const configuredKind = process.env.WEBHOOK_KIND;
+  if (!url) return undefined;
+
+  let kind: WebhookKind | undefined;
+  if (configuredKind === "ntfy" || configuredKind === "discord") {
+    kind = configuredKind;
+  } else if (!configuredKind) {
+    try {
+      const target = new URL(url);
+      if (/^(?:[a-z]+\.)?(?:discord|discordapp)\.com$/.test(target.hostname) && target.pathname.startsWith("/api/webhooks/")) {
+        kind = "discord";
+      }
+    } catch {
+      return undefined;
+    }
+  }
+  if (!kind) return undefined;
   return { url, kind };
+}
+
+export function webhookEnabled(): boolean {
+  return config() !== undefined;
 }
 
 export async function sendWebhook(message: string): Promise<void> {
@@ -17,7 +36,7 @@ export async function sendWebhook(message: string): Promise<void> {
     const res = await fetch(cfg.url, {
       method: "POST",
       headers: cfg.kind === "discord" ? { "content-type": "application/json" } : undefined,
-      body: cfg.kind === "discord" ? JSON.stringify({ content: message }) : message,
+      body: cfg.kind === "discord" ? JSON.stringify({ content: message, allowed_mentions: { parse: [] } }) : message,
       signal: AbortSignal.timeout(5_000), 
     });
     if (!res.ok) log.warn({ status: res.status, kind: cfg.kind }, "webhook returned non-2xx");
