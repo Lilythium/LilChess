@@ -19,6 +19,11 @@ import { openingsRoutes } from "./openings/routes.js";
 import { importedRoutes } from "./imported/routes.js";
 import { simulRoutes } from "./simuls/routes.js";
 
+// Keep the health version tied to the root package version used for server releases. This path
+// resolves to the repository root from both server/src during development and server/dist at runtime.
+const rootPackage = JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
+const SERVER_API_VERSION = 1; // See docs/mobile-phase-0-review.md for the compatibility policy.
+
 type TrustProxy = boolean | string | ((address: string, hop: number) => boolean);
 
 function toTrustProxy(tp: boolean | number | string): TrustProxy {
@@ -68,7 +73,16 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(openingsRoutes);
   await app.register(importedRoutes);
   await app.register(simulRoutes);
-  app.get("/api/health", { config: { rateLimit: false } }, async () => ({ ok: true }));
+  app.get("/api/health", { config: { rateLimit: false } }, async () => ({
+    ok: true,
+    app: "lilchess",
+    version: rootPackage.version,
+    apiVersion: SERVER_API_VERSION,
+    features: {
+      guests: config.allowGuests,
+      registration: config.registration,
+    },
+  }));
 
   // Static assets (web/dist) + SPA fallback
   const webDistPath = path.resolve(process.cwd(), "web/dist");
