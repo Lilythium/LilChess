@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "./lib/api";
   import { auth, loadMe } from "./lib/auth.svelte";
-  import { route, matchRoute, navigate } from "./lib/router.svelte";
+  import { route, matchRoute, navigate, navigateToNewGame } from "./lib/router.svelte";
   import type { MyGames as MyGamesData } from "./lib/types";
   import Header from "./lib/components/Header.svelte";
   import Login from "./routes/Login.svelte";
@@ -105,7 +105,7 @@
     function open(gameId: string) {
       if (opened.has(gameId)) return;
       opened.add(gameId);
-      navigate(`/game/${gameId}`);
+      navigateToNewGame(gameId);
     }
     async function catchUp() {
       if (checking) return;

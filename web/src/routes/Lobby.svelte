@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { auth } from "../lib/auth.svelte";
-  import { navigate } from "../lib/router.svelte";
+  import { navigate, navigateToNewGame } from "../lib/router.svelte";
   import { displayName, timeControl } from "../lib/format";
     import { hasResumableLocalGame, startLocalGame } from "../lib/game/localGame";
   import type { ChallengeRow, Challenges, MyGames } from "../lib/types";
@@ -73,7 +73,7 @@
         const fresh = started.find((id) => !seen.has(id));
 
         if (fresh) {
-          navigate(`/game/${fresh}`);
+          navigateToNewGame(fresh);
         }
       }
     } catch {
@@ -168,7 +168,7 @@
         method: "POST",
       });
 
-      navigate(`/game/${r.gameId}`);
+      navigateToNewGame(r.gameId);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       await refresh();

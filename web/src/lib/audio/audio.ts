@@ -69,6 +69,18 @@ export function playSound(sound: SoundName): void {
     });
 }
 
+export function playMoveSound(san: string): void {
+    if (san === "O-O" || san === "O-O-O") {
+        playSound("castle");
+    } else if (san.endsWith("+")) {
+        playSound("check");
+    } else if (san.includes("x")) {
+        playSound("capture");
+    } else {
+        playSound("move");
+    }
+}
+
 export function setSoundEnabled(value: boolean): void {
     enabled = value;
 }

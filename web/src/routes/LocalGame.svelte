@@ -24,7 +24,7 @@
   import Clock from "../lib/components/Clock.svelte";
   import MoveList from "../lib/components/MoveList.svelte";
   import MoveNav from "../lib/components/MoveNav.svelte";
-  import { playSound } from "../lib/audio/audio";
+  import { playMoveSound, playSound } from "../lib/audio/audio";
   import { resultText } from "../lib/format";
   import { viewport } from "../lib/viewport.svelte";
   import { gameTitle } from "../lib/format";
@@ -89,15 +89,7 @@
     const san = sanForNextMove(save.game, uci);
 
     if (res.ok) {
-      if (san === "O-O" || san === "O-O-O") {
-        playSound("castle");
-      } else if (san?.endsWith("+")) {
-        playSound("check");
-      } else if (san?.includes("x")) {
-        playSound("capture");
-      } else {
-        playSound("move");
-      }
+      if (san) playMoveSound(san);
     }
 
     commit(res, san);
@@ -129,24 +121,37 @@
 
     switch (action) {
       case "first":
-        viewPly = 0;
+        setViewPly(0);
         break;
       case "prev":
-        viewPly = Math.max(0, current - 1);
+        setViewPly(Math.max(0, current - 1));
         break;
       case "next":
-        viewPly = current >= total - 1 ? null : current + 1;
+        setViewPly(current >= total - 1 ? null : current + 1);
         break;
       case "last":
-        viewPly = null;
+        setViewPly(null);
         break;
     }
+  }
+
+  function setViewPly(nextPly: number | null) {
+    if (save) {
+      const total = save.game.ply;
+      const current = viewPly ?? total;
+      const next = nextPly ?? total;
+      if (next > current) {
+        const san = save.sans[next - 1];
+        if (san) playMoveSound(san);
+      }
+    }
+    viewPly = nextPly;
   }
 
   function selectPly(ply: number) {
     if (!save) return;
 
-    viewPly = ply === save.game.ply ? null : ply;
+    setViewPly(ply === save.game.ply ? null : ply);
   }
 
   function onWheel(event: WheelEvent) {
@@ -169,7 +174,7 @@
     if (nextPly < 0 || nextPly > total) return;
 
     event.preventDefault();
-    selectPly(nextPly);
+    setViewPly(nextPly === total ? null : nextPly);
   }
 
   const sanByPly: Record<number, string> = $derived(

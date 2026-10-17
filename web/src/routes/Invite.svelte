@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { auth, playAsGuest } from "../lib/auth.svelte";
-  import { navigate } from "../lib/router.svelte";
+  import { navigateToNewGame } from "../lib/router.svelte";
   import { displayName, timeControl } from "../lib/format";
   import Login from "./Login.svelte";
 
@@ -27,7 +27,7 @@
     error = null;
     try {
       const r = await api<{ gameId: string }>(`/api/challenges/${id}/accept`, { method: "POST" });
-      navigate(`/game/${r.gameId}`);
+      navigateToNewGame(r.gameId);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {

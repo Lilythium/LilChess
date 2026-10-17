@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { chess960Fen, fenOf, positionFromFen, PositionTimeline, VARIANTS, VARIANT_LABELS, startFenFor, type Color, type Variant } from "@lilchess/shared";
   import { api } from "../lib/api";
+  import { playMoveSound } from "../lib/audio/audio";
   import AnalysisBoard from "../lib/components/AnalysisBoard.svelte";
   import OpeningGames from "../lib/components/OpeningGames.svelte";
   import Chess960StartPicker from "../lib/components/Chess960StartPicker.svelte";
@@ -89,7 +90,15 @@
     }
   });
 
-  const play = (uci: string) => (line = [...line, uci]);
+  function play(uci: string, san?: string) {
+    const nextLine = [...line, uci];
+    if (!san) {
+      const nextTimeline = new PositionTimeline(startFen, variant);
+      if (nextTimeline.sync(nextLine)) san = nextTimeline.sans[line.length];
+    }
+    if (san) playMoveSound(san);
+    line = nextLine;
+  }
   const back = () => (line = line.slice(0, -1));
   const reset = () => (line = []);
   const positionHref = (lastMoveIndex: number) => {
@@ -165,7 +174,7 @@
               <thead><tr><th>Move</th><th>Games</th><th>White / draw / Black</th></tr></thead>
               <tbody>
                 {#each data.moves as m (m.uci)}
-                  <tr tabindex="0" onclick={() => play(m.uci)} onkeydown={(e) => { if (e.key === "Enter") play(m.uci); }}>
+                  <tr tabindex="0" onclick={() => play(m.uci, m.san)} onkeydown={(e) => { if (e.key === "Enter") play(m.uci, m.san); }}>
                     <td class="san">{m.san}</td>
                     <td>{m.total} <span class="muted">({pct(m.total, data.total)}%)</span></td>
                     <td>

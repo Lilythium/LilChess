@@ -14,6 +14,7 @@
   import { engineSupports } from "../lib/game/variantUi";
   import { VARIANT_LABELS } from "@lilchess/shared";
   import { selectPly, stepView, type NavAction } from "../lib/game/history";
+  import { playMoveSound } from "../lib/audio/audio";
   import { commonPrefix, playOnLine } from "../lib/analysis/line";
   import { createAnalysisSession } from "../lib/analysis/analysisSession.svelte";
   import AnalysisBoard from "../lib/components/AnalysisBoard.svelte";
@@ -165,12 +166,27 @@
 
   function playMove(uci: string) {
     const next = playOnLine(line, ply, uci, viewFen, variant);
+    const soundTimeline = new PositionTimeline(initialFen, variant);
+    if (soundTimeline.sync(next)) {
+      const san = soundTimeline.sans[ply];
+      if (san) playMoveSound(san);
+    }
     if (next !== line) line = next;
     viewPly = selectPly(ply + 1, next.length);
   }
 
   function nav(action: NavAction) {
-    viewPly = stepView(viewPly, total, action);
+    setViewPly(stepView(viewPly, total, action));
+  }
+
+  function setViewPly(nextPly: number | null) {
+    const current = viewPly ?? total;
+    const next = nextPly ?? total;
+    if (next > current) {
+      const san = lineView.sans[next - 1];
+      if (san) playMoveSound(san);
+    }
+    viewPly = nextPly;
   }
 
   function onWheel(e: WheelEvent) {
@@ -191,7 +207,7 @@
     if (nextPly < 0 || nextPly > total) return;
 
     e.preventDefault();
-    viewPly = selectPly(nextPly, total);
+    setViewPly(selectPly(nextPly, total));
   }
 
   function resetToGame() {
@@ -289,7 +305,7 @@
 
       <div class="moves">
         <MoveNav viewPly={viewPly} {total} onNav={nav} />
-        <MoveList {sanByPly} ply={total} selected={viewPly} {marks} evaluations={moveEvaluations} onSelect={(p) => (viewPly = selectPly(p, total))} />
+        <MoveList {sanByPly} ply={total} selected={viewPly} {marks} evaluations={moveEvaluations} onSelect={(p) => setViewPly(selectPly(p, total))} />
       </div>
 
       <div class="actions">

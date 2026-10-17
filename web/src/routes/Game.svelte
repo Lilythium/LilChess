@@ -8,7 +8,7 @@
   import NameCard from "../lib/components/NameCard.svelte";
   import GameSidebar from "../lib/components/GameSidebar.svelte";
   import { selectPly, stepView, type NavAction } from "../lib/game/history";
-  import { playSound } from "../lib/audio/audio";
+  import { playMoveSound, playSound } from "../lib/audio/audio";
   import { nextBoardForHost, type Color, type GameState } from "@lilchess/shared";
   import { viewport } from "../lib/viewport.svelte";
   import { gameTitle } from "../lib/format";
@@ -20,7 +20,7 @@
   import { keepAwake } from "../lib/wakeLock";
   import SimulBar from "../lib/components/SimulBar.svelte";
   import TournamentSimulBar from "../lib/components/TournamentSimulBar.svelte";
-  import { navigate } from "../lib/router.svelte";
+  import { consumeNewGameSound, navigate } from "../lib/router.svelte";
   import { resyncAndAdvanceAfterHostMove } from "../lib/game/tournamentSimulNavigation";
 
   let { id }: { id: string } = $props();
@@ -58,8 +58,21 @@
 
   function nav(action: NavAction) {
     if (view.game) {
-      viewPly = stepView(viewPly, view.game.ply, action);
+      setViewPly(stepView(viewPly, view.game.ply, action));
     }
+  }
+
+  function setViewPly(nextPly: number | null) {
+    const game = view.game;
+    if (game) {
+      const current = viewPly ?? game.ply;
+      const next = nextPly ?? game.ply;
+      if (next > current) {
+        const san = view.sanByPly[next];
+        if (san) playMoveSound(san);
+      }
+    }
+    viewPly = nextPly;
   }
 
   function onWheel(e: WheelEvent) {
@@ -82,7 +95,7 @@
     if (nextPly < 0 || nextPly > game.ply) return;
 
     e.preventDefault();
-    viewPly = selectPly(nextPly, game.ply);
+    setViewPly(selectPly(nextPly, game.ply));
   }
 
   function onKey(e: KeyboardEvent) {
@@ -111,7 +124,7 @@
   }
 
   onMount(() => {
-    playSound("gameStart");
+    if (consumeNewGameSound(id)) playSound("gameStart");
 
     const sock = connectGameSocket(id, {
       onEvent: store.applyEvent,
@@ -282,7 +295,7 @@
         ply={g.ply}
         {viewPly}
         onNav={nav}
-        onSelect={(ply: number) => (viewPly = selectPly(ply, g.ply))}
+        onSelect={(ply: number) => setViewPly(selectPly(ply, g.ply))}
       />
 
       <GameAlerts
@@ -359,7 +372,7 @@
           serverOffset={view.serverOffset}
           {id}
           onNav={nav}
-          onSelect={(ply: number) => (viewPly = selectPly(ply, g.ply))}
+          onSelect={(ply: number) => setViewPly(selectPly(ply, g.ply))}
           onDone={store.resync}
         />
         {#if g.status === "finished"}

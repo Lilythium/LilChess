@@ -2,7 +2,7 @@ import type { GameEvent, GameState } from "@lilchess/shared";
 import type { GameResponse, H2H, Players, SimulInfo, TournamentSimulInfo } from "../types";
 import { api } from "../api";
 import { applyGameEvent } from "./applyEvent";
-import { playSound } from "../audio/audio";
+import { playMoveSound, playSound } from "../audio/audio";
 import { crossedLowTimeThreshold, remainingMs } from "./clock";
 
 export interface GameView {
@@ -115,15 +115,7 @@ export function createGameStore(gameId: string) {
     }
 
     if (outcome === "applied" && event.type === "move") {
-      if (event.san === "O-O" || event.san === "O-O-O") {
-        playSound("castle");
-      } else if (event.san.endsWith("+")) {
-        playSound("check");
-      } else if (event.san.includes("x")) {
-        playSound("capture");
-      } else {
-        playSound("move");
-      }
+      playMoveSound(event.san);
     }
   }
 
