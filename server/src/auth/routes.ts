@@ -14,6 +14,7 @@ import { getInvitePreview } from "../game/queries.js";
 import { consumeRegistrationInvite, isRegistrationInviteUsable } from "./invites.js";
 import { getDb } from "../db/connection.js";
 import { SESSION_COOKIE, sessionTokenFromCredentials } from "./sessionToken.js";
+import { issueNativeWebSocketTicket, NATIVE_WEBSOCKET_TICKET_TTL_MS } from "./nativeWebSocketTicket.js";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const GUEST_SESSION_MS = 365 * 24 * 60 * 60 * 1000;
@@ -123,10 +124,53 @@ export async function authRoutes(app: FastifyInstance) {
     },
   );
 
+  // Native guests use the same invite and permission checks as web guests, but receive a bearer
+  // token and never depend on a WebView cookie jar.
+  app.post(
+    "/api/native/guest",
+    { config: { rateLimit: { max: 10, timeWindow: "1 hour" } } },
+    async (req, reply) => {
+      if (!config.allowGuests || config.registration === "closed") {
+        return reply.code(403).send({ error: "Guest play is disabled on this server" });
+      }
+      const body = parse(GuestBody, req.body, reply);
+      if (!body) return reply;
+      const invite = getInvitePreview(body.challengeId);
+      if (!invite) {
+        return reply.code(404).send({ error: "This invite link is invalid or has expired" });
+      }
+      if (invite.targeted) {
+        return reply.code(403).send({ error: "This challenge is for a specific player. Log in or register to accept it." });
+      }
+
+      const user = createGuest();
+      const sessionToken = await establishSession(reply, user.id, GUEST_SESSION_MS, false);
+      req.log.info({ userId: user.id }, "native guest created");
+      return { ok: true, user, sessionToken };
+    },
+  );
+
+  // A ticket is issued only from a validated native bearer session; cookies alone are not enough.
+  app.post("/api/native/ws-ticket", {
+    preHandler: requireAuth,
+    config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+  }, async (req, reply) => {
+    const token = sessionTokenFromCredentials(req.headers.authorization, undefined);
+    if (!token) return reply.code(401).send({ error: "Native bearer authentication required" });
+    try {
+      const ticket = issueNativeWebSocketTicket(hashSessionToken(token));
+      return { ok: true, ticket, expiresInMs: NATIVE_WEBSOCKET_TICKET_TTL_MS };
+    } catch {
+      req.log.warn({ userId: req.user?.id }, "native WebSocket ticket capacity reached");
+      return reply.code(503).send({ error: "Unable to issue a WebSocket ticket. Try again shortly." });
+    }
+  });
+
   app.post("/api/logout", async (req, reply) => {
     const token = sessionTokenFromCredentials(req.headers.authorization, req.cookies[SESSION_COOKIE]);
     if (token) deleteSession(hashSessionToken(token));
-    reply.clearCookie(SESSION_COOKIE, { path: "/" });
+    // Preserve web cookie logout; native bearer logout does not create or clear a browser cookie.
+    if (req.headers.authorization === undefined) reply.clearCookie(SESSION_COOKIE, { path: "/" });
     return { ok: true };
   });
 

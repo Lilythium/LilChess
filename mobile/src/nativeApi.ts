@@ -1,0 +1,94 @@
+import { CapacitorHttp } from "@capacitor/core";
+import {
+  describeConnectionFailure,
+  normalizeServerAddress,
+} from "./serverSelection.js";
+
+export const DEFAULT_NATIVE_REQUEST_TIMEOUT_MS = 12_000;
+
+export class NativeApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "NativeApiError";
+    this.status = status;
+  }
+}
+
+export interface NativeRequestOptions {
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  body?: unknown;
+  token?: string;
+  /** Applied to both connect and response reads; valid range is 1–60 seconds. */
+  timeoutMs?: number;
+}
+
+/**
+ * HTTP transport for the Capacitor app. This deliberately uses the native HTTP bridge rather
+ * than WebView fetch(), so it does not need CORS or broader Origin/CSRF exceptions on the server.
+ * It never retries a failed request and never follows redirects with an Authorization header.
+ */
+export async function nativeRequest<T = unknown>(
+  serverUrl: string,
+  path: string,
+  options: NativeRequestOptions = {},
+): Promise<T> {
+  const address = normalizeServerAddress(serverUrl);
+  if (!/^\/?[a-z\d/_-]+$/i.test(path) || path.includes("..")) {
+    throw new TypeError("Native API paths must be relative paths under /api.");
+  }
+
+  const timeoutMs = options.timeoutMs ?? DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 60_000) {
+    throw new RangeError("Native API timeout must be between 1000 and 60000 milliseconds.");
+  }
+  if (options.token !== undefined && !/^[a-f\d]{64}$/i.test(options.token)) {
+    throw new TypeError("The stored session token is invalid. Sign in again.");
+  }
+
+  const relativePath = path.replace(/^\/+/, "");
+  const url = `${address.apiBaseUrl}/${relativePath}`;
+  const hasBody = options.body !== undefined;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (hasBody) headers["Content-Type"] = "application/json";
+  if (options.token) headers.Authorization = `Bearer ${options.token}`;
+
+  let response: { status: number; data?: unknown };
+  try {
+    response = await CapacitorHttp.request({
+      url,
+      method: options.method ?? (hasBody ? "POST" : "GET"),
+      headers,
+      data: options.body,
+      connectTimeout: timeoutMs,
+      readTimeout: timeoutMs,
+      disableRedirects: true,
+    });
+  } catch (error) {
+    throw new NativeApiError(0, describeConnectionFailure(error, address));
+  }
+
+  const data = parseResponseData(response.data);
+  if (response.status < 200 || response.status >= 300) {
+    const message = isRecord(data) && typeof data.error === "string"
+      ? data.error
+      : `The server returned HTTP ${response.status}.`;
+    throw new NativeApiError(response.status, message);
+  }
+  return data as T;
+}
+
+function parseResponseData(value: unknown): unknown {
+  if (typeof value !== "string") return value ?? {};
+  if (!value.trim()) return {};
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

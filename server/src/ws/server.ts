@@ -1,7 +1,13 @@
 import type { Duplex } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { WebSocketServer, type WebSocket } from "ws";
-import { authenticateUpgrade, isAllowedOrigin } from "./upgradeAuth.js";
+import {
+  authenticateNativeWebSocketTicket,
+  authenticateUpgrade,
+  isAllowedOrigin,
+  isValidNativeWebSocketTicket,
+  nativeWebSocketTicketFromHeader,
+} from "./upgradeAuth.js";
 import { handleGameConnection } from "./gameSocket.js";
 import { getParticipants } from "../db/repositories/games.js";
 import { RateWindow } from "../security/rateWindow.js";
@@ -29,10 +35,12 @@ function reject(socket: Duplex, status: number, text: string): void {
 
 export function attachWebSocketServer(app: FastifyInstance): void {
   const wss = new WebSocketServer({
-  noServer: true,
-  maxPayload: MAX_PAYLOAD_BYTES,
-  perMessageDeflate: false,
-});
+    noServer: true,
+    maxPayload: MAX_PAYLOAD_BYTES,
+    perMessageDeflate: false,
+    // Never echo the one-time ticket protocol. Only the stable, non-secret protocol is selected.
+    handleProtocols: (protocols) => protocols.has("lilchess.v1") ? "lilchess.v1" : false,
+  });
   const upgradeLimiter = new RateWindow(60_000, UPGRADES_PER_MINUTE);
   const socketsPerUser = new Map<number, number>();
 
@@ -41,15 +49,19 @@ export function attachWebSocketServer(app: FastifyInstance): void {
 
     try {
       if (!upgradeLimiter.hit(clientIp(req))) return reject(socket, 429, "Too Many Requests");
-      if (!isAllowedOrigin(req)) return reject(socket, 403, "Forbidden");
+      const ticket = nativeWebSocketTicketFromHeader(req.headers["sec-websocket-protocol"]);
+      const validNativeTicket = !!ticket && isValidNativeWebSocketTicket(ticket);
+      if (!isAllowedOrigin(req, validNativeTicket)) return reject(socket, 403, "Forbidden");
 
       const path = (req.url ?? "").split("?")[0] ?? "";
-            const match = GAME_WS_PATH.exec(path);
+      const match = GAME_WS_PATH.exec(path);
       const simulMatch = SIMUL_WS_PATH.exec(path);
       const userChannel = path === USER_WS_PATH;
       if (!match && !simulMatch && !userChannel) return reject(socket, 404, "Not Found");
 
-      const user = authenticateUpgrade(req);
+      const user = validNativeTicket && ticket
+        ? authenticateNativeWebSocketTicket(ticket)
+        : authenticateUpgrade(req);
       if (!user) return reject(socket, 401, "Unauthorized");
 
       if ((socketsPerUser.get(user.id) ?? 0) >= MAX_SOCKETS_PER_USER) {

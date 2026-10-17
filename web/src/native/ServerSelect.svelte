@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { CapacitorHttp } from "@capacitor/core";
+  import NativeAuth from "./NativeAuth.svelte";
   import {
     SERVER_URL_STORAGE_KEY,
     ServerSelectionError,
@@ -138,7 +139,7 @@
         {#if selectedServer.serverUrl.startsWith("http://")}
           <p class="warning">This connection uses unencrypted HTTP. Use it only on a trusted local network. The app will not silently switch protocols.</p>
         {/if}
-        <p class="note">The server address is saved on this device. Native sign-in and gameplay will be enabled in the next mobile phase.</p>
+        <NativeAuth serverUrl={selectedServer.serverUrl} registrationMode={health.features.registration} />
         <button class="secondary" type="button" onclick={changeServer}>Change server</button>
       {/if}
     {/if}

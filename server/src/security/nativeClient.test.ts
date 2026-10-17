@@ -19,6 +19,7 @@ import { originAllowed } from "./csrf.js";
 // Origins a Capacitor WebView can present. Which one applies depends on the app's
 // server.iosScheme / server.androidScheme / server.hostname (pinned in mobile Phase 1).
 const WEBVIEW_ORIGINS = ["capacitor://localhost", "https://localhost", "http://localhost"];
+const challenge = { mode: "live", initialMs: 300_000, incrementMs: 0, colorPref: "white" };
 
 describe("originAllowed: WebView origins", () => {
   it("rejects every Capacitor WebView origin when BASE_URL pins the server origin", () => {
@@ -50,8 +51,6 @@ describe("HTTP: native clients vs CSRF and CORS", () => {
     await app.close();
     closeDb();
   });
-
-  const challenge = { mode: "live", initialMs: 300_000, incrementMs: 0, colorPref: "white" };
 
   async function nativeToken(username: string): Promise<string> {
     const res = await app.inject({
@@ -174,12 +173,16 @@ describe("WebSocket upgrade: native clients", () => {
     closeDb();
   });
 
-  function connect(opts: { bearer?: boolean; origin?: string; query?: string }): WebSocket {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/games/${gameId}${opts.query ?? ""}`, {
+  function connect(opts: { bearer?: boolean; origin?: string; query?: string; protocols?: string[] }): WebSocket {
+    const url = `ws://127.0.0.1:${port}/ws/games/${gameId}${opts.query ?? ""}`;
+    const options = {
       headers: opts.bearer ? { Authorization: `Bearer ${token}` } : {},
       origin: opts.origin,
       perMessageDeflate: false,
-    });
+    };
+    const ws = opts.protocols
+      ? new WebSocket(url, opts.protocols, options)
+      : new WebSocket(url, options);
     ws.on("error", () => {}); // a rejected upgrade surfaces as an error too
     sockets.push(ws);
     return ws;
@@ -200,7 +203,65 @@ describe("WebSocket upgrade: native clients", () => {
     expect(await rejectedWith(connect({ query: `?access_token=${token}` }))).toBe(401);
   });
 
-  // Known gaps, owned by mobile Phase 3 (docs/mobile-phase-0-review.md, "WebSocket authentication"):
-  it.todo("a native guest session endpoint returns a bearer token (web /api/guest is cookie-only)");
-  it.todo("a WebView WebSocket authenticates with a short-lived, single-use ticket instead of an Authorization header");
+  it("creates a native guest bearer session only for a valid eligible invite", async () => {
+    const challengeResponse = await app.inject({
+      method: "POST",
+      url: "/api/challenges",
+      headers: { authorization: `Bearer ${token}` },
+      payload: challenge,
+    });
+    expect(challengeResponse.statusCode).toBe(200);
+
+    const guestResponse = await app.inject({
+      method: "POST",
+      url: "/api/native/guest",
+      payload: { challengeId: challengeResponse.json().challengeId },
+    });
+    expect(guestResponse.statusCode).toBe(200);
+    expect(guestResponse.headers["set-cookie"]).toBeUndefined();
+    expect(guestResponse.json().sessionToken).toMatch(/^[a-f\d]{64}$/i);
+
+    const me = await app.inject({
+      method: "GET",
+      url: "/api/me",
+      headers: { authorization: `Bearer ${guestResponse.json().sessionToken}` },
+    });
+    expect(me.statusCode).toBe(200);
+    expect(me.json().user.is_guest).toBe(1);
+  });
+
+  it("authenticates a Capacitor-origin WebSocket with a one-use ticket and never echoes it", async () => {
+    const issued = await app.inject({
+      method: "POST",
+      url: "/api/native/ws-ticket",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(issued.statusCode).toBe(200);
+    const ticket = issued.json().ticket as string;
+    expect(ticket).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(issued.json().expiresInMs).toBe(30_000);
+
+    const protocols = ["lilchess.v1", `lilchess-ticket.${ticket}`];
+    expect(await rejectedWith(connect({ origin: "https://untrusted.example", protocols }))).toBe(403);
+
+    const ws = connect({ origin: "capacitor://localhost", protocols });
+    await opened(ws);
+    expect(ws.protocol).toBe("lilchess.v1");
+    expect(ws.protocol).not.toContain(ticket);
+
+    expect(await rejectedWith(connect({ origin: "capacitor://localhost", protocols }))).toBe(403);
+  });
+
+  it("requires a bearer session to issue a WebSocket ticket and does not clear cookies for native logout", async () => {
+    const unauthorized = await app.inject({ method: "POST", url: "/api/native/ws-ticket" });
+    expect(unauthorized.statusCode).toBe(401);
+
+    const logout = await app.inject({
+      method: "POST",
+      url: "/api/logout",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(logout.statusCode).toBe(200);
+    expect(logout.headers["set-cookie"]).toBeUndefined();
+  });
 });

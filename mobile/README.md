@@ -3,9 +3,9 @@
 Capacitor shell that packages the existing Svelte web client as an Android and iOS app.
 The game UI stays shared with `web/`; a small native-only bootstrap screen selects and verifies the LilChess server.
 
-Status: Phase 2 (server selection and compatibility checks). Native startup shows a server selector, verifies
-`/api/health`, and saves the selected origin locally. Native authentication and server-backed gameplay arrive in
-Phases 3 to 4, so successful selection does not yet enable sign-in or games.
+Status: Phase 3 (native networking and authentication). The app verifies `/api/health`, supports native login,
+registration and logout, restores sessions from platform secure storage, and has bearer-authenticated native HTTP
+and short-lived one-use WebSocket tickets. Game socket resynchronization and gameplay transport adaptation are Phase 4.
 
 ## Layout
 
