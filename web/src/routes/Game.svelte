@@ -264,12 +264,14 @@
         </div>
       {/if}
 
-      <PlayerStrip
-        color={topColor}
-        {...side(topColor)}
-        game={g}
-        offset={view.serverOffset}
-      />
+      <div class="strip-top">
+        <PlayerStrip
+          color={topColor}
+          {...side(topColor)}
+          game={g}
+          offset={view.serverOffset}
+        />
+      </div>
 
       <div class="board-area">
         <Board
@@ -283,37 +285,44 @@
         />
       </div>
 
-      <PlayerStrip
-        color={bottomColor}
-        {...side(bottomColor)}
-        game={g}
-        offset={view.serverOffset}
-      />
+      <div class="strip-bottom">
+        <PlayerStrip
+          color={bottomColor}
+          {...side(bottomColor)}
+          game={g}
+          offset={view.serverOffset}
+        />
+      </div>
 
-      <MoveStrip
-        sanByPly={view.sanByPly}
-        ply={g.ply}
-        {viewPly}
-        onNav={nav}
-        onSelect={(ply: number) => setViewPly(selectPly(ply, g.ply))}
-      />
+      <div class="move-strip-area">
+        <MoveStrip
+          sanByPly={view.sanByPly}
+          ply={g.ply}
+          {viewPly}
+          onNav={nav}
+          onSelect={(ply: number) => setViewPly(selectPly(ply, g.ply))}
+        />
+      </div>
 
-      <GameAlerts
-        game={g}
-        {myColor}
-        {id}
-        offset={view.serverOffset}
-        onDone={store.resync}
-      />
+      <!-- app.css pins .dock to the bottom of the screen; the offer/warning alerts float just above it. -->
+      <div class="dock">
+        <GameAlerts
+          game={g}
+          {myColor}
+          {id}
+          offset={view.serverOffset}
+          onDone={store.resync}
+        />
 
-      <GameActions
-        game={g}
-        {id}
-        {myColor}
-        onDone={store.resync}
-      />
+        <GameActions
+          game={g}
+          {id}
+          {myColor}
+          onDone={store.resync}
+        />
 
-      <GameResult game={g} {id} />
+        <GameResult game={g} {id} />
+      </div>
     </div>
   {:else}
     {#if view.simul}

@@ -6,6 +6,8 @@
     onSelect?: (p: number) => void;
     marks?: Record<number, string>; // ply -> "inaccuracy" | "mistake" | "blunder" | ...
     evaluations?: Record<number, string>;
+    /** Fill the parent (and use touch-sized rows) instead of the fixed sidebar height. */
+    fill?: boolean;
   };
 
   let {
@@ -15,6 +17,7 @@
     onSelect = () => {},
     marks = {},
     evaluations = {},
+    fill = false,
   }: Props = $props();
 
   const GLYPH: Record<string, string> = { inaccuracy: "?!", mistake: "?", blunder: "??" };
@@ -58,7 +61,7 @@
   {#if GLYPH[marks[p] ?? ""]}<span class="glyph {marks[p]}">{GLYPH[marks[p] ?? ""]}</span>{/if}
 {/snippet}
 
-<div class="moves" bind:this={box}>
+<div class="moves" class:fill bind:this={box}>
   {#each rows as r (r.n)}
     <div class="move-row">
       <span class="num">{r.n}.</span>
@@ -108,6 +111,11 @@
     overflow-y: auto;
     font-size: 0.85rem;
   }
+
+  /* Bottom sheet: take the room the sheet gives us, with rows big enough for a finger. */
+  .moves.fill { flex: 1; height: auto; min-height: 0; font-size: 1rem; overscroll-behavior: contain; }
+  .moves.fill .move-row { min-height: var(--tap, 44px); grid-template-columns: 2.5rem 1fr 1fr; }
+  .moves.fill .san { align-self: stretch; padding: 0.15rem 0.5rem; }
 
   .move-row {
     display: grid;

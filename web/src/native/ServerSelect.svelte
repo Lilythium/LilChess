@@ -182,8 +182,12 @@
     box-sizing: border-box;
     min-height: 100dvh;
     display: grid;
-    place-items: center;
-    padding: max(1.25rem, env(safe-area-inset-top)) 1.25rem max(1.25rem, env(safe-area-inset-bottom));
+    justify-items: center;
+    align-items: center;
+    /* "safe": when the keyboard leaves less room than the card needs, start at the top instead of clipping it. */
+    align-items: safe center;
+    padding: max(1.25rem, env(safe-area-inset-top, 0px)) max(1.25rem, env(safe-area-inset-right, 0px))
+             max(1.25rem, env(safe-area-inset-bottom, 0px)) max(1.25rem, env(safe-area-inset-left, 0px));
     background: #101318;
     color: #f2f4f7;
     font: 16px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;

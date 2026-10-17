@@ -213,37 +213,28 @@
     {#if rows.length === 0}
       <p class="muted">Nothing here.</p>
     {:else}
-      <table>
-        <tbody>
-          {#each rows as c (c.id)}
-            <tr>
-              {#if showFrom}
-                <td>{displayName(c.from_name)}</td>
+      <ul class="challenges">
+        {#each rows as c (c.id)}
+          <li>
+            {#if showFrom}<span class="who">{displayName(c.from_name)}</span>{/if}
+
+            <span class="what">
+              {timeControl(c)}
+              {c.rated ? " · Rated" : ""}
+              {c.is_link ? " · Private" : " · Open"}
+              {#if c.color_pref}<span class="muted">· you: {c.color_pref === "white" ? "black" : "white"}</span>{/if}
+            </span>
+
+            <span class="act">
+              <button onclick={() => action(c.id)}>{label}</button>
+
+              {#if copyable}
+                <button onclick={() => copy(linkFor(c.id))}>Copy link</button>
               {/if}
-
-              <td>
-                {timeControl(c)}
-                {c.rated ? " · Rated" : ""}
-                {c.is_link ? " · Private" : " · Open"}
-              </td>
-
-              <td>
-                {c.color_pref
-                  ? `you: ${c.color_pref === "white" ? "black" : "white"}`
-                  : ""}
-              </td>
-
-              <td style="text-align:right">
-                <button onclick={() => action(c.id)}>{label}</button>
-
-                {#if copyable}
-                  <button onclick={() => copy(linkFor(c.id))}>Copy link</button>
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+            </span>
+          </li>
+        {/each}
+      </ul>
     {/if}
   </div>
 {/snippet}
@@ -441,6 +432,16 @@
     flex-direction: column;
     gap: 0.75rem;
   }
+
+  /* One row per challenge: who, what, then the buttons. On a phone the buttons wrap under the text. */
+  .challenges { list-style: none; margin: 0; padding: 0; }
+  .challenges li {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem;
+    padding: 0.5rem 0.25rem; border-bottom: 1px solid var(--border);
+  }
+  .who { color: var(--text-hi); font-weight: 600; }
+  .what { flex: 1 1 9rem; min-width: 0; }
+  .act { display: flex; gap: 0.5rem; margin-left: auto; }
 
   .rated-toggle { display: flex; align-items: center; gap: 0.45rem; min-height: 42px; }
   .rated-toggle input { width: 1rem; height: 1rem; accent-color: var(--green); }
