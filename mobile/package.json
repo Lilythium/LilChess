@@ -6,7 +6,7 @@
   "description": "LilChess Mobile: Capacitor shell around the web client.",
   "scripts": {
     "build:web": "npm run build --prefix ../shared && npm run build:native --prefix ../web",
-    "sync": "npm run build:web && cap sync",
+    "sync": "npm run build:web && cap sync && node scripts/normalize-spm-paths.mjs",
     "check": "tsc -p tsconfig.json",
     "open:android": "cap open android",
     "open:ios": "cap open ios",

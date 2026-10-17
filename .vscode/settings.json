@@ -2,6 +2,10 @@
     "chat.tools.terminal.autoApprove": {
         "npm run check": true,
         "npx tsc": true,
-        "npm --prefix web": true
+        "npm --prefix web": true,
+        "/^node mobile/scripts/normalize-spm-paths\\.mjs$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }
