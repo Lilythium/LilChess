@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { VARIANT_LABELS } from "@lilchess/shared";
   import { api } from "../lib/api";
+  import { askConfirm } from "../lib/confirm";
   import { auth } from "../lib/auth.svelte";
   import GameCard from "../lib/components/GameCard.svelte";
   import type { ImportedGameRow, ImportedList, ImportFailure, ImportSummary } from "../lib/types";
@@ -49,7 +50,7 @@
   }
 
   async function remove(game: ImportedGameRow) {
-    if (!confirm(`Delete ${game.white} vs ${game.black}?`)) return;
+    if (!(await askConfirm(`Delete ${game.white} vs ${game.black}?`, { confirmLabel: "Delete", danger: true }))) return;
     try {
       await api(`/api/imported/${game.id}`, { method: "DELETE" });
       games = games.filter((g) => g.id !== game.id);

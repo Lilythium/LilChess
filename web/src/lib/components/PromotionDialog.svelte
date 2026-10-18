@@ -16,9 +16,11 @@
   const options = $derived(roles.map((role) => ({ role, ...ALL[role] })));
 </script>
 
+<svelte:window onkeydown={(e) => { if (e.key === "Escape") onCancel(); }} />
+
 <div class="overlay">
   <button class="backdrop" aria-label="Cancel promotion" onclick={onCancel}></button>
-  <div class="choices">
+  <div class="choices" role="dialog" aria-modal="true" aria-label="Promote pawn to">
     {#each options as o (o.role)}
       <button aria-label={o.name} onclick={() => onPick(o.role)}>{o.glyph}</button>
     {/each}
@@ -30,5 +32,6 @@
   .backdrop { position: absolute; inset: 0; padding: 0; border-radius: 0; background: rgba(0, 0, 0, 0.6); }
   .choices { position: relative; display: flex; gap: 0.5rem; padding: 0.75rem; max-width: 94%;
              background: var(--panel); border-radius: var(--radius); }
-  .choices button { font-size: clamp(2rem, 13cqw, 3rem); line-height: 1; padding: 0.25rem 0.5rem; }
+  .choices button { font-size: clamp(2rem, 13cqw, 3rem); line-height: 1; padding: 0.25rem 0.5rem;
+                    min-width: var(--tap, 44px); min-height: var(--tap, 44px); }
 </style>

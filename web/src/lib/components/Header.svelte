@@ -5,18 +5,24 @@
   import { route } from "../router.svelte";
   import type { MyGames } from "../types";
   import { displayName } from "../format";
+  import { askConfirm } from "../confirm";
+  import { navCounts } from "../navCounts.svelte";
 
-  let yourTurn = $state(0);
+  // `hideMenu`: the phone tab bar is showing, so the header keeps only the logo. The poll below still runs
+  // here, because the tab bar's badges read the same counts.
+  let { hideMenu = false }: { hideMenu?: boolean } = $props();
+
   let menuOpen = $state(false);
-  let simulInvites = $state(0);
+  const yourTurn = $derived(navCounts.yourTurn);
+  const simulInvites = $derived(navCounts.simulInvites);
 
   async function poll() {
     if (document.hidden) return;
     try {
       const g = await api<MyGames>("/api/games/my-games");
-      yourTurn = g.myTurn.length;
+      navCounts.yourTurn = g.myTurn.length;
       const s = await api<import("../simul/types").SimulLists>("/api/simuls");
-      simulInvites = s.invitations.filter((i) => i.myStatus === "invited").length;
+      navCounts.simulInvites = s.invitations.filter((i) => i.myStatus === "invited").length;
     } catch { }
   }
 
@@ -39,9 +45,13 @@
   const toggleMenu = () => (menuOpen = !menuOpen);
   const closeMenu = () => (menuOpen = false);
 
-  function onLogout() {
+  async function onLogout() {
     closeMenu();
-    if (auth.user?.is_guest && !confirm("Guest accounts can't be recovered after logging out. Log out anyway?")) return;
+    if (auth.user?.is_guest) {
+      const ok = await askConfirm("Guest accounts can't be recovered after logging out. Log out anyway?",
+        { confirmLabel: "Log out", danger: true });
+      if (!ok) return;
+    }
     void logout();
   }
 </script>
@@ -54,6 +64,7 @@
     LilChess
   </a>
 
+  {#if !hideMenu}
   <button class="hamburger" onclick={toggleMenu} aria-label="Toggle navigation menu"
           aria-expanded={menuOpen} aria-controls="site-nav">
     <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -80,6 +91,7 @@
     {#if !auth.user?.is_guest}<a href="#/settings" class="nav-item">SETTINGS</a>{/if}
     <button class="nav-item btn-logout" onclick={onLogout}>{auth.user?.is_guest ? "REGISTER" : "LOG OUT"}</button>
   </nav>
+  {/if}
 </header>
 
 <style>

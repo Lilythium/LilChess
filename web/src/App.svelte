@@ -5,6 +5,10 @@
   import { route, matchRoute, navigate, navigateToNewGame } from "./lib/router.svelte";
   import type { MyGames as MyGamesData } from "./lib/types";
   import Header from "./lib/components/Header.svelte";
+  import BottomNav from "./lib/components/BottomNav.svelte";
+  import ConfirmDialog from "./lib/components/ConfirmDialog.svelte";
+  import { viewport } from "./lib/viewport.svelte";
+  import { hidesBottomNav } from "./lib/navTabs";
   import Login from "./routes/Login.svelte";
   import Lobby from "./routes/Lobby.svelte";
   import Game from "./routes/Game.svelte";
@@ -31,6 +35,9 @@
   import Imported from "./routes/Imported.svelte";
 
   onMount(loadMe);
+
+  // Phones get a bottom tab bar on pages that don't have their own bottom controls (the game, analysis).
+  const showBottomNav = $derived(viewport.bottomNav && !!auth.user && !hidesBottomNav(route.path));
 
   const game = $derived(matchRoute(route.path, "/game/:id"));
   const profile = $derived(matchRoute(route.path, "/u/:name"));
@@ -152,8 +159,8 @@
     <main class="page"><Login /></main>
   {/if}
 {:else}
-  <Header />
-  <main class="page">
+  <Header hideMenu={showBottomNav} />
+  <main class="page" class:with-bottom-nav={showBottomNav}>
     {#if game}{#key game.id}<Game id={game.id} />{/key}
     {:else if invite}{#key invite.id}<Invite id={invite.id} />{/key}
     {:else if simulInvite}
@@ -183,4 +190,7 @@
     {:else if tournament}{#key tournament.id}<TournamentDetail id={tournament.id} />{/key}
     {:else}<Lobby />{/if}
   </main>
+  {#if showBottomNav}<BottomNav />{/if}
 {/if}
+
+<ConfirmDialog />

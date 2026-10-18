@@ -84,6 +84,8 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
   }
 
-  /* In the phone dock, alerts sit in normal flow above the action bar. */
-  :global(.game-mobile) .alerts { position: static; padding: 0.5rem 0.5rem 0; }
+  /* On phones the dock is position: sticky, so the alerts float just above its action bar. They overlay the
+     board area instead of pushing it, which means an incoming offer never shifts the board under a finger. */
+  :global(.game-mobile) .alerts { top: auto; bottom: 100%; padding: 0 0.5rem 0.5rem; }
+  :global(.game-mobile) .alert button { min-height: var(--tap); }
 </style>

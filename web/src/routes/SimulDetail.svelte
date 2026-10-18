@@ -2,6 +2,7 @@
   import { onDestroy } from "svelte";
   import { VARIANT_LABELS } from "@lilchess/shared";
   import { api } from "../lib/api";
+  import { askConfirm } from "../lib/confirm";
   import { displayName } from "../lib/format";
   import { navigate } from "../lib/router.svelte";
   import GameCard from "../lib/components/GameCard.svelte";
@@ -56,7 +57,7 @@
   }
 
   async function cancel() {
-    if (confirm("Cancel this simul?") && (await act("cancel"))) navigate("/simuls");
+    if (await askConfirm("Cancel this simul?", { confirmLabel: "Cancel simul", cancelLabel: "Keep it", danger: true }) && (await act("cancel"))) navigate("/simuls");
   }
 
   let linkInput = $state<HTMLInputElement | null>(null);
@@ -80,7 +81,7 @@
   }
 
   async function newLink() {
-    if (!confirm("The old link will stop working. Create a new one?")) return;
+    if (!(await askConfirm("The old link will stop working. Create a new one?", { confirmLabel: "Create new link" }))) return;
     if (await act("invite-link/reset")) linkNote = "New link created.";
   }
 
