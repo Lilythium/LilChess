@@ -49,7 +49,10 @@
 <svelte:window onkeydown={(e) => { if (e.key === "Escape") closeMenu(); }} />
 
 <header>
-  <a class="logo" href="#/" onclick={closeMenu}>LilChess</a>
+  <a class="logo" href="#/" onclick={closeMenu}>
+    <img src="/LJicon.svg" alt="" aria-hidden="true" />
+    LilChess
+  </a>
 
   <button class="hamburger" onclick={toggleMenu} aria-label="Toggle navigation menu"
           aria-expanded={menuOpen} aria-controls="site-nav">
@@ -87,7 +90,8 @@
     background: linear-gradient(to bottom, #2e2b26, #1f1d19);
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3); z-index: 100;
   }
-  .logo { color: #bababa; font-weight: bold; font-size: 1.25rem; text-decoration: none; display: flex; align-items: center; }
+  .logo { color: #bababa; font-weight: bold; font-size: 1.25rem; text-decoration: none; display: flex; align-items: center; gap: 0.45rem; }
+  .logo img { width: auto; height: 1.6rem; object-fit: contain; }
   .logo:hover { color: #ffffff; }
   nav { display: flex; align-items: center; height: 100%; }
   .nav-item {
