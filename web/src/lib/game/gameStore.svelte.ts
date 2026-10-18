@@ -4,6 +4,7 @@ import { api } from "../api";
 import { applyGameEvent } from "./applyEvent";
 import { playMoveSound, playSound } from "../audio/audio";
 import { crossedLowTimeThreshold, remainingMs } from "./clock";
+import { createResyncRunner } from "./resyncRunner";
 
 export interface GameView {
   game: GameState | null;
@@ -40,9 +41,11 @@ export function createGameStore(gameId: string) {
     black: null as number | null,
   };
 
-  async function resync(): Promise<void> {
-    try {
-      const body = await api<GameResponse>(`/api/games/${gameId}`);
+  // The database and REST API are authoritative; socket events are only notifications. Every reconnect,
+  // foreground return and event gap ends up here, and the runner makes sure they never race each other.
+  const runner = createResyncRunner<GameResponse>(
+    () => api<GameResponse>(`/api/games/${gameId}`),
+    (body) => {
       view.game = body.game;
       view.players = body.players;
       view.h2h = body.h2h;
@@ -52,10 +55,18 @@ export function createGameStore(gameId: string) {
       view.sanByPly = Object.fromEntries(body.sans.map((s, i) => [i + 1, s]));
       view.status = "ready";
       view.error = null;
-    } catch (err) {
-      view.status = "error";
-      view.error = err instanceof Error ? err.message : String(err);
-    }
+    },
+    (err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      view.error = message;
+      // Offline mid-game is not an error screen: keep showing the last known board. The connection banner
+      // says what is wrong, and the next successful resync replaces it.
+      if (!view.game) view.status = "error";
+    },
+  );
+
+  function resync(): Promise<void> {
+    return runner.run();
   }
 
   async function resyncTournamentSimul(): Promise<void> {
@@ -99,6 +110,9 @@ export function createGameStore(gameId: string) {
   }
 
   function applyEvent(event: GameEvent): void {
+    // Never let another game's event touch this board. (Server ids are case-insensitive hex.)
+    if (event.gameId.toLowerCase() !== gameId.toLowerCase()) return;
+
     if (event.type === "game_over") {
       playSound("gameEnd");
     }
@@ -115,6 +129,8 @@ export function createGameStore(gameId: string) {
     }
 
     if (outcome === "applied" && event.type === "move") {
+      // A resync already in flight may have been answered from before this move.
+      runner.markDirty();
       playMoveSound(event.san);
     }
   }

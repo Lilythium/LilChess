@@ -3,7 +3,8 @@
   import { api } from "../lib/api";
   import { auth } from "../lib/auth.svelte";
   import { createGameStore } from "../lib/game/gameStore.svelte";
-  import { connectGameSocket } from "../lib/ws/gameSocket";
+  import { connectGameSocket, type SocketStatus } from "../lib/ws/gameSocket";
+  import ConnectionBanner from "../lib/components/ConnectionBanner.svelte";
   import Board from "../lib/components/Board.svelte";
   import NameCard from "../lib/components/NameCard.svelte";
   import GameSidebar from "../lib/components/GameSidebar.svelte";
@@ -34,7 +35,8 @@
   );
 
   let resetKey = $state(0);
-  let socketStatus = $state<"connecting" | "open" | "closed">("connecting");
+  let socketStatus = $state<SocketStatus>("connecting");
+  let socketHandle: ReturnType<typeof connectGameSocket> | null = null;
   function readAutoAdvance(): boolean {
     try { return localStorage.getItem("simul.autoAdvance") !== "0"; } catch { return true; }
   }
@@ -132,7 +134,12 @@
       onStatusChange: (s) => (socketStatus = s),
     });
 
-    return () => sock.close();
+    socketHandle = sock;
+
+    return () => {
+      socketHandle = null;
+      sock.close();
+    };
   });
 
   const myColor = $derived.by(() => {
@@ -229,6 +236,12 @@
     <title>{gameTitle(view.game.clock, view.game.variant)}</title>
   {/if}
 </svelte:head>
+
+<!-- Only a game in progress needs a live connection; a finished one is complete in the REST response. -->
+<ConnectionBanner
+  status={view.game && view.game.status !== "started" ? "open" : socketStatus}
+  onRetry={() => socketHandle?.retry()}
+/>
 
 {#if view.status === "loading"}
   <p class="muted">Loading…</p>
