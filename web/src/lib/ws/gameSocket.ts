@@ -1,36 +1,28 @@
 import { ServerMessageSchema, type ClientMessage, type GameEvent } from "@lilchess/shared";
+import { createManagedSocket } from "./runtime";
+import type { SocketStatus } from "./reconnectingSocket";
+
+export type { SocketStatus };
 
 export interface GameSocketHandlers {
   onEvent: (event: GameEvent) => void;
-  // Called on initial connect AND every reconnect, and whenever a message can't be trusted.
-  // The caller must GET /api/games/:id and reconcile local state
+  // Called on initial connect AND every reconnect, whenever the app returns to the foreground, and whenever a
+  // message can't be trusted. The caller must GET /api/games/:id and reconcile local state.
   onResyncNeeded: () => void;
-  onStatusChange?: (status: "connecting" | "open" | "closed") => void;
+  onStatusChange?: (status: SocketStatus) => void;
   onServerError?: (error: string) => void; // e.g. "ply_mismatch" in reply to our own send
 }
 
 export function connectGameSocket(gameId: string, handlers: GameSocketHandlers) {
-  let socket: WebSocket | null = null;
-  let closedByUser = false;
-  let attempt = 0;
-  let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  const socket = createManagedSocket(`/ws/games/${gameId}`, {
+    onOpen: () => handlers.onResyncNeeded(),
+    onForeground: () => handlers.onResyncNeeded(),
+    onStatusChange: handlers.onStatusChange,
 
-  function open() {
-    handlers.onStatusChange?.("connecting");
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${proto}//${location.host}/ws/games/${gameId}`);
-    socket = ws;
-
-    ws.addEventListener("open", () => {
-      attempt = 0;
-      handlers.onStatusChange?.("open");
-      handlers.onResyncNeeded();
-    });
-
-    ws.addEventListener("message", (ev) => {
+    onMessage(data) {
       let raw: unknown;
       try {
-        raw = JSON.parse(ev.data as string);
+        raw = JSON.parse(data as string);
       } catch {
         console.warn("ignoring non-JSON game message");
         handlers.onResyncNeeded();
@@ -51,57 +43,14 @@ export function connectGameSocket(gameId: string, handlers: GameSocketHandlers) 
       }
 
       handlers.onEvent(parsed.data);
-    });
-
-    ws.addEventListener("close", () => {
-      // Ignore events from a socket that has already been replaced.
-      if (ws !== socket) return;
-
-      handlers.onStatusChange?.("closed");
-
-      if (!closedByUser) {
-        const delay = Math.min(1000 * 2 ** attempt, 15_000);
-        attempt += 1;
-        reconnectTimer = setTimeout(open, delay);
-      }
-    });
-
-    ws.addEventListener("error", () => {
-      // Only close this particular socket.
-      ws.close();
-    });
-  }
-
-  function onVisible() {
-    if (document.visibilityState !== "visible") return;
-
-    // A connection is already in progress. Don't open another one.
-    if (socket?.readyState === WebSocket.CONNECTING) return;
-
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      clearTimeout(reconnectTimer);
-      attempt = 0;
-      open();
-    } else {
-      handlers.onResyncNeeded();
-    }
-  }
-
-  document.addEventListener("visibilitychange", onVisible);
-  open();
+    },
+  });
 
   return {
-    send(msg: ClientMessage) {
-      if (socket?.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify(msg));
-      }
-    },
-
-    close() {
-      closedByUser = true;
-      clearTimeout(reconnectTimer);
-      document.removeEventListener("visibilitychange", onVisible);
-      socket?.close();
-    },
+    /** True if the message went out. Nothing is queued: a move that didn't go out is resolved from fresh state. */
+    send: (msg: ClientMessage) => socket.send(JSON.stringify(msg)),
+    retry: () => socket.retry(),
+    status: () => socket.status(),
+    close: () => socket.close(),
   };
 }
