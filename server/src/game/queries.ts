@@ -309,7 +309,8 @@ export function getLiveGames(limit = 20) {
 export function getInvitePreview(id: string) {
   return getDb()
     .prepare(
-      `SELECT c.id, u.username AS from_name, c.mode, c.initial_ms, c.increment_ms, c.days_per_move, c.rated,
+            `SELECT c.id, u.username AS from_name, c.mode, c.initial_ms, c.increment_ms, c.days_per_move, c.rated,
+              c.variant,
               c.color_pref, (c.to_user IS NOT NULL) AS targeted
        FROM challenges c JOIN users u ON u.id = c.from_user
        WHERE c.id = ? AND c.expires_at > ?`,
@@ -323,6 +324,7 @@ export function getInvitePreview(id: string) {
         increment_ms: number | null;
         days_per_move: number | null;
         rated: number;
+        variant: Variant;
         color_pref: string | null;
         targeted: number;
       }

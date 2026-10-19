@@ -46,6 +46,15 @@ describe("invite links and guests", () => {
     expect(mine.json().mine[0].is_link).toBe(1);
   });
 
+  it("includes the challenge variant in the public invite preview", async () => {
+    const id = (await challenge(alice, { link: true, variant: "chess960" })).json().challengeId as string;
+
+    const preview = await app.inject({ method: "GET", url: `/api/invites/${id}` });
+
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json().invite.variant).toBe("chess960");
+  });
+
   it("creates guests only for open or link challenges, and only when enabled", async () => {
     await registerUser(app, "bob");
     const targeted = (await challenge(alice, { toUsername: "bob" })).json().challengeId as string;
