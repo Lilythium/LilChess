@@ -4,6 +4,8 @@
   import { api } from "../lib/api";
   import { auth } from "../lib/auth.svelte";
   import { validate } from "../lib/validate";
+  import SoundSettings from "../lib/components/SoundSettings.svelte";
+  import NativeServerPanel from "../lib/components/NativeServerPanel.svelte";
 
   interface Settings {
     emailAvailable: boolean;
@@ -101,6 +103,9 @@
       {#if notice}<p class="muted">{notice}</p>{/if}
     {/if}
   </div>
+
+  <SoundSettings />
+  <NativeServerPanel />
 
   {#if data && !auth.user?.is_guest}
     <div class="panel">

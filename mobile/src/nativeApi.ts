@@ -22,6 +22,8 @@ export interface NativeRequestOptions {
   token?: string;
   /** Applied to both connect and response reads; valid range is 1–60 seconds. */
   timeoutMs?: number;
+  /** `text` returns a successful response body verbatim (PGN export). Errors are always parsed as JSON. */
+  responseType?: "json" | "text";
 }
 
 /**
@@ -35,9 +37,7 @@ export async function nativeRequest<T = unknown>(
   options: NativeRequestOptions = {},
 ): Promise<T> {
   const address = normalizeServerAddress(serverUrl);
-  if (!/^\/?[a-z\d/_-]+$/i.test(path) || path.includes("..")) {
-    throw new TypeError("Native API paths must be relative paths under /api.");
-  }
+  const relativePath = toRelativeRequest(path);
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 60_000) {
@@ -47,10 +47,10 @@ export async function nativeRequest<T = unknown>(
     throw new TypeError("The stored session token is invalid. Sign in again.");
   }
 
-  const relativePath = path.replace(/^\/+/, "");
   const url = `${address.apiBaseUrl}/${relativePath}`;
   const hasBody = options.body !== undefined;
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const asText = options.responseType === "text";
+  const headers: Record<string, string> = { Accept: asText ? "text/plain, application/x-chess-pgn, application/json" : "application/json" };
   if (hasBody) headers["Content-Type"] = "application/json";
   if (options.token) headers.Authorization = `Bearer ${options.token}`;
 
@@ -64,11 +64,15 @@ export async function nativeRequest<T = unknown>(
       connectTimeout: timeoutMs,
       readTimeout: timeoutMs,
       disableRedirects: true,
+      ...(asText ? { responseType: "text" as const } : {}),
     });
   } catch (error) {
     throw new NativeApiError(0, describeConnectionFailure(error, address));
   }
 
+  if (asText && response.status >= 200 && response.status < 300) {
+    return (typeof response.data === "string" ? response.data : "") as T;
+  }
   const data = parseResponseData(response.data);
   if (response.status < 200 || response.status >= 300) {
     const message = isRecord(data) && typeof data.error === "string"
@@ -77,6 +81,35 @@ export async function nativeRequest<T = unknown>(
     throw new NativeApiError(response.status, message);
   }
   return data as T;
+}
+
+const PATH_CHARS = /^\/?[A-Za-z\d._~%/-]+$/;
+// Everything encodeURIComponent() can produce, plus the query delimiters. No `#`, no second `?`, no spaces.
+const QUERY_CHARS = /^[A-Za-z\d._~!*'()%=&+,:-]*$/;
+
+/**
+ * Validates an API path (optionally with a query string, e.g. `/openings?variant=standard&fen=...%2F...`) and returns
+ * it without the leading slash. Percent-encoding is allowed because callers use encodeURIComponent() for usernames
+ * and FENs, but a segment that decodes to `.`, `..` or something containing a slash is rejected, so an encoded
+ * traversal cannot escape `/api`.
+ */
+export function toRelativeRequest(path: string): string {
+  const invalid = () => new TypeError("Native API paths must be relative paths under /api.");
+  const [pathname, query, ...extra] = path.split("?");
+  if (extra.length > 0 || !pathname || !PATH_CHARS.test(pathname)) throw invalid();
+  if (query !== undefined && !QUERY_CHARS.test(query)) throw invalid();
+
+  const segments = (pathname.startsWith("/") ? pathname.slice(1) : pathname).split("/");
+  for (const segment of segments) {
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(segment);
+    } catch {
+      throw invalid();
+    }
+    if (!segment || decoded === "." || decoded === ".." || /[/\\]/.test(decoded)) throw invalid();
+  }
+  return `${segments.join("/")}${query === undefined ? "" : `?${query}`}`;
 }
 
 function parseResponseData(value: unknown): unknown {

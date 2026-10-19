@@ -58,7 +58,7 @@
       <a href="#/games-db" onclick={() => (moreOpen = false)}>Games database</a>
       {#if auth.user?.is_admin}<a href="#/admin" onclick={() => (moreOpen = false)}>Admin</a>{/if}
       <a href={profileHref} onclick={() => (moreOpen = false)}>{displayName(auth.user?.username ?? "")}</a>
-      {#if !auth.user?.is_guest}<a href="#/settings" onclick={() => (moreOpen = false)}>Settings</a>{/if}
+      <a href="#/settings" onclick={() => (moreOpen = false)}>Settings</a>
       <button type="button" class="logout" onclick={onLogout}>{auth.user?.is_guest ? "Register" : "Log out"}</button>
     </div>
   </BottomSheet>

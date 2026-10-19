@@ -13,6 +13,10 @@ installKeyboardHandling();
 if (import.meta.env.MODE === "native") {
   // Lets app.css switch off browser-only behaviour (overscroll bounce, long-press menus, text selection).
   document.documentElement.classList.add("native");
+  // Sounds: iOS only allows playback after a touch, and a phone should stay silent while backgrounded.
+  const { setPlayWhenHidden, unlockAudio } = await import("./lib/audio/audio");
+  setPlayWhenHidden(false);
+  addEventListener("pointerdown", unlockAudio, { once: true, passive: true });
   const { startNative } = await import("./native/start");
   await startNative();
 } else {

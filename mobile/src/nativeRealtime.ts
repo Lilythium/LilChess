@@ -28,7 +28,7 @@ export interface NativeRealtimeOptions {
 
 export interface NativeRealtime {
   /** Drop-in for the web client's api(): `/api/...` paths over the native HTTP bridge with the bearer token. */
-  api(path: string, init: { method?: string; body?: unknown }): Promise<unknown>;
+  api(path: string, init: { method?: string; body?: unknown; responseType?: "json" | "text" }): Promise<unknown>;
   /** Opens a ticket-authenticated socket for `/ws/...`. A fresh single-use ticket is requested every time. */
   openSocket(path: string): Promise<WebSocket>;
   isExpired(): boolean;
@@ -87,6 +87,7 @@ export function createNativeRealtime(options: NativeRealtimeOptions): NativeReal
           method: method as "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
           body: init.body,
           token,
+          ...(init.responseType ? { responseType: init.responseType } : {}),
         });
       } catch (error) {
         if (error instanceof NativeApiError && error.status === 401) expire();

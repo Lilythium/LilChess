@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { CapacitorHttp } from "@capacitor/core";
-  import NativeAuth from "./NativeAuth.svelte";
   import {
     SERVER_URL_STORAGE_KEY,
     ServerSelectionError,
@@ -12,23 +11,31 @@
     type NormalizedServerAddress,
   } from "../../../mobile/src/serverSelection.js";
 
+  // The picker only picks. Signing in, restoring a session and the game UI are the shell's job (NativeRoot):
+  // once a server is verified and saved it is handed over through `onconnected`.
+  let { initialAddress = "", prefillAddress = "", notice = null, waitingInvite = false, onconnected }: {
+    /** A saved server, or one the person just agreed to switch to for an invite. Checked straight away. */
+    initialAddress?: string;
+    /** Only fills the field (for example the current server when the person asked to switch): nothing is contacted. */
+    prefillAddress?: string;
+    notice?: string | null;
+    waitingInvite?: boolean;
+    onconnected: (server: NormalizedServerAddress, health: LilChessHealth) => void;
+  } = $props();
+
   let address = $state("");
-  let editing = $state(true);
   let checking = $state(false);
-  let selectedServer = $state<NormalizedServerAddress | null>(null);
-  let health = $state<LilChessHealth | null>(null);
+  let autoChecking = $state(false);
   let errorMessage = $state<string | null>(null);
 
   onMount(() => {
-    try {
-      const saved = localStorage.getItem(SERVER_URL_STORAGE_KEY);
-      if (!saved) return;
-      address = saved;
-      editing = false;
-      void checkAndSelect(saved);
-    } catch {
-      errorMessage = "Local storage is unavailable. Enable app storage to save a server address on this device.";
+    if (!initialAddress) {
+      address = prefillAddress;
+      return;
     }
+    address = initialAddress;
+    autoChecking = true;
+    void checkAndSelect(initialAddress).finally(() => { autoChecking = false; });
   });
 
   async function checkAndSelect(raw = address): Promise<void> {
@@ -39,9 +46,6 @@
       target = normalizeServerAddress(raw);
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : "Enter a valid server address.";
-      selectedServer = null;
-      health = null;
-      editing = true;
       return;
     }
 
@@ -81,15 +85,10 @@
         );
       }
 
-      selectedServer = target;
-      health = compatibleHealth;
       address = target.serverUrl;
-      editing = false;
+      onconnected(target, compatibleHealth);
     } catch (error) {
-      selectedServer = null;
-      health = null;
       errorMessage = describeConnectionFailure(error, target);
-      editing = true;
     } finally {
       checking = false;
     }
@@ -98,14 +97,6 @@
   function submit(event: SubmitEvent): void {
     event.preventDefault();
     void checkAndSelect();
-  }
-
-  function changeServer(): void {
-    address = "";
-    selectedServer = null;
-    health = null;
-    errorMessage = null;
-    editing = true;
   }
 
   const explicitlyHttp = $derived(/^http:\/\//i.test(address.trim()));
@@ -122,29 +113,16 @@
     <h1 id="server-title">Choose a server</h1>
     <p class="intro">Connect to a LilChess server you trust. The address is checked before it is saved.</p>
 
-    {#if !editing}
-      {#if checking}
-        <p class="status" role="status">Checking the saved server…</p>
-      {:else if selectedServer && health}
-        <div class="success" role="status">
-          <span class="status-title">Compatible LilChess server</span>
-          <strong class="server-address">{selectedServer.serverUrl}</strong>
-          <dl>
-            <div><dt>Server version</dt><dd>{health.version}</dd></div>
-            <div><dt>API version</dt><dd>{health.apiVersion}</dd></div>
-            <div><dt>Registration</dt><dd>{health.features.registration}</dd></div>
-            <div><dt>Guest access</dt><dd>{health.features.guests ? "Available" : "Disabled"}</dd></div>
-          </dl>
-        </div>
-        {#if selectedServer.serverUrl.startsWith("http://")}
-          <p class="warning">This connection uses unencrypted HTTP. Use it only on a trusted local network. The app will not silently switch protocols.</p>
-        {/if}
-        <NativeAuth serverUrl={selectedServer.serverUrl} registrationMode={health.features.registration} />
-        <button class="secondary" type="button" onclick={changeServer}>Change server</button>
-      {/if}
+    {#if notice}
+      <p class="notice" role="status">{notice}</p>
+    {/if}
+    {#if waitingInvite}
+      <p class="notice" role="status">You opened an invite. Connect to its server to continue.</p>
     {/if}
 
-    {#if editing}
+    {#if autoChecking && checking}
+      <p class="status" role="status">Connecting to {address}…</p>
+    {:else}
       <form onsubmit={submit}>
         <label for="server-address">Server address</label>
         <input
@@ -161,7 +139,7 @@
         />
         <p class="helper">Enter a hostname or IP address. HTTPS is assumed when you do not specify a scheme. Do not include a username or password.</p>
         {#if explicitlyHttp}
-          <p class="warning">HTTP is unencrypted. Use it only for a trusted local network, and only where the device permits it.</p>
+          <p class="warning">HTTP is unencrypted. Use it only for a trusted local network, and only where the device permits it. The app will not silently switch protocols.</p>
         {/if}
         <button type="submit" disabled={checking || !address.trim()}>
           {checking ? "Checking server…" : "Test and select server"}
@@ -219,7 +197,7 @@
     font: inherit;
   }
   input:focus-visible, button:focus-visible { outline: 3px solid #84b7ff; outline-offset: 2px; }
-  .helper, .note, .footnote { color: #aeb8c6; font-size: .875rem; }
+  .helper, .footnote { color: #aeb8c6; font-size: .875rem; }
   .helper { margin: .5rem 0 1rem; }
   .footnote { margin: 1.5rem 0 0; }
   button {
@@ -236,16 +214,9 @@
     font-weight: 750;
   }
   button:disabled { cursor: wait; opacity: .65; }
-  button.secondary { border: 1px solid #697586; background: transparent; color: #f2f4f7; }
   .warning, .error { padding: .75rem .85rem; border-radius: .5rem; font-size: .9rem; }
   .warning { border: 1px solid #806628; background: #382e17; color: #ffdf8a; }
   .error { border: 1px solid #87464c; background: #381f23; color: #ffc8cd; }
   .status { color: #c1c9d4; }
-  .success { margin: 1.25rem 0; padding: 1rem; border: 1px solid #426e54; border-radius: .65rem; background: #192b20; }
-  .status-title { display: block; margin-bottom: .35rem; color: #a9e8bb; font-size: .875rem; font-weight: 750; }
-  .server-address { overflow-wrap: anywhere; }
-  dl { margin: .9rem 0 0; }
-  dl div { display: flex; justify-content: space-between; gap: 1rem; padding: .35rem 0; border-top: 1px solid #ffffff18; }
-  dt { color: #c1c9d4; }
-  dd { margin: 0; text-align: right; text-transform: capitalize; }
+  .notice { padding: .75rem .85rem; border: 1px solid #426e54; border-radius: .5rem; background: #192b20; color: #a9e8bb; font-size: .9rem; }
 </style>

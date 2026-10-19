@@ -1,55 +1,65 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import {
-    loginNative,
-    logoutNative,
-    registerNative,
-    restoreNativeSession,
-    type NativeSession,
-  } from "../../../mobile/src/nativeAuth.js";
-  import type { RegistrationMode } from "../../../mobile/src/serverSelection.js";
+  import { createNativeGuestSession, loginNative, registerNative, type NativeSession } from "../../../mobile/src/nativeAuth.js";
+  import type { InviteLink } from "../../../mobile/src/inviteLink.js";
+  import { fetchInvitePreview, type InvitePreview } from "../../../mobile/src/nativeInvites.js";
+  import type { LilChessHealth } from "../../../mobile/src/serverSelection.js";
+  import { displayName, timeControl } from "../lib/format";
 
-  let { serverUrl, registrationMode }: {
+  // Shown when there is no valid session for the selected server. Whatever the person picks here, the shell
+  // (NativeRoot) takes the resulting session and mounts the game UI. Nothing on this screen trusts an invite link:
+  // the preview and the guest permission both come from the server.
+  let { serverUrl, health, invite = null, notice = null, onsession, onchangeserver, ondropinvite }: {
     serverUrl: string;
-    registrationMode: RegistrationMode;
+    health: LilChessHealth;
+    invite?: InviteLink | null;
+    notice?: string | null;
+    onsession: (session: NativeSession) => void;
+    onchangeserver: () => void;
+    ondropinvite: () => void;
   } = $props();
 
-  let session = $state<NativeSession | null>(null);
+  const registrationMode = $derived(health.features.registration);
+
   let mode = $state<"login" | "register">("login");
   let username = $state("");
   let password = $state("");
   let inviteCode = $state("");
   let busy = $state(false);
-  let restoring = $state(true);
   let errorMessage = $state<string | null>(null);
-  let notice = $state<string | null>(null);
+
+  let preview = $state<InvitePreview | null>(null);
+  let previewError = $state<string | null>(null);
+  let previewLoading = $state(false);
 
   onMount(() => {
-    void restore();
+    if (invite) void loadPreview(invite);
   });
 
-  async function restore(): Promise<void> {
-    restoring = true;
+  async function loadPreview(link: InviteLink): Promise<void> {
+    previewLoading = true;
     try {
-      session = await restoreNativeSession(serverUrl);
+      preview = await fetchInvitePreview(serverUrl, link.target);
     } catch (error) {
-      errorMessage = messageOf(error, "Could not restore the saved session. Check the connection and try again.");
+      previewError = messageOf(error, "This invite could not be checked.");
     } finally {
-      restoring = false;
+      previewLoading = false;
     }
   }
+
+  const guestAllowed = $derived(preview?.kind === "challenge" && preview.guestsAllowed);
 
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     errorMessage = null;
-    notice = null;
     busy = true;
     try {
-      session = mode === "login"
+      const session = mode === "login"
         ? await loginNative(serverUrl, username.trim(), password)
         : await registerNative(serverUrl, username.trim(), password, inviteCode);
       password = "";
       inviteCode = "";
+      onsession(session);
     } catch (error) {
       errorMessage = messageOf(error, "Authentication failed. Check the details and try again.");
     } finally {
@@ -57,22 +67,15 @@
     }
   }
 
-  async function signOut(): Promise<void> {
-    if (!session) return;
+  async function playAsGuest(): Promise<void> {
+    if (!invite || invite.target.kind !== "challenge") return;
     errorMessage = null;
-    notice = null;
     busy = true;
-    const activeSession = session;
-    // Sign the user out of the UI even when the server is offline. The service always attempts
-    // to clear the device token; an error tells the user that remote revocation was not confirmed.
-    session = null;
     try {
-      await logoutNative(serverUrl, activeSession);
-      notice = "Signed out and the server session was revoked.";
+      onsession(await createNativeGuestSession(serverUrl, invite.target.id));
     } catch (error) {
-      errorMessage = messageOf(error, "Signed out on this device, but server revocation could not be confirmed.");
+      errorMessage = messageOf(error, "Could not start a guest session for this invite.");
     } finally {
-      password = "";
       busy = false;
     }
   }
@@ -80,20 +83,63 @@
   function messageOf(error: unknown, fallback: string): string {
     return error instanceof Error && error.message ? error.message : fallback;
   }
+
+  const host = $derived(serverUrl.replace(/^https?:\/\//, ""));
 </script>
 
-<section class="auth-card" aria-labelledby="auth-title">
-  {#if restoring}
-    <p class="auth-status" role="status">Restoring the saved session securely…</p>
-  {:else if session}
-    <h2 id="auth-title">Signed in</h2>
-    <p class="account-name">{session.user.username}{session.user.is_guest ? " (guest)" : ""}</p>
-    <p class="subtle">This session is stored securely on this device and belongs only to {serverUrl}.</p>
-    <button class="secondary" type="button" onclick={signOut} disabled={busy}>
-      {busy ? "Signing out…" : "Log out"}
-    </button>
-  {:else}
-    <h2 id="auth-title">{mode === "login" ? "Sign in" : "Create an account"}</h2>
+<svelte:head>
+  <title>Sign in to LilChess</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+</svelte:head>
+
+<main class="screen">
+  <section class="panel" aria-labelledby="auth-title">
+    <p class="eyebrow">LILCHESS MOBILE</p>
+    <p class="server-line">
+      <span class="server-host">{host}</span>
+      <span class="version">v{health.version}</span>
+      <button class="link" type="button" onclick={onchangeserver} disabled={busy}>Change server</button>
+    </p>
+    {#if serverUrl.startsWith("http://")}
+      <p class="warning">This connection uses unencrypted HTTP. Use it only on a trusted local network.</p>
+    {/if}
+
+    {#if notice}
+      <p class="notice" role="status">{notice}</p>
+    {/if}
+
+    {#if invite}
+      <div class="invite" aria-live="polite">
+        {#if previewLoading}
+          <p class="subtle">Checking your invite…</p>
+        {:else if previewError}
+          <p class="error" role="alert">{previewError}</p>
+          <button class="secondary" type="button" onclick={ondropinvite}>Continue without the invite</button>
+        {:else if preview?.kind === "challenge"}
+          <h2>{displayName(preview.from_name)} invited you to play</h2>
+          <p class="subtle">
+            {timeControl(preview)} · {preview.mode === "live" ? "Live" : "Correspondence"}
+          </p>
+        {:else if preview?.kind === "simul"}
+          <h2>{displayName(preview.hostName)} invited you to a simul</h2>
+          <p class="subtle">{preview.name} · {preview.accepted}/{preview.maxPlayers} players</p>
+          <p class="subtle">Joining a simul needs a registered account.</p>
+        {/if}
+      </div>
+
+      {#if guestAllowed}
+        <button type="button" onclick={playAsGuest} disabled={busy}>
+          {busy ? "Please wait…" : "Play as a guest"}
+        </button>
+        <p class="subtle guest-note">
+          Guests can play this game but not simuls, email or notifications, and a guest account can't be recovered if
+          you log out or uninstall the app. Register to keep your games.
+        </p>
+        <p class="or">or sign in</p>
+      {/if}
+    {/if}
+
+    <h1 id="auth-title">{mode === "login" ? "Sign in" : "Create an account"}</h1>
     <p class="subtle">Accounts and sessions are separate for each server.</p>
     {#if registrationMode !== "closed"}
       <div class="mode-switch" aria-label="Authentication mode">
@@ -117,32 +163,54 @@
     {#if registrationMode === "closed"}
       <p class="subtle">Registration is closed on this server. Existing accounts can still sign in.</p>
     {/if}
-    <p class="subtle guest-note">Guest sessions are issued only for valid, non-targeted challenge invites. Invite-link navigation is handled in a later phase.</p>
-  {/if}
-  {#if errorMessage}
-    <p class="error" role="alert">{errorMessage}</p>
-  {/if}
-  {#if notice}
-    <p class="notice" role="status">{notice}</p>
-  {/if}
-</section>
+
+    {#if errorMessage}
+      <p class="error" role="alert">{errorMessage}</p>
+    {/if}
+  </section>
+</main>
 
 <style>
-  .auth-card { margin-top: 1rem; padding: 1rem; border: 1px solid #333b47; border-radius: .7rem; background: #13171d; }
-  h2 { margin: 0 0 .5rem; font-size: 1.2rem; }
-  .subtle, .auth-status { color: #aeb8c6; font-size: .875rem; }
-  .account-name { margin: .5rem 0; overflow-wrap: anywhere; font-weight: 750; }
+  .screen {
+    box-sizing: border-box; min-height: 100dvh; display: grid; justify-items: center; align-items: safe center;
+    padding: max(1.25rem, env(safe-area-inset-top, 0px)) max(1.25rem, env(safe-area-inset-right, 0px))
+             max(1.25rem, env(safe-area-inset-bottom, 0px)) max(1.25rem, env(safe-area-inset-left, 0px));
+    background: #101318; color: #f2f4f7; font: 16px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .panel {
+    box-sizing: border-box; width: min(100%, 34rem); padding: clamp(1.25rem, 5vw, 2.25rem);
+    border: 1px solid #333b47; border-radius: 1rem; background: #191e26; box-shadow: 0 1.25rem 3.5rem #0005;
+  }
+  .eyebrow { margin: 0 0 .5rem; color: #a9b5c5; font-size: .75rem; font-weight: 750; letter-spacing: .14em; }
+  .server-line { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .75rem; margin: 0 0 1rem; }
+  .server-host { overflow-wrap: anywhere; font-weight: 750; }
+  .version { color: #aeb8c6; font-size: .875rem; }
+  h1 { margin: 1rem 0 .25rem; font-size: 1.4rem; line-height: 1.2; }
+  h2 { margin: 0 0 .25rem; font-size: 1.15rem; }
+  .subtle { color: #aeb8c6; font-size: .875rem; }
+  .invite { margin: .5rem 0 1rem; padding: 1rem; border: 1px solid #426e54; border-radius: .65rem; background: #192b20; }
+  .invite .subtle { margin: .25rem 0 0; color: #c9e8d2; }
+  .guest-note { margin: .5rem 0 0; }
+  .or { margin: 1rem 0 0; text-align: center; color: #aeb8c6; }
   .mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin: 1rem 0; }
-  .mode-switch button { min-height: 2.5rem; margin: 0; border: 1px solid #697586; background: transparent; color: #f2f4f7; }
+  .mode-switch button { min-height: 2.75rem; margin: 0; border: 1px solid #697586; background: transparent; color: #f2f4f7; }
   .mode-switch button.active { background: #d9e5f5; color: #151a22; }
   form { display: grid; gap: .5rem; margin-top: .75rem; }
   label { margin-top: .4rem; font-weight: 650; }
-  input { box-sizing: border-box; width: 100%; min-height: 2.8rem; padding: .65rem .75rem; border: 1px solid #606b7a; border-radius: .5rem; background: #0f1217; color: inherit; font: inherit; }
-  button { min-height: 2.8rem; margin-top: .4rem; padding: .65rem .85rem; border: 0; border-radius: .5rem; background: #d9e5f5; color: #151a22; cursor: pointer; font: inherit; font-weight: 750; }
+  input {
+    box-sizing: border-box; width: 100%; min-height: 3rem; padding: .65rem .75rem; border: 1px solid #606b7a;
+    border-radius: .5rem; background: #0f1217; color: inherit; font: inherit;
+  }
+  input:focus-visible, button:focus-visible { outline: 3px solid #84b7ff; outline-offset: 2px; }
+  button {
+    width: 100%; min-height: 3rem; margin-top: .4rem; padding: .65rem .85rem; border: 0; border-radius: .5rem;
+    background: #d9e5f5; color: #151a22; cursor: pointer; font: inherit; font-weight: 750;
+  }
   button:disabled { cursor: wait; opacity: .65; }
-  button.secondary { width: 100%; border: 1px solid #697586; background: transparent; color: #f2f4f7; }
-  .guest-note { margin-bottom: 0; }
-  .error, .notice { padding: .7rem .8rem; border-radius: .5rem; overflow-wrap: anywhere; font-size: .875rem; }
+  button.secondary { border: 1px solid #697586; background: transparent; color: #f2f4f7; }
+  button.link { width: auto; min-height: 2.75rem; margin: 0; padding: 0 .25rem; background: none; color: #84b7ff; font-weight: 600; }
+  .warning, .error, .notice { padding: .7rem .8rem; border-radius: .5rem; overflow-wrap: anywhere; font-size: .875rem; }
+  .warning { border: 1px solid #806628; background: #382e17; color: #ffdf8a; }
   .error { border: 1px solid #87464c; background: #381f23; color: #ffc8cd; }
   .notice { border: 1px solid #426e54; background: #192b20; color: #a9e8bb; }
 </style>

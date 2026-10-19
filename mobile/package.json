@@ -15,9 +15,12 @@
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
     "@capacitor/cli": "^8.4.3",
+    "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.5.3",
     "@capacitor/ios": "^8.5.3",
+    "@capacitor/share": "^8.0.3",
     "capacitor-secure-storage-plugin": "^0.13.0"
   }
 }

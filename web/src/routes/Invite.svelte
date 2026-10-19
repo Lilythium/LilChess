@@ -5,6 +5,7 @@
   import { navigateToNewGame } from "../lib/router.svelte";
   import { displayName, timeControl } from "../lib/format";
   import Login from "./Login.svelte";
+  import OpenInApp from "../lib/components/OpenInApp.svelte";
 
   interface InviteInfo {
     id: string; from_name: string; mode: "live" | "correspondence";
@@ -81,6 +82,7 @@
     <p class="muted">Loading…</p>
   {:else}
     <h1>{displayName(invite.from_name)} invited you to play</h1>
+    <OpenInApp target={{ kind: "challenge", id }} />
     <p>
       {timeControl(invite)} · {invite.mode} · {invite.variant}
       {#if yourColor}<span class="muted"> · you play {yourColor}</span>{/if}

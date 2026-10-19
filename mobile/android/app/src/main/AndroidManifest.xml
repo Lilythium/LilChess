@@ -22,6 +22,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- lilchess://invite?server=…&c=… opens the app on a challenge or simul invite. The app checks the
+                 server and the invite itself; https app links need per-server verification and come in Phase 7. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lilchess" android:host="invite" />
+            </intent-filter>
+
         </activity>
 
         <provider

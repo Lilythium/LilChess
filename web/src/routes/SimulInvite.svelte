@@ -7,6 +7,7 @@
   import { navigate } from "../lib/router.svelte";
   import { simulClock } from "../lib/simul/format";
   import Login from "./Login.svelte";
+  import OpenInApp from "../lib/components/OpenInApp.svelte";
 
   interface Preview {
     name: string; hostName: string; status: string; mode: "live" | "correspondence"; variant: Variant;
@@ -58,6 +59,7 @@
     <p class="muted">Loading…</p>
   {:else}
     <h1>{displayName(preview.hostName)} invited you to a simul</h1>
+    <OpenInApp target={{ kind: "simul", code }} />
     <p><strong>{preview.name}</strong></p>
     <p>
       {simulClock(preview)} · {VARIANT_LABELS[preview.variant]} · {preview.accepted}/{preview.maxPlayers} players

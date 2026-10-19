@@ -16,10 +16,57 @@
 import { sounds, type SoundName } from "./sounds";
 
 const DEFAULT_VOLUME = 0.5;
+export const SOUND_PREFS_KEY = "lilchess.sound.v1";
 
-let enabled = true;
-let volume = DEFAULT_VOLUME;
+export interface SoundPreferences {
+    enabled: boolean;
+    volume: number;
+}
+
+/** Reads what was saved by a previous visit. Anything missing or malformed falls back to the defaults. */
+export function parseSoundPreferences(raw: string | null): SoundPreferences {
+    const defaults: SoundPreferences = { enabled: true, volume: DEFAULT_VOLUME };
+    if (!raw) return defaults;
+    try {
+        const value = JSON.parse(raw) as { enabled?: unknown; volume?: unknown } | null;
+        return {
+            enabled: typeof value?.enabled === "boolean" ? value.enabled : defaults.enabled,
+            volume: typeof value?.volume === "number" && Number.isFinite(value.volume)
+                ? Math.max(0, Math.min(1, value.volume))
+                : defaults.volume,
+        };
+    } catch {
+        return defaults;
+    }
+}
+
+function readSavedPreferences(): SoundPreferences {
+    try {
+        return parseSoundPreferences(localStorage.getItem(SOUND_PREFS_KEY));
+    } catch {
+        return parseSoundPreferences(null); // storage unavailable (private mode): defaults, nothing saved
+    }
+}
+
+function savePreferences(): void {
+    try {
+        localStorage.setItem(SOUND_PREFS_KEY, JSON.stringify({ enabled, volume }));
+    } catch {
+        // Not persisted. Sound settings are a convenience and must never break play.
+    }
+}
+
+const saved = readSavedPreferences();
+let enabled = saved.enabled;
+let volume = saved.volume;
 let unlocked = false;
+// A desktop tab keeps beeping in the background (you may be waiting on a move). The phone app does not: a late
+// socket event arriving while the app is hidden would otherwise play over whatever the person is doing.
+let playWhenHidden = true;
+
+export function setPlayWhenHidden(value: boolean): void {
+    playWhenHidden = value;
+}
 
 const audioCache = new Map<SoundName, HTMLAudioElement>();
 
@@ -55,6 +102,7 @@ export function unlockAudio(): void {
 
 export function playSound(sound: SoundName): void {
     if (!enabled) return;
+    if (!playWhenHidden && typeof document !== "undefined" && document.hidden) return;
 
     const audio = getAudio(sound);
 
@@ -83,6 +131,7 @@ export function playMoveSound(san: string): void {
 
 export function setSoundEnabled(value: boolean): void {
     enabled = value;
+    savePreferences();
 }
 
 export function isSoundEnabled(): boolean {
@@ -91,6 +140,7 @@ export function isSoundEnabled(): boolean {
 
 export function setSoundVolume(value: number): void {
     volume = Math.max(0, Math.min(1, value));
+    savePreferences();
 
     for (const audio of audioCache.values()) {
         audio.volume = volume;

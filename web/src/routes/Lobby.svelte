@@ -14,6 +14,7 @@
   import { ChallengeBody, VARIANTS, VARIANT_LABELS, type Variant } from "@lilchess/shared";
   import { validate } from "../lib/validate";
   import { playSound } from "../lib/audio/audio";
+  import { canShare, copyText, inviteLink, shareContent } from "../lib/platform";
 
   const PRESETS: [number, number][] = [[1, 0], [3, 2], [5, 3], [10, 0], [15, 10]];
   const DAYS = [1, 2, 3, 7, 14];
@@ -45,14 +46,11 @@
   // Games that existed on first load; anything new means one of my challenges was accepted.
   let known: Set<string> | null = null;
 
-  const linkFor = (id: string) => `${location.origin}/#/c/${id}`;
+  // In the phone app `location.origin` is the WebView's own, so links are built from the selected server.
+  const linkFor = (id: string) => inviteLink("c", id);
 
   async function copy(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      // insecure context (plain http on a LAN): the user copies from the field
-    }
+    await copyText(text); // false on an insecure context (plain http on a LAN); the user can still use Share
   }
 
   async function refresh() {
@@ -89,10 +87,12 @@
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", onVisible); };
   });
 
-  // Web Share needs HTTPS; over plain http it falls back to Copy link.
-  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  // The browser's Web Share needs HTTPS; over plain http it falls back to Copy link. The app always has a share sheet.
+  const shareable = canShare();
   async function shareLink(id: string) {
-    try { await navigator.share({ title: "Play me on LilChess", url: linkFor(id) }); } catch { /* dismissed */ }
+    try { await shareContent({ title: "Play me on LilChess", url: linkFor(id) }); } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
   }
 
   async function create(asLink = false) {
@@ -230,6 +230,7 @@
 
               {#if copyable}
                 <button onclick={() => copy(linkFor(c.id))}>Copy link</button>
+                {#if shareable}<button onclick={() => shareLink(c.id)}>Share</button>{/if}
               {/if}
             </span>
           </li>

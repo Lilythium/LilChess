@@ -18,7 +18,26 @@ export async function register(username: string, password: string, inviteCode?: 
 export async function playAsGuest(challengeId: string) {
   auth.user = (await api<{ user: User }>("/api/guest", { body: { challengeId } })).user;
 }
+
+// The native app signs in (and out) in its own shell, around the shared UI. It installs these so the shared
+// pieces (the header's Log out button, the first user lookup) work without knowing which platform they run on.
+let logoutHandler: (() => Promise<void>) | null = null;
+
+export function setLogoutHandler(next: (() => Promise<void>) | null): void {
+  logoutHandler = next;
+}
+
+/** Start from a user the shell already verified, or from none after signing out. Marks auth as loaded. */
+export function setSignedInUser(user: User | null): void {
+  auth.user = user;
+  auth.ready = true;
+}
+
 export async function logout() {
+  if (logoutHandler) {
+    await logoutHandler();
+    return;
+  }
   await api("/api/logout", { method: "POST" });
   auth.user = null;
   navigate("/login");

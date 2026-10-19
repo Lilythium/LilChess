@@ -34,7 +34,8 @@
   import Analysis from "./routes/Analysis.svelte";
   import Imported from "./routes/Imported.svelte";
 
-  onMount(loadMe);
+  // The native shell has already signed in and set the user; only the browser has to ask the server.
+  onMount(() => { if (!auth.ready) void loadMe(); });
 
   // Phones get a bottom tab bar on pages that don't have their own bottom controls (the game, analysis).
   const showBottomNav = $derived(viewport.bottomNav && !!auth.user && !hidesBottomNav(route.path));

@@ -3,6 +3,7 @@
   import { VARIANT_LABELS } from "@lilchess/shared";
   import { api } from "../lib/api";
   import { askConfirm } from "../lib/confirm";
+  import { canShare, copyText, inviteLink, shareContent } from "../lib/platform";
   import { displayName } from "../lib/format";
   import { navigate } from "../lib/router.svelte";
   import GameCard from "../lib/components/GameCard.svelte";
@@ -62,14 +63,14 @@
 
   let linkInput = $state<HTMLInputElement | null>(null);
   let linkNote = $state<string | null>(null);
-  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
-  const link = $derived(d?.simul.inviteCode ? `${location.origin}/#/s/${d.simul.inviteCode}` : "");
+  const shareable = canShare();
+  // Built from the selected server in the phone app: there `location.origin` is the WebView's own.
+  const link = $derived(d?.simul.inviteCode ? inviteLink("s", d.simul.inviteCode) : "");
 
   async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(link);
+    if (await copyText(link)) {
       linkNote = "Link copied.";
-    } catch {
+    } else {
       // clipboard needs HTTPS: select the text so Ctrl+C works
       linkInput?.select();
       linkNote = "Copy the selected link.";
@@ -77,7 +78,9 @@
   }
 
   async function shareLink() {
-    try { await navigator.share({ title: `Join my simul: ${d?.simul.name ?? ""}`, url: link }); } catch { /* dismissed */ }
+    try { await shareContent({ title: `Join my simul: ${d?.simul.name ?? ""}`, url: link }); } catch (err) {
+      linkNote = err instanceof Error ? err.message : String(err);
+    }
   }
 
   async function newLink() {
@@ -154,7 +157,7 @@
             <input readonly value={link} bind:this={linkInput} aria-label="Simul invite link"
                    onfocus={(e) => e.currentTarget.select()} />
             <button onclick={copyLink}>Copy</button>
-            {#if canShare}<button onclick={shareLink}>Share</button>{/if}
+            {#if shareable}<button onclick={shareLink}>Share</button>{/if}
             <button disabled={busy} onclick={newLink}>New link</button>
           </div>
           {#if linkNote}<p class="muted">{linkNote}</p>{/if}

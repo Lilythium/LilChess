@@ -18,6 +18,7 @@
   import GameActions from "../lib/components/GameActions.svelte";
   import GameAlerts from "../lib/components/GameAlerts.svelte";
   import GameResult from "../lib/components/GameResult.svelte";
+  import PgnButton from "../lib/components/PgnButton.svelte";
   import { keepAwake } from "../lib/wakeLock";
   import SimulBar from "../lib/components/SimulBar.svelte";
   import TournamentSimulBar from "../lib/components/TournamentSimulBar.svelte";
@@ -399,6 +400,7 @@
         />
         {#if g.status === "finished"}
           <a class="analyse-link" href={`#/analysis/${id}`}>Analyse this game</a>
+          <div class="pgn-link"><PgnButton {id} /></div>
         {/if}
       </div>
     </div>
@@ -406,4 +408,5 @@
 {/if}
 <style>
   .analyse-link { display: block; margin-top: 0.75rem; text-align: center; }
+  .pgn-link { text-align: center; }
 </style>
