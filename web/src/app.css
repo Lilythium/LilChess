@@ -191,8 +191,10 @@ html:has(.game-mobile) { overscroll-behavior-y: contain; } /* no pull-to-refresh
             - var(--move-h) - var(--dock-h) - var(--simul-h))));
   display: grid;
   grid-template-columns: var(--board);
-  grid-template-rows: auto auto auto auto auto 1fr;
-  grid-template-areas: "simul" "top" "board" "bottom" "moves" "dock";
+  /* Spare height (a phone taller than strips + square board + dock) is split evenly above and below the board
+     stack, so the board sits centred instead of leaving a dead band above the dock. */
+  grid-template-rows: auto 1fr auto auto auto auto 1fr auto;
+  grid-template-areas: "simul" "." "top" "board" "bottom" "moves" "." "dock";
   justify-content: center;
   min-height: calc(100dvh - var(--header-h));
 }
