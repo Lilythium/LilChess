@@ -45,3 +45,14 @@ export async function clearNativeSessionToken(serverUrl: string): Promise<void> 
   const result = await SecureStoragePlugin.remove({ key });
   if (result.value !== true) throw new Error("The local session token could not be removed from secure device storage.");
 }
+
+/**
+ * Remove every stored session token, for every server. Used when the app detects a fresh install (see
+ * installMarker.ts): iOS keeps Keychain items across an uninstall, so a reinstalled app could otherwise wake up
+ * holding a session from the previous install.
+ */
+export async function clearAllNativeSessionTokens(): Promise<void> {
+  requireNativeSecureStorage();
+  const result = await SecureStoragePlugin.clear();
+  if (result.value !== true) throw new Error("Stored session tokens could not be cleared from secure device storage.");
+}

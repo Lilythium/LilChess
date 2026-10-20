@@ -114,3 +114,15 @@ describe("toRelativeRequest", () => {
     expect(() => toRelativeRequest(path)).toThrow(TypeError);
   });
 });
+
+describe("body-less POST requests", () => {
+  it("still declares JSON and sends an empty object, so the server does not answer 415", async () => {
+    requestMock.mockReset();
+    bridge.request = requestMock;
+    requestMock.mockResolvedValue({ status: 200, data: { ok: true } });
+    await nativeRequest("https://chess.example.com", "/native/ws-ticket", { method: "POST", token: "a".repeat(64) });
+    const options = requestMock.mock.calls[0]![0] as { headers: Record<string, string>; data: unknown };
+    expect(options.headers["Content-Type"]).toBe("application/json");
+    expect(options.data).toEqual({});
+  });
+});

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network policy for every build that is not a debug build (release, and anything built from `main/` alone).
+  HTTPS only, system certificate authorities only. There is deliberately no cleartext exception here:
+
+  - The realtime connection is a WebSocket opened from the app's https://localhost WebView page. Android blocks a
+    ws:// connection from a secure page (mixed content), so allowing cleartext HTTP in a release build would let
+    login work and games fail. Self-hosted servers on a LAN should be reached over HTTPS (for example a reverse
+    proxy with a certificate from a real or private CA that the device trusts).
+  - `src/debug/res/xml/network_security_config.xml` replaces this file in debug builds and permits cleartext and
+    user-installed CAs so local development servers work. Never copy that file here.
+
+  mobile/src/platformConfig.test.ts fails the build if this file ever permits cleartext.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

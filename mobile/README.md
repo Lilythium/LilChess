@@ -3,10 +3,10 @@
 Capacitor shell that packages the existing Svelte web client as an Android and iOS app.
 The game UI stays shared with `web/`; a small native-only bootstrap screen selects and verifies the LilChess server.
 
-Status: Phase 6 (core mobile gameplay and guest access). The app picks and verifies a server, restores or creates a
+Status: Phase 7 (Android and iOS platform integration). Phase 6 added core gameplay and guest access. The app picks and verifies a server, restores or creates a
 session (login, registration, or a guest session for a challenge invite), then mounts the shared game UI. Challenge
 and simul invites open from `lilchess://` links, from pasted links, and from invite links shared inside the app.
-See `docs/mobile-phase-6-gameplay.md` for the flow, the decisions and the device test checklist.
+Phase 7 platform policy, release steps and the device test checklist are in `docs/mobile-phase-7-platform.md`.
 
 ## Layout
 
@@ -62,8 +62,9 @@ resulting changes under `android/` and `ios/` (for example `capacitor.settings.g
 - Android: Android Studio with SDK 36, and JDK 21. The Gradle wrapper downloads Gradle itself.
 - iOS (macOS only): Xcode 26 or newer. The project uses Swift Package Manager, so CocoaPods is not needed.
 
-Release builds, signing, icons and https app/universal links are Phase 7. Until then use debug builds.
-The `lilchess://` scheme is already registered in both projects (Phase 6).
+Release builds, signing, network policy, icons and app links are documented in `docs/mobile-phase-7-platform.md`.
+In short: debug builds can reach plain-HTTP development servers; Android release builds are HTTPS-only.
+The `lilchess://` scheme is registered in both projects.
 
 ## Rules
 

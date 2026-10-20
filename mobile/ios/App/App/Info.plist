@@ -62,7 +62,7 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
@@ -77,6 +77,21 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- HTTPS everywhere by default. This one key is the only ATS exception, and it is deliberately narrow:
+		     it allows plain HTTP to unqualified host names, .local names and IP addresses (a self-hosted server on
+		     the same network) and nothing else. Do NOT add NSAllowsArbitraryLoads or NSAllowsArbitraryLoadsInWebContent.
+		     mobile/src/platformConfig.test.ts fails if either appears. -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>LilChess connects to the chess server you choose. If that server is on your local network, iOS asks for this permission.</string>
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same colour as the web client background (bg in web/src/app.css). Used for the launch screen and the window behind the WebView. -->
+    <color name="lilchess_background">#161512</color>
+</resources>

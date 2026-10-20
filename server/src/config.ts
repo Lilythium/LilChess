@@ -32,6 +32,11 @@ const Env = z.object({
   SMTP_FROM: z.string().optional(),
   // Optional: a Discord channel webhook. Users who give their Discord ID get notifications as @mentions there.
   DISCORD_WEBHOOK_URL: z.string().optional(),
+  // Optional: verified https links (Android App Links, iOS universal links) into the LilChess mobile app.
+  // Leave empty to keep the /.well-known association files off. See docs/mobile-phase-7-platform.md.
+  MOBILE_ANDROID_PACKAGE: z.string().default("io.github.lilythium.lilchess"),
+  MOBILE_ANDROID_CERT_SHA256: z.string().optional(), // comma-separated signing-certificate SHA-256 fingerprints
+  MOBILE_IOS_APP_ID: z.string().optional(), // comma-separated "TEAMID.bundle.id" values
 });
 
 export interface SmtpConfig {
@@ -64,6 +69,15 @@ export interface Config {
   leaderboardInactiveDays: number;
   smtp: SmtpConfig | undefined;
   discordWebhookUrl: string | undefined;
+  mobile: MobileLinkConfig;
+}
+
+export interface MobileLinkConfig {
+  androidPackage: string;
+  /** Upper-case, colon-separated SHA-256 fingerprints of the app signing certificate(s). */
+  androidCertSha256: string[];
+  /** Apple app ids: `<TeamID>.<bundle id>`. */
+  iosAppIds: string[];
 }
 
 function parseTrustProxy(v: string | undefined): boolean | number | string {
@@ -104,6 +118,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     if (!baseOrigin) problems.push("BASE_URL: required when DISCORD_WEBHOOK_URL is set (messages contain links)");
     if (problems.length > 0) throw new Error(`Invalid configuration:\n  ${problems.join("\n  ")}`);
   }
+  const mobile = parseMobileLinks(e);
   return {
     nodeEnv: e.NODE_ENV,
     port: e.PORT,
@@ -133,7 +148,31 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       from: e.SMTP_FROM ?? "noreply@example.com",
     } : undefined,
     discordWebhookUrl: e.DISCORD_WEBHOOK_URL || undefined,
+    mobile,
   };
+}
+
+const SHA256_FINGERPRINT = /^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/;
+const ANDROID_PACKAGE = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/;
+const IOS_APP_ID = /^[A-Z0-9]{10}\.[A-Za-z0-9][A-Za-z0-9.-]*$/;
+
+function splitList(raw: string | undefined): string[] {
+  return (raw ?? "").split(",").map((v) => v.trim()).filter(Boolean);
+}
+
+function parseMobileLinks(e: z.infer<typeof Env>): MobileLinkConfig {
+  const androidCertSha256 = splitList(e.MOBILE_ANDROID_CERT_SHA256).map((v) => v.toUpperCase());
+  const iosAppIds = splitList(e.MOBILE_IOS_APP_ID);
+  const problems: string[] = [];
+  if (!ANDROID_PACKAGE.test(e.MOBILE_ANDROID_PACKAGE)) problems.push("MOBILE_ANDROID_PACKAGE: must be an Android package name such as io.github.lilythium.lilchess");
+  if (androidCertSha256.some((v) => !SHA256_FINGERPRINT.test(v))) {
+    problems.push("MOBILE_ANDROID_CERT_SHA256: each value must be 32 colon-separated hex bytes (AA:BB:...:FF)");
+  }
+  if (iosAppIds.some((v) => !IOS_APP_ID.test(v))) {
+    problems.push("MOBILE_IOS_APP_ID: each value must look like ABCDE12345.io.github.lilythium.lilchess");
+  }
+  if (problems.length > 0) throw new Error(`Invalid configuration:\n  ${problems.join("\n  ")}`);
+  return { androidPackage: e.MOBILE_ANDROID_PACKAGE, androidCertSha256, iosAppIds };
 }
 
 function isDiscordWebhook(raw: string): boolean {

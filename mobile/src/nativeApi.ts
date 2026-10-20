@@ -48,7 +48,11 @@ export async function nativeRequest<T = unknown>(
   }
 
   const url = `${address.apiBaseUrl}/${relativePath}`;
-  const hasBody = options.body !== undefined;
+  const method = options.method ?? (options.body !== undefined ? "POST" : "GET");
+  // A body-less POST/PUT/PATCH/DELETE must still declare JSON. Android's HTTP stack otherwise labels it
+  // form-urlencoded and Fastify answers 415 (this broke /native/ws-ticket). Send an empty JSON object.
+  const hasBody = options.body !== undefined || ["POST", "PUT", "PATCH"].includes(method);
+  const body = options.body !== undefined ? options.body : hasBody ? {} : undefined;
   const asText = options.responseType === "text";
   const headers: Record<string, string> = { Accept: asText ? "text/plain, application/x-chess-pgn, application/json" : "application/json" };
   if (hasBody) headers["Content-Type"] = "application/json";
@@ -58,9 +62,9 @@ export async function nativeRequest<T = unknown>(
   try {
     response = await CapacitorHttp.request({
       url,
-      method: options.method ?? (hasBody ? "POST" : "GET"),
+      method,
       headers,
-      data: options.body,
+      data: body,
       connectTimeout: timeoutMs,
       readTimeout: timeoutMs,
       disableRedirects: true,

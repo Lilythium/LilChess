@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DEBUG BUILDS ONLY. This file is merged over src/main/res/xml/network_security_config.xml by Gradle's build-type
+  source sets, so it is never part of a release build.
+
+  Android cannot express "private network addresses only" (the config matches hostnames, not IP ranges), so debug
+  builds allow cleartext to any host. That is what lets a development build talk to http://192.168.x.x:3000.
+  User-installed CAs are also trusted so a local HTTPS server using mkcert or a private CA works.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

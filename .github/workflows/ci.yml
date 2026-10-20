@@ -60,8 +60,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: npm ci --ignore-scripts
       - run: npm run sync -w mobile
-      - name: Build debug APK
+      - name: Build debug and release APKs
         working-directory: mobile/android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug assembleRelease

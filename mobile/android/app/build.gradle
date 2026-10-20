@@ -1,5 +1,19 @@
 apply plugin: 'com.android.application'
 
+// Release signing material is read from android/keystore.properties (git-ignored) and never committed.
+// See docs/mobile-phase-7-platform.md and keystore.properties.example. Without that file the release build is unsigned.
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
+// Build-time settings, passed as -P properties (or in ~/.gradle/gradle.properties):
+//   lilchessVersionCode     integer, must increase with every store upload (default 1)
+//   lilchessVersionName     shown to users (default 1.0)
+//   lilchessAppLinkHost     host that gets verified https App Links, e.g. chess.example.com (default: none)
+def appLinkHost = project.findProperty('lilchessAppLinkHost') ?: ''
+
 android {
     namespace = "io.github.lilythium.lilchess"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +21,12 @@ android {
         applicationId "io.github.lilythium.lilchess"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode((project.findProperty('lilchessVersionCode') ?: '1').toInteger())
+        versionName(project.findProperty('lilchessVersionName') ?: '1.0')
+        manifestPlaceholders = [
+            appLinkHost    : appLinkHost ?: 'app-links.invalid',
+            appLinksEnabled: appLinkHost ? 'true' : 'false'
+        ]
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +34,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystoreProperties['storeFile']) {
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig keystoreProperties['storeFile'] ? signingConfigs.release : null
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
