@@ -40,6 +40,29 @@ describe("challenge lifecycle", () => {
     expect(r!.expires_at - r!.created_at).toBe(48 * HOUR);
   });
 
+  it("allows one 72-hour direct challenge per recipient without replacing open challenges", async () => {
+    await registerUser(app, "bob");
+    await registerUser(app, "carol");
+
+    const bobLive = (await create({ ...LIVE, toUsername: "bob" })).json().challengeId as string;
+    const bobCorrespondence = (await create({ ...CORR, toUsername: "bob" })).json().challengeId as string;
+    const carolLive = (await create({ ...LIVE, toUsername: "carol" })).json().challengeId as string;
+    const openLive = (await create(LIVE)).json().challengeId as string;
+    const openCorrespondence = (await create(CORR)).json().challengeId as string;
+
+    expect(rows().map((r) => r.id).sort()).toEqual(
+      [bobCorrespondence, carolLive, openLive, openCorrespondence].sort(),
+    );
+    expect(rows().find((r) => r.id === bobLive)).toBeUndefined();
+    for (const r of rows().filter((row) => row.id === bobCorrespondence || row.id === carolLive)) {
+      expect(r.expires_at - r.created_at).toBe(72 * HOUR);
+    }
+    expect(rows().find((r) => r.id === openLive)!.expires_at - rows().find((r) => r.id === openLive)!.created_at)
+      .toBe(HOUR);
+    expect(rows().find((r) => r.id === openCorrespondence)!.expires_at - rows().find((r) => r.id === openCorrespondence)!.created_at)
+      .toBe(48 * HOUR);
+  });
+
   it("a new live challenge replaces the old one, whatever its kind", async () => {
     await create(LIVE);
     const second = (await create({ ...LIVE, link: true })).json().challengeId as string;

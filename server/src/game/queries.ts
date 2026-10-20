@@ -27,6 +27,7 @@ const HOUR_MS = 60 * 60 * 1000;
 export const LINK_TTL_MS = 24 * HOUR_MS;
 export const LIVE_CHALLENGE_TTL_MS = HOUR_MS;
 export const CORRESPONDENCE_CHALLENGE_TTL_MS = 48 * HOUR_MS;
+export const DIRECT_CHALLENGE_TTL_MS = 72 * HOUR_MS;
 
 export function challengeTtlMs(mode: string): number {
   return mode === "correspondence" ? CORRESPONDENCE_CHALLENGE_TTL_MS : LIVE_CHALLENGE_TTL_MS;
@@ -54,11 +55,16 @@ export function createChallenge(data: {
   const db = getDb();
   const id = generateId(data.isLink ? 8 : 4);
   const now = Date.now();
-  const expiresAt = now + challengeTtlMs(data.mode);
+  const isDirect = data.toUser !== undefined;
+  const expiresAt = now + (isDirect ? DIRECT_CHALLENGE_TTL_MS : challengeTtlMs(data.mode));
 
-  // A user has at most one challenge per mode: creating a new one replaces the old one.
   return db.transaction(() => {
-    db.prepare(`DELETE FROM challenges WHERE from_user = ? AND mode = ?`).run(data.fromUser, data.mode);
+    if (isDirect) {
+      db.prepare(`DELETE FROM challenges WHERE from_user = ? AND to_user = ?`).run(data.fromUser, data.toUser);
+    } else {
+      db.prepare(`DELETE FROM challenges WHERE from_user = ? AND mode = ? AND to_user IS NULL`)
+        .run(data.fromUser, data.mode);
+    }
     db.prepare(`
       INSERT INTO challenges (id, from_user, to_user, mode, initial_ms, increment_ms, days_per_move, color_pref, created_at, expires_at, is_link, variant, rated)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
