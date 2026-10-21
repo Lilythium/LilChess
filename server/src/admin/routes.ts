@@ -82,7 +82,7 @@ export async function adminRoutes(app: FastifyInstance) {
              (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > ?) AS activeSessions,
              (SELECT COUNT(*) FROM games g WHERE g.white_id = u.id OR g.black_id = u.id) AS gameCount,
              (SELECT COUNT(*) FROM games g WHERE g.status = 'started' AND (g.white_id = u.id OR g.black_id = u.id)) AS activeGames
-      FROM users u ORDER BY u.created_at DESC LIMIT 500
+      FROM users u WHERE u.deleted_at IS NULL ORDER BY u.created_at DESC LIMIT 500
     `).all(Date.now()),
   }));
 

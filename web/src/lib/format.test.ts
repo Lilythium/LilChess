@@ -6,6 +6,10 @@ describe("displayName", () => {
     expect(displayName("alice")).toBe("Alice");
     expect(displayName("bob_smith")).toBe("Bob_smith");
   });
+  it("shows deleted accounts as one anonymous name", () => {
+    expect(displayName("deleted_0123abcd")).toBe("Deleted user");
+    expect(displayName("deleted_alice")).toBe("Deleted_alice"); // only the exact shape the server assigns
+  });
   it("copes with empty and non-letter starts", () => {
     expect(displayName("")).toBe("");
     expect(displayName("_x")).toBe("_x");

@@ -1,4 +1,4 @@
-import { VARIANT_LABELS, type GameState, type Variant } from "@lilchess/shared";
+import { VARIANT_LABELS, isDeletedUsername, type GameState, type Variant } from "@lilchess/shared";
 
 type TC = {
   mode: string; initial_ms: number | null; increment_ms: number | null;
@@ -26,6 +26,7 @@ export function resultText(g: GameState): string {
 }
 
 export function displayName(name: string): string {
+  if (isDeletedUsername(name)) return "Deleted user"; // an account its owner deleted: see server/src/auth/deletion.ts
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 

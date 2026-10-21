@@ -6,6 +6,7 @@
   import { validate } from "../lib/validate";
   import SoundSettings from "../lib/components/SoundSettings.svelte";
   import NativeServerPanel from "../lib/components/NativeServerPanel.svelte";
+  import DeleteAccount from "../lib/components/DeleteAccount.svelte";
 
   interface Settings {
     emailAvailable: boolean;
@@ -163,6 +164,8 @@
       </div>
     </div>
   {/if}
+
+  <DeleteAccount />
 </div>
 
 <style>

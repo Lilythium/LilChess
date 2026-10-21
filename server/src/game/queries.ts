@@ -174,7 +174,7 @@ export function getMyGames(userId: number) {
 // Fetch user profile and Head-to-Head stats
 export function getUserProfileWithH2H(targetUsername: string, viewerId: number) {
   const db = getDb();
-  const targetUser = db.prepare(`SELECT id, username, created_at FROM users WHERE username = ?`).get(normalizeUsername(targetUsername)) as any;
+  const targetUser = db.prepare(`SELECT id, username, created_at FROM users WHERE username = ? AND deleted_at IS NULL`).get(normalizeUsername(targetUsername)) as any;
   if (!targetUser) return null;
 
   const lbOpts = { minGames: config.leaderboardMinGames, inactiveDays: config.leaderboardInactiveDays };
@@ -206,7 +206,7 @@ export function getUserProfileWithH2H(targetUsername: string, viewerId: number) 
 
 /** Rating graph data for one variant over a time range; null if the user doesn't exist. */
 export function getUserRatingHistory(targetUsername: string, variant: Variant, range: RatingHistoryRange, now = Date.now()) {
-  const user = getDb().prepare(`SELECT id FROM users WHERE username = ?`).get(normalizeUsername(targetUsername)) as
+  const user = getDb().prepare(`SELECT id FROM users WHERE username = ? AND deleted_at IS NULL`).get(normalizeUsername(targetUsername)) as
     | { id: number }
     | undefined;
   if (!user) return null;

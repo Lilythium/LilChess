@@ -228,6 +228,15 @@ docker run -d \
 
 Your database remains intact because it is stored in the mounted `data` directory.
 
+## Deleting an account
+
+Every signed-in user can delete their own account from **Settings → Delete account** (password required; guests just
+confirm). Their games stay so opponents keep their history, but the account becomes an anonymous "Deleted user": the
+name, password, email, Discord ID, ratings, imported games and notification settings are removed, and the username
+can be registered again. It is refused while the person has games in progress or a tournament or simul running, and for
+administrators (another administrator must remove their admin access first). It cannot be undone. Details:
+`server/src/auth/deletion.ts`.
+
 ## Reverse Proxy
 
 For public deployments, place LilChess behind a reverse proxy such as nginx or Caddy and configure `BASE_URL` to match the public address.

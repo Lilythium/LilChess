@@ -19,7 +19,7 @@ interface Target {
 
 function loadTarget(userId: number): Target {
   const target = getDb()
-    .prepare(`SELECT id, username, is_admin, is_guest, disabled_at FROM users WHERE id = ?`)
+    .prepare(`SELECT id, username, is_admin, is_guest, disabled_at FROM users WHERE id = ? AND deleted_at IS NULL`)
     .get(userId) as Target | undefined;
   if (!target) throw new AdminError("User not found", 404);
   return target;

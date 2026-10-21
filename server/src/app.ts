@@ -9,6 +9,7 @@ import { logger } from "./logger.js";
 import { attachWebSocketServer } from "./ws/server.js";
 import { registerCsrfProtection } from "./security/csrf.js";
 import { authRoutes } from "./auth/routes.js";
+import { accountRoutes } from "./auth/accountRoutes.js";
 import { resetRoutes } from "./auth/resetRoutes.js";
 import { gameRoutes } from "./game/routes.js";
 import { notificationRoutes } from "./notifications/routes.js";
@@ -66,6 +67,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // API Routes
   await app.register(authRoutes);
+  await app.register(accountRoutes);
   await app.register(resetRoutes);
   await app.register(gameRoutes);
   await app.register(notificationRoutes);

@@ -10,7 +10,8 @@ import {
   verifyPassword,
 } from "./crypto.js";
 import { createGuest, createSession, createUser, deleteSession, getSessionUser, getUserByUsername, type User } from "./queries.js";
-import { getInvitePreview } from "../game/queries.js";   
+import { getInvitePreview } from "../game/queries.js";
+import { isDeletedUsername } from "@lilchess/shared";   
 import { consumeRegistrationInvite, isRegistrationInviteUsable } from "./invites.js";
 import { getDb } from "../db/connection.js";
 import { SESSION_COOKIE, sessionTokenFromCredentials } from "./sessionToken.js";
@@ -37,6 +38,8 @@ export async function authRoutes(app: FastifyInstance) {
 
     const body = parse(RegisterBody, req.body, reply);
     if (!body) return reply;
+    // The shape deleted accounts are renamed to. Treated like any taken name, so nothing is revealed.
+    if (isDeletedUsername(body.username)) return reply.code(409).send({ error: "Username taken" });
 
     // In invite mode the code is either the INVITE_CODE from the environment or one an admin created.
     const code = body.inviteCode ?? "";
