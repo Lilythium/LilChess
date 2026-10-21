@@ -9,6 +9,7 @@ export { startingDeadline, advanceClock, FIRST_MOVE_WINDOW_MS, inFirstMoveWindow
 export { createGame } from "./createGame.js";
 export { sanForNextMove } from "./notation.js";
 export { fenAfterMoves, fensForMoves } from "./fen.js";
+export { legalMoves, type LegalMove } from "./legalMoves.js";
 export { rulesFor, positionFromFen, fenOf, fixedStartFen } from "./position.js";
 export { buildPgn, type BuildPgnOptions } from "./pgn.js";
 export { gameStateProblems } from "./invariants.js";

@@ -22,6 +22,9 @@ const Env = z.object({
   BACKUP_KEEP: z.coerce.number().int().min(0).max(365).default(7), // 0 disables backups
   BACKUP_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(3),
   ALLOW_GUESTS: z.stringbool().default(true),
+  // Public demo server for app reviewers and new users (see docs/mobile-demo-server.md). Off by default.
+  DEMO_MODE: z.stringbool().default(false),
+  DEMO_RETENTION_HOURS: z.coerce.number().int().min(1).max(720).default(24),
   LEADERBOARD_MIN_GAMES: z.coerce.number().int().min(0).max(1000).default(5),
   LEADERBOARD_INACTIVE_DAYS: z.coerce.number().int().min(0).max(3650).default(30), // 0 = never hide inactive players
   SMTP_HOST: z.string().optional(),
@@ -65,6 +68,10 @@ export interface Config {
   backupKeep: number;
   backupHourUtc: number;
   allowGuests: boolean;
+  /** Public demo server: a practice bot and guest sessions that need no invite link. */
+  demoMode: boolean;
+  /** Demo guests and their bot games are deleted once they are older than this. */
+  demoRetentionHours: number;
   leaderboardMinGames: number;
   leaderboardInactiveDays: number;
   smtp: SmtpConfig | undefined;
@@ -103,6 +110,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error("Invalid configuration:\n  ADMIN_PASSWORD: needs ADMIN_USERNAME as well");
   }
 
+  if (e.DEMO_MODE) {
+    const problems: string[] = [];
+    if (!e.ALLOW_GUESTS) problems.push("ALLOW_GUESTS: must be true when DEMO_MODE=true (demo visitors play as guests)");
+    if (e.REGISTRATION === "closed") problems.push("REGISTRATION: must not be closed when DEMO_MODE=true (guest play is disabled on closed servers)");
+    if (problems.length > 0) throw new Error(`Invalid configuration:\n  ${problems.join("\n  ")}`);
+  }
+
   const baseOrigin = e.BASE_URL ? new URL(e.BASE_URL).origin : undefined;
 
   if (e.SMTP_HOST) {
@@ -137,6 +151,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     backupKeep: e.BACKUP_KEEP,
     backupHourUtc: e.BACKUP_HOUR_UTC,
     allowGuests: e.ALLOW_GUESTS,
+    demoMode: e.DEMO_MODE,
+    demoRetentionHours: e.DEMO_RETENTION_HOURS,
     leaderboardMinGames: e.LEADERBOARD_MIN_GAMES,
     leaderboardInactiveDays: e.LEADERBOARD_INACTIVE_DAYS,
     smtp: e.SMTP_HOST ? {

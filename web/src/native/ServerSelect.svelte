@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { CapacitorHttp } from "@capacitor/core";
+  import { demoServer } from "./demo";
   import {
     SERVER_URL_STORAGE_KEY,
     ServerSelectionError,
@@ -30,7 +31,8 @@
 
   onMount(() => {
     if (!initialAddress) {
-      address = prefillAddress;
+      // First launch: offer the demo server, but the field stays editable and nothing is contacted until the person submits.
+      address = prefillAddress || demoServer?.serverUrl || "";
       return;
     }
     address = initialAddress;
@@ -99,6 +101,13 @@
     void checkAndSelect();
   }
 
+  function useDemoServer(): void {
+    if (!demoServer) return;
+    address = demoServer.serverUrl;
+    void checkAndSelect(demoServer.serverUrl);
+  }
+
+  const showDemoShortcut = $derived(demoServer !== null && address.trim() !== demoServer.serverUrl);
   const explicitlyHttp = $derived(/^http:\/\//i.test(address.trim()));
 </script>
 
@@ -145,6 +154,9 @@
           {checking ? "Checking server…" : "Test and select server"}
         </button>
       </form>
+      {#if showDemoShortcut}
+        <button class="secondary" type="button" onclick={useDemoServer} disabled={checking}>Use the demo server</button>
+      {/if}
     {/if}
 
     {#if errorMessage}
@@ -214,6 +226,7 @@
     font-weight: 750;
   }
   button:disabled { cursor: wait; opacity: .65; }
+  button.secondary { border: 1px solid #697586; background: transparent; color: #f2f4f7; }
   .warning, .error { padding: .75rem .85rem; border-radius: .5rem; font-size: .9rem; }
   .warning { border: 1px solid #806628; background: #382e17; color: #ffdf8a; }
   .error { border: 1px solid #87464c; background: #381f23; color: #ffc8cd; }

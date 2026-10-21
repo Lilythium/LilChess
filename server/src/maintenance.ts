@@ -1,4 +1,6 @@
+import { config } from "./config.js";
 import { getDb } from "./db/connection.js";
+import { purgeDemoData } from "./demo/data.js";
 import { logger } from "./logger.js";
 import { backfillOpeningPositions, backfillOpenings } from "./openings/stats.js";
 import { expirePendingSimuls } from "./simuls/service.js";
@@ -56,6 +58,10 @@ function run(): void {
   try {
     const r = purgeExpired();
     if (Object.values(r).some(Boolean)) log.info(r, "purged expired rows");
+    if (config.demoMode) {
+      const demo = purgeDemoData(Date.now(), config.demoRetentionHours * 60 * 60 * 1000);
+      if (demo.games > 0 || demo.guests > 0) log.info(demo, "purged demo data");
+    }
     // Counts games that finished before the explorer existed, or were ended by an admin, so it never misses one.
     const openings = backfillOpenings();
     if (openings > 0) log.info({ openings }, "added games to the opening explorer");

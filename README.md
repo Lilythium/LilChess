@@ -126,6 +126,8 @@ LilChess can be configured with environment variables.
 | `WEBHOOK_URL`     | —                   | Optional server-wide webhook for notifications and correspondence-game events |
 | `WEBHOOK_KIND`    | —                   | `ntfy` or `discord`; Discord is inferred from its webhook URL if omitted |
 | `ALLOW_GUESTS`    | `true`              | Let invite-link visitors play as guests       |
+| `DEMO_MODE`       | `false`             | Public demo server for the mobile app: practice bot and instant guest games. Run it as its own instance. See `docs/mobile-demo-server.md` |
+| `DEMO_RETENTION_HOURS` | `24`           | Demo guests and their bot games are deleted after this many hours (1-720) |
 | `SMTP_HOST`       | —                   | SMTP server; enables email (needs `SMTP_FROM` and `BASE_URL`) |
 | `SMTP_PORT`       | `587`               | SMTP port                                     |
 | `SMTP_SECURE`     | `false`             | `true` for implicit TLS (port 465)            |

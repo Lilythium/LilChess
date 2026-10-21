@@ -69,6 +69,7 @@ web_modules/
 .env
 .env.*
 !.env.example
+!.env.native.example
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -163,3 +164,6 @@ playwright/.cache/
 
 # Mobile client: web build used by Capacitor (see mobile/README.md)
 web/dist-native/
+
+# Local VS Code settings
+.vscode/

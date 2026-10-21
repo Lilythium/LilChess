@@ -3,7 +3,10 @@
 Capacitor shell that packages the existing Svelte web client as an Android and iOS app.
 The game UI stays shared with `web/`; a small native-only bootstrap screen selects and verifies the LilChess server.
 
-Status: Phase 7 (Android and iOS platform integration). Phase 6 added core gameplay and guest access. The app picks and verifies a server, restores or creates a
+Status: Phase 8 (demo server and distribution preparation). The demo server, privacy draft, store listing and
+review notes are in `docs/mobile-demo-server.md`, `docs/mobile-privacy.md`, `docs/mobile-store-listing.md` and
+`docs/mobile-compatibility.md`. The release version lives in `version.json` (`npm run version:sync -w mobile`).
+Earlier: Phase 7 (Android and iOS platform integration). Phase 6 added core gameplay and guest access. The app picks and verifies a server, restores or creates a
 session (login, registration, or a guest session for a challenge invite), then mounts the shared game UI. Challenge
 and simul invites open from `lilchess://` links, from pasted links, and from invite links shared inside the app.
 Phase 7 platform policy, release steps and the device test checklist are in `docs/mobile-phase-7-platform.md`.
@@ -15,6 +18,8 @@ Phase 7 platform policy, release steps and the device test checklist are in `doc
 | `capacitor.config.ts` | App id, name, pinned WebView origin, `webDir` |
 | `android/`, `ios/` | Generated native projects. Committed, so edit them deliberately |
 | `src/config.test.ts` | Guards the config, the app id and the server/mobile dependency boundary |
+| `version.json` | The release version (`versionName`, `buildNumber`) for both stores |
+| `src/demoServer.ts`, `src/nativeDemo.ts` | The optional built-in demo address and the "Play a demo game" request |
 | `src/serverSelection.ts` | Pure URL normalization, compatibility validation and connection-error mapping |
 | `../web/src/native/` | Native-only server selection screen and Capacitor HTTP probe, imported only by native builds |
 | `../web/dist-native/` | Web build the app embeds. Git-ignored, never served by the server |
@@ -45,6 +50,7 @@ Run from the repository root.
 |---|---|
 | `npm run build:web -w mobile` | Build `shared`, then the native-mode web bundle |
 | `npm run sync -w mobile` | `build:web`, then `cap sync` (copy the bundle and update both native projects) |
+| `npm run version:sync -w mobile` | Copy `version.json` into the iOS project (Android reads it directly) |
 | `npm run check -w mobile` | Type-check `capacitor.config.ts` and the mobile tests |
 | `npm run open:android -w mobile` | Open `android/` in Android Studio |
 | `npm run open:ios -w mobile` | Open `ios/` in Xcode (macOS only) |

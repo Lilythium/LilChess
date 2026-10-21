@@ -26,6 +26,8 @@ export interface LilChessHealth {
   features: {
     guests: boolean;
     registration: RegistrationMode;
+    /** Public demo server with a practice bot. Servers that predate Phase 8 omit it, which means false. */
+    demo: boolean;
   };
 }
 
@@ -181,7 +183,8 @@ export function validateHealthResponse(payload: unknown): LilChessHealth {
     typeof features.guests !== "boolean" ||
     (features.registration !== "open" &&
       features.registration !== "invite" &&
-      features.registration !== "closed")
+      features.registration !== "closed") ||
+    (features.demo !== undefined && typeof features.demo !== "boolean")
   ) {
     throw new ServerSelectionError(
       "invalid-response",
@@ -197,6 +200,7 @@ export function validateHealthResponse(payload: unknown): LilChessHealth {
     features: {
       guests: features.guests,
       registration: features.registration,
+      demo: features.demo === true,
     },
   };
 }

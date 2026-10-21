@@ -19,6 +19,7 @@ import { openingsRoutes } from "./openings/routes.js";
 import { importedRoutes } from "./imported/routes.js";
 import { simulRoutes } from "./simuls/routes.js";
 import { appLinkRoutes } from "./mobile/appLinks.js";
+import { demoRoutes } from "./demo/routes.js";
 
 // Keep the health version tied to the root package version used for server releases. This path
 // resolves to the repository root from both server/src during development and server/dist at runtime.
@@ -75,6 +76,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(importedRoutes);
   await app.register(simulRoutes);
   await app.register(appLinkRoutes);
+  await app.register(demoRoutes);
   app.get("/api/health", { config: { rateLimit: false } }, async () => ({
     ok: true,
     app: "lilchess",
@@ -83,6 +85,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     features: {
       guests: config.allowGuests,
       registration: config.registration,
+      demo: config.demoMode,
     },
   }));
 

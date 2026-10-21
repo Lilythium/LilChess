@@ -12,7 +12,7 @@ const validHealth = {
   app: "lilchess",
   version: "1.2.3",
   apiVersion: 1,
-  features: { guests: true, registration: "invite" },
+  features: { guests: true, registration: "invite", demo: false },
 };
 
 describe("normalizeServerAddress", () => {
@@ -59,6 +59,14 @@ describe("validateHealthResponse", () => {
     expect(validateHealthResponse(validHealth)).toEqual(validHealth);
     expect(MIN_API_VERSION).toBe(1);
     expect(MAX_API_VERSION).toBe(1);
+  });
+
+  it("treats a missing demo flag (older servers) as false and accepts demo servers", () => {
+    const { demo: _omit, ...legacyFeatures } = validHealth.features;
+    expect(validateHealthResponse({ ...validHealth, features: legacyFeatures }).features.demo).toBe(false);
+    expect(validateHealthResponse({ ...validHealth, features: { ...validHealth.features, demo: true } }).features.demo).toBe(true);
+    expect(() => validateHealthResponse({ ...validHealth, features: { ...validHealth.features, demo: "yes" } }))
+      .toThrow(/feature-compatibility/);
   });
 
   it("accepts JSON text returned by a native HTTP implementation", () => {

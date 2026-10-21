@@ -116,7 +116,7 @@ async function authenticate(
   return { token: response.sessionToken, user: response.user };
 }
 
-function isNativeUser(value: unknown): value is NativeUser {
+export function isNativeUser(value: unknown): value is NativeUser {
   return isRecord(value) && Number.isSafeInteger(value.id) &&
     typeof value.username === "string" && typeof value.created_at === "number" &&
     (value.is_admin === 0 || value.is_admin === 1) &&

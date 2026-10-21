@@ -7,6 +7,7 @@ import { startTimeoutScheduler, stopTimeoutScheduler } from "./game/timeoutSched
 import { startBackupScheduler, stopBackupScheduler } from "./db/backup.js";
 import { startMaintenance, stopMaintenance } from "./maintenance.js";
 import { bootstrapAdmin } from "./auth/bootstrap.js";
+import { startDemoBot, stopDemoBot } from "./demo/bot.js";
 
 if (config.registration === "invite" && config.inviteCode === "changeme") {
   logger.warn("INVITE_CODE is still the example value 'changeme'");
@@ -18,6 +19,11 @@ if (config.nodeEnv === "production" && !config.baseOrigin) {
 openDb(`${config.dataDir}/lilchess.db`);
 await bootstrapAdmin(getDb(), { username: config.adminUsername, password: config.adminPassword }, logger);
 for (const issue of checkIntegrity(getDb())) logger.warn(issue, "database integrity issue");
+if (config.demoMode) {
+  startDemoBot();
+  logger.warn("DEMO_MODE is on: practice bot enabled; demo guests and their bot games are deleted after %d h", config.demoRetentionHours);
+  if (!config.baseOrigin?.startsWith("https://")) logger.warn("DEMO_MODE without an https BASE_URL: the mobile app's demo needs a stable HTTPS address");
+}
 startTimeoutScheduler(); // also sweeps games that expired while the server was down
 startMaintenance();
 if (config.backupKeep > 0) {
@@ -41,6 +47,7 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
   try {
     stopTimeoutScheduler();
     stopMaintenance();
+    stopDemoBot();
     await stopBackupScheduler(); // lets an in-flight backup finish
     await app.close(); // stops accepting connections, closes WebSockets (hook in ws/server.ts), drains requests
     closeDb(); // checkpoints the WAL, then closes

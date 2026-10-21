@@ -134,6 +134,16 @@
     }
   }
 
+  /** A demo game was started on this server: sign in as the new guest and land on the game, not the lobby. */
+  function enterDemo(session: NativeSession, gameId: string): void {
+    if (!server) return;
+    pendingInvite = null;
+    enterApp(session);
+    const path = `/game/${gameId}`;
+    navigate(path);
+    route.path = path;
+  }
+
   function enterApp(session: NativeSession): void {
     if (!server) return;
     const { url, health } = server;
@@ -244,6 +254,7 @@
       invite={pendingInvite}
       {notice}
       onsession={enterApp}
+      ondemo={enterDemo}
       onchangeserver={changeServer}
       ondropinvite={() => (pendingInvite = null)}
     />

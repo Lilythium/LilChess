@@ -8,10 +8,12 @@ if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
 }
 
-// Build-time settings, passed as -P properties (or in ~/.gradle/gradle.properties):
-//   lilchessVersionCode     integer, must increase with every store upload (default 1)
-//   lilchessVersionName     shown to users (default 1.0)
+// The release version lives in mobile/version.json (versionName and buildNumber), shared with iOS: edit it, then run
+// `npm run version:sync -w mobile`. These -P properties, if given, override it for a single build:
+//   lilchessVersionCode     integer, must increase with every store upload (default: buildNumber)
+//   lilchessVersionName     shown to users (default: versionName)
 //   lilchessAppLinkHost     host that gets verified https App Links, e.g. chess.example.com (default: none)
+def releaseVersion = new groovy.json.JsonSlurper().parse(rootProject.file('../version.json'))
 def appLinkHost = project.findProperty('lilchessAppLinkHost') ?: ''
 
 android {
@@ -21,8 +23,8 @@ android {
         applicationId "io.github.lilythium.lilchess"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode((project.findProperty('lilchessVersionCode') ?: '1').toInteger())
-        versionName(project.findProperty('lilchessVersionName') ?: '1.0')
+        versionCode((project.findProperty('lilchessVersionCode') ?: releaseVersion.buildNumber).toString().toInteger())
+        versionName(project.findProperty('lilchessVersionName') ?: releaseVersion.versionName)
         manifestPlaceholders = [
             appLinkHost    : appLinkHost ?: 'app-links.invalid',
             appLinksEnabled: appLinkHost ? 'true' : 'false'

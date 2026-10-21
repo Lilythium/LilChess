@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { startDemoGame } from "../../../mobile/src/nativeDemo.js";
   import { createNativeGuestSession, loginNative, registerNative, type NativeSession } from "../../../mobile/src/nativeAuth.js";
   import type { InviteLink } from "../../../mobile/src/inviteLink.js";
   import { fetchInvitePreview, type InvitePreview } from "../../../mobile/src/nativeInvites.js";
@@ -9,12 +10,14 @@
   // Shown when there is no valid session for the selected server. Whatever the person picks here, the shell
   // (NativeRoot) takes the resulting session and mounts the game UI. Nothing on this screen trusts an invite link:
   // the preview and the guest permission both come from the server.
-  let { serverUrl, health, invite = null, notice = null, onsession, onchangeserver, ondropinvite }: {
+  let { serverUrl, health, invite = null, notice = null, onsession, ondemo, onchangeserver, ondropinvite }: {
     serverUrl: string;
     health: LilChessHealth;
     invite?: InviteLink | null;
     notice?: string | null;
     onsession: (session: NativeSession) => void;
+    /** A demo game was started: the shell signs in as the new guest and opens the game. */
+    ondemo: (session: NativeSession, gameId: string) => void;
     onchangeserver: () => void;
     ondropinvite: () => void;
   } = $props();
@@ -80,6 +83,19 @@
     }
   }
 
+  async function tryDemo(): Promise<void> {
+    errorMessage = null;
+    busy = true;
+    try {
+      const { session, gameId } = await startDemoGame(serverUrl);
+      ondemo(session, gameId);
+    } catch (error) {
+      errorMessage = messageOf(error, "Could not start the demo game. Try again in a moment.");
+    } finally {
+      busy = false;
+    }
+  }
+
   function messageOf(error: unknown, fallback: string): string {
     return error instanceof Error && error.message ? error.message : fallback;
   }
@@ -106,6 +122,21 @@
 
     {#if notice}
       <p class="notice" role="status">{notice}</p>
+    {/if}
+
+    {#if health.features.demo}
+      <div class="demo">
+        <h2>Try LilChess</h2>
+        <p class="subtle">
+          This is a demo server. Play a 10 minute game against a practice bot as a guest: no account needed.
+        </p>
+        <button type="button" onclick={tryDemo} disabled={busy}>{busy ? "Please wait…" : "Play a demo game"}</button>
+        <p class="subtle guest-note">
+          Demo guests can't create challenges, play rated games, join simuls or tournaments, or get notifications. Demo accounts and games
+          are deleted automatically after a short time, so don't expect to keep them. Register to keep your games.
+        </p>
+      </div>
+      <p class="or">or sign in</p>
     {/if}
 
     {#if invite}
@@ -190,6 +221,8 @@
   .subtle { color: #aeb8c6; font-size: .875rem; }
   .invite { margin: .5rem 0 1rem; padding: 1rem; border: 1px solid #426e54; border-radius: .65rem; background: #192b20; }
   .invite .subtle { margin: .25rem 0 0; color: #c9e8d2; }
+  .demo { margin: .5rem 0 0; padding: 1rem; border: 1px solid #3f5f8f; border-radius: .65rem; background: #172234; }
+  .demo .subtle { margin: .25rem 0 .5rem; color: #c3d3ea; }
   .guest-note { margin: .5rem 0 0; }
   .or { margin: 1rem 0 0; text-align: center; color: #aeb8c6; }
   .mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin: 1rem 0; }
