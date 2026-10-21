@@ -3,7 +3,9 @@
 Capacitor shell that packages the existing Svelte web client as an Android and iOS app.
 The game UI stays shared with `web/`; a small native-only bootstrap screen selects and verifies the LilChess server.
 
-Status: Phase 8 (demo server and distribution preparation). The demo server, privacy draft, store listing and
+Status: Phase 9 (integration testing and release hardening). The release test plan, device matrix and leak audit are in
+`docs/mobile-release-test-plan.md`; `npm run check:leaks` and `scripts/verify-docker-image.sh` are the automated gates.
+Phase 8 (demo server and distribution preparation). The demo server, privacy draft, store listing and
 review notes are in `docs/mobile-demo-server.md`, `docs/mobile-privacy.md`, `docs/mobile-store-listing.md` and
 `docs/mobile-compatibility.md`. The release version lives in `version.json` (`npm run version:sync -w mobile`).
 Earlier: Phase 7 (Android and iOS platform integration). Phase 6 added core gameplay and guest access. The app picks and verifies a server, restores or creates a

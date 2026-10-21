@@ -18,7 +18,8 @@
     "build": "npm run build -w shared && npm run build -w server && npm run build -w web",
     "pretest": "npm run build -w shared",
     "test": "vitest run",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "check:leaks": "node scripts/check-token-leaks.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

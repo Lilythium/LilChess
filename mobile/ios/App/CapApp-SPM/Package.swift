@@ -12,10 +12,10 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.5.3"),
-        .package(name: "CapacitorApp", path: "../../../../node_modules/@capacitor/app"),
-        .package(name: "CapacitorClipboard", path: "../../../../node_modules/@capacitor/clipboard"),
-        .package(name: "CapacitorShare", path: "../../../../node_modules/@capacitor/share"),
-        .package(name: "CapacitorSecureStoragePlugin", path: "../../../../node_modules/capacitor-secure-storage-plugin")
+        .package(name: "CapacitorApp", path: "..\..\..\..\node_modules\@capacitor\app"),
+        .package(name: "CapacitorClipboard", path: "..\..\..\..\node_modules\@capacitor\clipboard"),
+        .package(name: "CapacitorShare", path: "..\..\..\..\node_modules\@capacitor\share"),
+        .package(name: "CapacitorSecureStoragePlugin", path: "..\..\..\..\node_modules\capacitor-secure-storage-plugin")
     ],
     targets: [
         .target(
