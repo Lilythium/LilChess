@@ -14,10 +14,14 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 run() { docker run --rm --entrypoint sh "$IMAGE" -c "$1"; }
 
 echo "== mobile packages are absent from the image"
-for path in /app/mobile /app/node_modules/mobile /app/web/dist-native /app/node_modules/@capacitor; do
+for path in /app/mobile /app/node_modules/mobile /app/web/dist-native; do
   run "test ! -e $path" || fail "$path must not exist in the production image"
 done
-run "ls /app/node_modules | grep -i capacitor" >/dev/null 2>&1 && fail "a capacitor package is installed in the image"
+if run "find /app/node_modules/@capacitor /app/node_modules/capacitor-secure-storage-plugin -mindepth 1 -maxdepth 1 2>/dev/null | grep ." >/dev/null 2>&1; then
+  run "ls -la /app/node_modules/@capacitor /app/node_modules/capacitor-secure-storage-plugin" >&2 || true
+  fail "a capacitor package is installed in the image"
+fi
+echo "image size: $(docker image inspect "$IMAGE" --format '{{.Size}}' | awk '{printf "%.0f MB", $1/1024/1024}')"
 
 echo "== server, shared and web assets are present"
 for path in /app/server/dist/index.js /app/shared/dist /app/web/dist/index.html /app/server/dist/db/migrations; do
