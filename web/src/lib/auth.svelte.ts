@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { disablePush } from "./push";
 import { navigate } from "./router.svelte";
 
 export interface User { id: number; username: string; created_at: number; is_admin: number; is_guest: number; email: string | null }
@@ -38,6 +39,9 @@ export async function logout() {
     await logoutHandler();
     return;
   }
+  // Stop this browser receiving the account's notifications. Needs the session, so it comes first; it must
+  // never block signing out (or a person on a shared device would keep getting someone else's pushes).
+  await Promise.race([disablePush().catch(() => {}), new Promise((r) => setTimeout(r, 3000))]);
   await api("/api/logout", { method: "POST" });
   auth.user = null;
   navigate("/login");

@@ -90,6 +90,21 @@ export const NotificationSettingsBody = z.object({
   // "" or null removes the ID (opts out of Discord). Omitted leaves it alone.
   discordId: z.union([z.literal(""), z.null(), DiscordId]).optional(),
   discordPrefs: z.partialRecord(z.enum(NOTIFICATION_KINDS), z.boolean()).optional(),
+  pushPrefs: z.partialRecord(z.enum(NOTIFICATION_KINDS), z.boolean()).optional(),
+});
+
+// What the browser's PushSubscription.toJSON() gives us. The server additionally checks that the endpoint
+// belongs to a known push service (see server/src/notifications/push.ts).
+export const PushSubscriptionBody = z.object({
+  endpoint: z.url({ protocol: /^https$/, error: "Push endpoint must be an https URL" }).max(2048),
+  keys: z.object({
+    p256dh: z.string().min(1).max(256),
+    auth: z.string().min(1).max(64),
+  }),
+});
+
+export const PushEndpointBody = z.object({
+  endpoint: z.string().min(1).max(2048),
 });
 
 export const ForgotPasswordBody = z.object({

@@ -27,8 +27,12 @@ export function setUserEmail(userId: number, email: string | null): void {
     .run({ id: userId, email, token: randomBytes(16).toString("hex") });
 }
 
-export type Channel = "email" | "discord";
-const PREF_TABLE: Record<Channel, string> = { email: "notification_prefs", discord: "notification_prefs_discord" };
+export type Channel = "email" | "discord" | "push";
+const PREF_TABLE: Record<Channel, string> = {
+  email: "notification_prefs",
+  discord: "notification_prefs_discord",
+  push: "notification_prefs_push",
+};
 
 export function getPrefs(userId: number, channel: Channel = "email"): Prefs {
   const prefs = Object.fromEntries(NOTIFICATION_KINDS.map((k) => [k, true])) as Prefs;
@@ -96,4 +100,55 @@ export function discordRecipientFor(userId: number, kind: NotificationKind): { i
     .get(userId) as { id: number; username: string; discord_id: string } | undefined;
   if (!row || !getPrefs(userId, "discord")[kind]) return undefined;
   return { id: row.id, username: row.username, discordId: row.discord_id };
+}
+
+
+// ---- Web Push ----
+
+export interface PushSubscriptionRow { endpoint: string; p256dh: string; auth: string }
+
+// One account can have a few devices; more than this and the oldest registrations are dropped.
+const MAX_PUSH_DEVICES = 10;
+
+// The endpoint is unique per browser. If it is already stored (same browser, other account), it moves to this user.
+export function saveSubscription(userId: number, sub: PushSubscriptionRow): void {
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare(
+      `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, created_at) VALUES (@userId, @endpoint, @p256dh, @auth, @now)
+       ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`,
+    ).run({ userId, ...sub, now: Date.now() });
+    db.prepare(
+      `DELETE FROM push_subscriptions WHERE user_id = ? AND id NOT IN
+         (SELECT id FROM push_subscriptions WHERE user_id = ? ORDER BY id DESC LIMIT ?)`,
+    ).run(userId, userId, MAX_PUSH_DEVICES);
+  })();
+}
+
+// Scoped to the user, so nobody can remove somebody else's device by guessing an endpoint.
+export function removeSubscription(userId: number, endpoint: string): boolean {
+  return getDb().prepare(`DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?`).run(userId, endpoint).changes > 0;
+}
+
+export function removeSubscriptionByEndpoint(endpoint: string): void {
+  getDb().prepare(`DELETE FROM push_subscriptions WHERE endpoint = ?`).run(endpoint);
+}
+
+export function listSubscriptions(userId: number): PushSubscriptionRow[] {
+  return getDb()
+    .prepare(`SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ? ORDER BY id`)
+    .all(userId) as PushSubscriptionRow[];
+}
+
+// Who should get this kind of push? Undefined: no device registered, a guest, a disabled account, or they turned it off.
+export function pushRecipientFor(
+  userId: number,
+  kind: NotificationKind,
+): { id: number; username: string; subs: PushSubscriptionRow[] } | undefined {
+  const row = getDb()
+    .prepare(`SELECT id, username FROM users WHERE id = ? AND is_guest = 0 AND disabled_at IS NULL`)
+    .get(userId) as { id: number; username: string } | undefined;
+  if (!row || !getPrefs(userId, "push")[kind]) return undefined;
+  const subs = listSubscriptions(userId);
+  return subs.length > 0 ? { id: row.id, username: row.username, subs } : undefined;
 }

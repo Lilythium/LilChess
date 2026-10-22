@@ -4,6 +4,8 @@ import { config } from "../config.js";
 export interface Message {
   subject: string;
   text: string;
+  /** Hash route this message is about ("/game/abc"). Push notifications open it on click. */
+  path?: string;
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -35,6 +37,7 @@ export function outcomeFor(state: GameState, me: Color): string {
 export const challengeReceived = (from: string, clock: ClockConfig): Message => ({
   subject: `${cap(from)} challenged you to a ${describeClock(clock)} game`,
   text: `${cap(from)} challenged you to a ${clock.mode} game (${describeClock(clock)}).\n\nSee it in the lobby: ${link("/")}\n`,
+  path: "/",
 });
 
 export const challengeAccepted = (opponent: string, gameId: string, youMoveFirst: boolean): Message => ({
@@ -43,6 +46,7 @@ export const challengeAccepted = (opponent: string, gameId: string, youMoveFirst
     `${cap(opponent)} accepted your correspondence challenge.\n` +
     (youMoveFirst ? "You play white, so it's your move.\n" : "You play black; they move first.\n") +
     `\nOpen the game: ${link("/game/" + gameId)}\n`,
+  path: `/game/${gameId}`,
 });
 
 export const yourTurn = (opponent: string, san: string, gameId: string, deadlineAt: number): Message => ({
@@ -51,21 +55,25 @@ export const yourTurn = (opponent: string, san: string, gameId: string, deadline
     `${cap(opponent)} played ${san}. It's your move.\n\n` +
     `You have until ${new Date(deadlineAt).toUTCString()} to reply.\n\n` +
     `Play: ${link("/game/" + gameId)}\n`,
+  path: `/game/${gameId}`,
 });
 
 export const gameCompleted = (opponent: string, gameId: string, outcome: string): Message => ({
   subject: `Your game against ${cap(opponent)} has ended`,
   text: `${outcome}\n\nView the game: ${link("/game/" + gameId)}\n`,
+  path: `/game/${gameId}`,
 });
 
 export const tournamentStarting = (name: string, tournamentId: string): Message => ({
   subject: `${name} is starting`,
   text: `The tournament "${name}" has started.\n\nOpen the tournament: ${link("/tournament/" + tournamentId)}\n`,
+  path: `/tournament/${tournamentId}`,
 });
 
 export const tournamentCancelled = (name: string, tournamentId: string): Message => ({
   subject: `${name} was cancelled`,
   text: `The tournament "${name}" was cancelled because fewer than two players had joined when it was due to start.\n\nSee it here: ${link("/tournament/" + tournamentId)}\n`,
+  path: `/tournament/${tournamentId}`,
 });
 
 export const passwordReset = (username: string, token: string): Message => ({
@@ -79,4 +87,5 @@ export const passwordReset = (username: string, token: string): Message => ({
 export const simulInvited = (host: string, name: string, simulId: string): Message => ({
   subject: `${cap(host)} invited you to a simul`,
   text: `${cap(host)} invited you to play in "${name}", a simultaneous exhibition.\n\nAccept or decline: ${link("/simul/" + simulId)}\n`,
+  path: `/simul/${simulId}`,
 });

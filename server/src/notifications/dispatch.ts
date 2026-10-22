@@ -3,15 +3,16 @@ import { getDb } from "../db/connection.js";
 import { logger } from "../logger.js";
 import { discordEnabled, sendDiscord } from "./discord.js";
 import { emailEnabled, sendMail } from "./mailer.js";
-import { claimNotification, discordRecipientFor, recipientFor, type Recipient } from "./queries.js";
+import { pushEnabled, sendPush } from "./push.js";
+import { claimNotification, discordRecipientFor, pushRecipientFor, recipientFor, type Recipient } from "./queries.js";
 import { sendWebhook, webhookEnabled } from "./webhook.js";
 import * as t from "./templates.js";
 
 const log = logger.child({ mod: "notify" });
 
-// The one door every notification goes through. Call it AFTER the database transaction has committed.
-// It never throws and never awaits a send. Each channel is independent, and a failure on one never
-// blocks the others.
+// The one door every notification goes through: email, Discord, webhook and Web Push. Call it AFTER the
+// database transaction has committed. It never throws and never awaits a send. Each channel is independent,
+// and a failure on one never blocks the others.
 export function notifyUser(
   userId: number,
   kind: NotificationKind,
@@ -62,6 +63,26 @@ export function notifyUser(
       }
     } catch (err) {
       log.warn({ err, kind }, "webhook notification failed");
+    }
+  }
+
+  if (pushEnabled()) {
+    try {
+      const p = pushRecipientFor(userId, kind);
+      // Same dedup table again, with its own prefix. One claim covers all of the user's devices.
+      if (p && claimNotification(userId, `push:${dedupKey}`, kind)) {
+        const { subject, text, path = "/" } = build({ id: p.id, username: p.username, email: "", unsubscribeToken: null });
+        void sendPush(p.subs, {
+          title: subject,
+          // The first paragraph of the message; the rest is the email's link and signature.
+          body: text.split("\n\n")[0] ?? subject,
+          path,
+          // A newer "your turn" in the same game replaces the older one; everything else stacks.
+          tag: kind === "your_turn" ? path : dedupKey,
+        });
+      }
+    } catch (err) {
+      log.warn({ err, kind }, "push notification failed");
     }
   }
 }

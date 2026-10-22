@@ -3,6 +3,7 @@
   import { DiscordId, Email, NOTIFICATION_KINDS, NOTIFICATION_LABELS, type NotificationKind } from "@lilchess/shared";
   import { api } from "../lib/api";
   import { auth } from "../lib/auth.svelte";
+  import { currentSubscription, disablePush, enablePush, permission, pushSupport } from "../lib/push";
   import { validate } from "../lib/validate";
   import SoundSettings from "../lib/components/SoundSettings.svelte";
   import NativeServerPanel from "../lib/components/NativeServerPanel.svelte";
@@ -15,6 +16,10 @@
     discordAvailable: boolean;
     discordId: string | null;
     discordPrefs: Record<NotificationKind, boolean>;
+    pushAvailable: boolean;
+    pushPublicKey: string | null;
+    pushDevices: number;
+    pushPrefs: Record<NotificationKind, boolean>;
   }
   type Prefs = Partial<Record<NotificationKind, boolean>>;
 
@@ -25,17 +30,22 @@
   let notice = $state<string | null>(null);
   let busy = $state(false);
 
+  const support = pushSupport();
+  let thisDevice = $state(false); // does this browser hold a push subscription?
+  let perm = $state<NotificationPermission>(permission());
+
   onMount(async () => {
     try {
       data = await api<Settings>("/api/me/notifications");
       email = data.email ?? "";
       discordId = data.discordId ?? "";
+      thisDevice = (await currentSubscription().catch(() => null)) !== null;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
   });
 
-  async function save(body: { email?: string; prefs?: Prefs; discordId?: string; discordPrefs?: Prefs }) {
+  async function save(body: { email?: string; prefs?: Prefs; discordId?: string; discordPrefs?: Prefs; pushPrefs?: Prefs }) {
     busy = true;
     error = null;
     notice = null;
@@ -63,6 +73,41 @@
 
   const toggle = (kind: NotificationKind, enabled: boolean) => save({ prefs: { [kind]: enabled } });
   const toggleDiscord = (kind: NotificationKind, enabled: boolean) => save({ discordPrefs: { [kind]: enabled } });
+  const togglePush = (kind: NotificationKind, enabled: boolean) => save({ pushPrefs: { [kind]: enabled } });
+
+  // Run a push action with the shared busy/error/notice handling, then refresh the device count.
+  async function pushAction(fn: () => Promise<string | void>) {
+    busy = true;
+    error = null;
+    notice = null;
+    try {
+      const done = await fn();
+      data = await api<Settings>("/api/me/notifications");
+      thisDevice = (await currentSubscription().catch(() => null)) !== null;
+      if (done) notice = done;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      perm = permission();
+      busy = false;
+    }
+  }
+
+  const enableThisDevice = () =>
+    pushAction(async () => {
+      await enablePush(data!.pushPublicKey!);
+      return "Notifications are on for this device.";
+    });
+  const disableThisDevice = () =>
+    pushAction(async () => {
+      await disablePush();
+      return "Notifications are off for this device.";
+    });
+  const sendTest = () =>
+    pushAction(async () => {
+      const r = await api<{ sent: number; devices: number }>("/api/me/push-test", { method: "POST", body: {} });
+      return r.sent > 0 ? "Test sent. It should arrive in a moment." : "The push service didn't accept the test. Try turning notifications off and on again.";
+    });
 
   function saveDiscord(e: SubmitEvent) {
     e.preventDefault();
@@ -109,6 +154,56 @@
   <NativeServerPanel />
 
   {#if data && !auth.user?.is_guest}
+    <div class="panel">
+      <h2>Browser notifications</h2>
+      <p class="muted">
+        Optional. Get a notification on this device when it's your turn or someone challenges you, even when
+        LilChess isn't open. Each browser or phone you use has to be turned on separately.
+      </p>
+      {#if !data.pushAvailable}
+        <p class="muted">This server has push notifications switched off.</p>
+      {:else if support === "native"}
+        <p class="muted">Push notifications aren't available in the mobile app yet. Use email or Discord notifications for now.</p>
+      {:else if support === "needs-install"}
+        <p class="muted">On iPhone and iPad, add LilChess to your Home Screen first (Share → Add to Home Screen), then open it from there.</p>
+      {:else if support === "unsupported"}
+        <p class="muted">This browser doesn't support push notifications.</p>
+      {:else}
+        {#if perm === "denied" && !thisDevice}
+          <p class="muted">Notifications are blocked for this site. Allow them in your browser's site settings, then come back.</p>
+        {/if}
+        <div class="row">
+          {#if thisDevice}
+            <button type="button" disabled={busy} onclick={disableThisDevice}>Turn off for this device</button>
+            <button type="button" disabled={busy} onclick={sendTest}>Send a test</button>
+          {:else}
+            <button class="primary" type="button" disabled={busy || perm === "denied"} onclick={enableThisDevice}>
+              Turn on for this device
+            </button>
+          {/if}
+        </div>
+        {#if data.pushDevices > 0}
+          <p class="muted">{data.pushDevices} {data.pushDevices === 1 ? "device" : "devices"} registered on your account.</p>
+        {/if}
+
+        <h3>Notify me when…</h3>
+        {#if data.pushDevices === 0}<p class="muted">Turn on a device above to use these.</p>{/if}
+        <div class="options">
+          {#each NOTIFICATION_KINDS as kind (kind)}
+            <label class="opt">
+              <input
+                type="checkbox"
+                checked={data.pushPrefs[kind]}
+                disabled={busy || data.pushDevices === 0}
+                onchange={(e) => togglePush(kind, e.currentTarget.checked)}
+              />
+              {NOTIFICATION_LABELS[kind]}
+            </label>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
     <div class="panel">
       <h2>Discord</h2>
       <p class="muted">
@@ -170,6 +265,7 @@
 
 <style>
   .stack { display: flex; flex-direction: column; gap: 1rem; max-width: 560px; margin: 0 auto; }
+  .row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; }
   form { display: flex; gap: 0.5rem; flex-wrap: wrap; }
   form input { flex: 1 1 220px; }
   .options { display: flex; flex-direction: column; gap: 0.6rem; }

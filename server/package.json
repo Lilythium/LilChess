@@ -20,12 +20,14 @@
     "fastify": "^5.0.0",
     "nodemailer": "^10.0.15",
     "pino": "^10.3.1",
+    "web-push": "^3.6.7",
     "ws": "^8.18.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/nodemailer": "^8.0.2",
+    "@types/web-push": "^3.6.4",
     "@types/ws": "^8.5.13",
     "tsx": "^4.23.0"
   }

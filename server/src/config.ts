@@ -40,6 +40,12 @@ const Env = z.object({
   MOBILE_ANDROID_PACKAGE: z.string().default("io.github.lilythium.lilchess"),
   MOBILE_ANDROID_CERT_SHA256: z.string().optional(), // comma-separated signing-certificate SHA-256 fingerprints
   MOBILE_IOS_APP_ID: z.string().optional(), // comma-separated "TEAMID.bundle.id" values
+  // Web Push (browser notifications). On by default; it still needs BASE_URL (or PUSH_SUBJECT) in production.
+  PUSH_ENABLED: z.stringbool().default(true),
+  // Contact the push services may use if your server misbehaves: a mailto: or https: URL. Defaults to BASE_URL.
+  PUSH_SUBJECT: z.string().optional(),
+  // Extra push-service hostnames to accept, comma separated; a name also matches its subdomains.
+  PUSH_ENDPOINT_HOSTS: z.string().optional(),
 });
 
 export interface SmtpConfig {
@@ -77,6 +83,9 @@ export interface Config {
   smtp: SmtpConfig | undefined;
   discordWebhookUrl: string | undefined;
   mobile: MobileLinkConfig;
+  pushEnabled: boolean;
+  pushSubject: string | undefined;
+  pushExtraHosts: string[];
 }
 
 export interface MobileLinkConfig {
@@ -133,6 +142,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     if (problems.length > 0) throw new Error(`Invalid configuration:\n  ${problems.join("\n  ")}`);
   }
   const mobile = parseMobileLinks(e);
+  if (e.PUSH_SUBJECT && !/^(mailto:[^\s@]+@[^\s@]+|https:\/\/\S+)$/.test(e.PUSH_SUBJECT)) {
+    throw new Error("Invalid configuration:\n  PUSH_SUBJECT: must be a mailto: address or an https:// URL");
+  }
   return {
     nodeEnv: e.NODE_ENV,
     port: e.PORT,
@@ -165,6 +177,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     } : undefined,
     discordWebhookUrl: e.DISCORD_WEBHOOK_URL || undefined,
     mobile,
+    pushEnabled: e.PUSH_ENABLED,
+    pushSubject: e.PUSH_SUBJECT || undefined,
+    pushExtraHosts: (e.PUSH_ENDPOINT_HOSTS ?? "")
+      .split(",")
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean),
   };
 }
 

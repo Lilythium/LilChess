@@ -135,6 +135,9 @@ LilChess can be configured with environment variables.
 | `SMTP_PASS`       | —                   | SMTP password                                 |
 | `SMTP_FROM`       | —                   | From address, e.g. `noreply@chess.example.com`|
 | `DISCORD_WEBHOOK_URL` | —               | Discord channel webhook; enables Discord notifications (needs `BASE_URL`). Players opt in with their Discord user ID in Settings |
+| `PUSH_ENABLED`    | `true`              | Set `false` to switch off browser push notifications |
+| `PUSH_SUBJECT`    | `BASE_URL`          | Contact (`mailto:` or `https:` URL) sent to push services; only needed if `BASE_URL` is unset |
+| `PUSH_ENDPOINT_HOSTS` | —               | Extra push-service hostnames to accept, comma separated (subdomains match too) |
 
 See `.env.example` for the available configuration options.
 
@@ -180,6 +183,22 @@ Email is optional. Without `SMTP_HOST` the server never sends anything. With it,
 email address in Settings (it isn't verified) to get notifications for challenges, their turn in
 correspondence games, and finished correspondence games, and to reset a forgotten password.
 `BASE_URL` must be set so links in emails point at your server.
+
+## Push notifications
+
+Browser push is on by default and needs no accounts or keys from you. The server generates its own VAPID
+key pair on first use and stores it in the database (so backups keep it). In production set `BASE_URL`
+(or `PUSH_SUBJECT`); without either, push stays off.
+
+Players turn it on per browser under Settings → Browser notifications and choose which events notify
+them. It uses the same events as email and Discord. Things to know:
+
+- It needs HTTPS (or `localhost`). Behind a reverse proxy that already serves your site over HTTPS, nothing else changes.
+- iPhone and iPad only support it for sites added to the Home Screen, and need iOS 16.4 or later.
+- The server only sends to the push services run by Google, Mozilla, Apple and Microsoft. Add others with
+  `PUSH_ENDPOINT_HOSTS`. Messages go through the browser vendor's push service, encrypted for the device.
+- Signing out turns notifications off for that browser, so a shared device doesn't keep receiving them.
+- Guests can't subscribe. The native mobile app is not covered here; it will need its own delivery path.
 
 ## Health Check
 
