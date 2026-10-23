@@ -1,0 +1,9 @@
+{
+  "_note": "A hypothetical server that dropped the level-1 contract. The app must say it needs updating.",
+  "ok": true,
+  "app": "lilchess",
+  "version": "3.0.0",
+  "apiVersion": 3,
+  "minClientApiVersion": 3,
+  "features": { "guests": true, "registration": "open" }
+}

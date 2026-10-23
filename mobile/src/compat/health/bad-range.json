@@ -1,0 +1,9 @@
+{
+  "_note": "A server claiming it serves clients newer than itself.",
+  "ok": true,
+  "app": "lilchess",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minClientApiVersion": 2,
+  "features": { "guests": true, "registration": "open" }
+}

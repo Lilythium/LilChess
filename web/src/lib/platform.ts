@@ -15,7 +15,13 @@ export interface PlatformServices {
   copyText(text: string): Promise<void>;
   share(request: ShareRequest): Promise<void>;
   /** The connected server, and the way back to the server picker (Settings shows both). */
-  server?: { url: string; version: string; switchServer(): void };
+  server?: {
+    url: string;
+    version: string;
+    switchServer(): void;
+    /** Optional features this server lacks, with the message to show instead of the feature. Empty for a current server. */
+    unavailable?: { accountDeletion?: string };
+  };
 }
 
 let services: PlatformServices | null = null;

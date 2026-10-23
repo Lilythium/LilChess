@@ -1,0 +1,9 @@
+{
+  "_note": "What a current server reports. Update this file, and the expectation in healthContract.test.ts, when /api/health changes.",
+  "ok": true,
+  "app": "lilchess",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minClientApiVersion": 1,
+  "features": { "guests": true, "registration": "invite", "demo": false, "accountDeletion": true }
+}

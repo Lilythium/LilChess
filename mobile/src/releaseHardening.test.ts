@@ -156,8 +156,8 @@ describe("unsupported servers and malformed health responses", () => {
   });
 
   it("tells the user which side to update", () => {
-    expect(() => validateHealthResponse({ ...good, apiVersion: MAX_API_VERSION + 1 })).toThrow(/Update the mobile app/);
-    expect(() => validateHealthResponse({ ...good, apiVersion: 0 })).toThrow(/Update the server/);
+    expect(() => validateHealthResponse({ ...good, apiVersion: MAX_API_VERSION + 1 })).toThrow(/Update LilChess Mobile/);
+    expect(() => validateHealthResponse({ ...good, apiVersion: 0 })).toThrow(/administrator to update LilChess/);
   });
 
   it("ignores unknown extra fields, so a newer server can add data without breaking the app", () => {

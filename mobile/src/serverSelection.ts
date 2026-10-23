@@ -1,9 +1,17 @@
 /** Non-secret local preference key. Authentication credentials must use separate storage. */
 export const SERVER_URL_STORAGE_KEY = "lilchess.mobile.selectedServerUrl";
 
-/** API compatibility range supported by this mobile client. Bump only with contract review. */
+/**
+ * API compatibility range of this mobile client (policy: docs/mobile-compatibility.md).
+ *
+ * MIN_API_VERSION is the oldest server `apiVersion` the app still works with.
+ * MAX_API_VERSION is the newest `apiVersion` the app was built against. A newer server is still accepted when it says,
+ * through `minClientApiVersion`, that it keeps serving apps at this level. Bump only after a contract review.
+ */
 export const MIN_API_VERSION = 1;
 export const MAX_API_VERSION = 1;
+
+const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 export type RegistrationMode = "open" | "invite" | "closed";
 
@@ -23,12 +31,43 @@ export interface LilChessHealth {
   app: "lilchess";
   version: string;
   apiVersion: number;
+  /**
+   * The oldest app API level the server still serves. Servers that predate the field omit it; it then equals
+   * `apiVersion`, which is the old rule: the app must know the server's contract.
+   */
+  minClientApiVersion: number;
   features: {
     guests: boolean;
     registration: RegistrationMode;
     /** Public demo server with a practice bot. Servers that predate Phase 8 omit it, which means false. */
     demo: boolean;
+    /** The server has POST /api/me/delete. Servers that predate it omit the flag, which means false. */
+    accountDeletion: boolean;
   };
+}
+
+/** Optional features the UI must check before offering them. Add a feature here when it is added to `features`. */
+export type OptionalFeature = "accountDeletion";
+
+/**
+ * What to tell the person when an optional feature is missing on the connected server. Never mention a version
+ * number as the reason: say what is unavailable and what they can do about it.
+ */
+export function featureUnavailableMessage(feature: OptionalFeature): string {
+  switch (feature) {
+    case "accountDeletion":
+      return "This server does not support deleting accounts from the app. Ask the server's administrator to update LilChess, or delete the account from the server's website if it offers that.";
+  }
+}
+
+/**
+ * Messages for the optional features the connected server lacks, keyed by feature. Empty for a current server.
+ * The shell hands this to the shared UI, so web code never imports from `mobile/`.
+ */
+export function unavailableFeatures(health: LilChessHealth): Partial<Record<OptionalFeature, string>> {
+  const missing: Partial<Record<OptionalFeature, string>> = {};
+  if (!health.features.accountDeletion) missing.accountDeletion = featureUnavailableMessage("accountDeletion");
+  return missing;
 }
 
 export type ServerSelectionErrorCode =
@@ -39,13 +78,19 @@ export type ServerSelectionErrorCode =
   | "http"
   | "storage";
 
+/** Who has to act when a server cannot be used: the server's administrator or the person running the app. */
+export type CompatibilityAction = "update-server" | "update-app";
+
 export class ServerSelectionError extends Error {
   readonly code: ServerSelectionErrorCode;
+  /** Set only for `incompatible` errors that have a clear fix. */
+  readonly action: CompatibilityAction | undefined;
 
-  constructor(code: ServerSelectionErrorCode, message: string) {
+  constructor(code: ServerSelectionErrorCode, message: string, action?: CompatibilityAction) {
     super(message);
     this.name = "ServerSelectionError";
     this.code = code;
+    this.action = action;
   }
 }
 
@@ -146,7 +191,8 @@ export function validateHealthResponse(payload: unknown): LilChessHealth {
   if (!Number.isInteger(data.apiVersion)) {
     throw new ServerSelectionError(
       "incompatible",
-      "This server does not advertise a mobile-compatible API version. Update the LilChess server and try again.",
+      "This server does not report an API version, so it is too old for this app (or it is not a LilChess server). Ask the server's administrator to update LilChess, or choose another server.",
+      "update-server",
     );
   }
   if (data.app !== "lilchess") {
@@ -157,22 +203,36 @@ export function validateHealthResponse(payload: unknown): LilChessHealth {
   }
 
   const apiVersion = data.apiVersion as number;
+  const label = describeServer(data.version);
+
+  // A server that omits the field keeps the original rule: the app has to know the server's own contract.
+  const rawMin = data.minClientApiVersion;
+  if (rawMin !== undefined && (!Number.isInteger(rawMin) || (rawMin as number) < 1 || (rawMin as number) > apiVersion)) {
+    throw new ServerSelectionError(
+      "invalid-response",
+      "The server health response contains an invalid API compatibility range.",
+    );
+  }
+  const minClientApiVersion = rawMin === undefined ? apiVersion : (rawMin as number);
+
   if (apiVersion < MIN_API_VERSION) {
     throw new ServerSelectionError(
       "incompatible",
-      `This server uses API version ${apiVersion}; this app requires version ${MIN_API_VERSION} or newer. Update the server.`,
+      `${label} is too old for this app, which needs a server with API version ${MIN_API_VERSION} or newer. Ask the server's administrator to update LilChess, or choose another server.`,
+      "update-server",
     );
   }
-  if (apiVersion > MAX_API_VERSION) {
+  if (minClientApiVersion > MAX_API_VERSION) {
     throw new ServerSelectionError(
       "incompatible",
-      `This server uses API version ${apiVersion}, which this app does not support yet. Update the mobile app.`,
+      `${label} needs a newer version of this app. Update LilChess Mobile from the app store, or choose another server.`,
+      "update-app",
     );
   }
 
   const version = data.version;
   const features = data.features;
-  if (typeof version !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) {
+  if (typeof version !== "string" || !SEMVER.test(version)) {
     throw new ServerSelectionError(
       "invalid-response",
       "The server health response is missing a valid LilChess version.",
@@ -184,7 +244,8 @@ export function validateHealthResponse(payload: unknown): LilChessHealth {
     (features.registration !== "open" &&
       features.registration !== "invite" &&
       features.registration !== "closed") ||
-    (features.demo !== undefined && typeof features.demo !== "boolean")
+    (features.demo !== undefined && typeof features.demo !== "boolean") ||
+    (features.accountDeletion !== undefined && typeof features.accountDeletion !== "boolean")
   ) {
     throw new ServerSelectionError(
       "invalid-response",
@@ -197,10 +258,12 @@ export function validateHealthResponse(payload: unknown): LilChessHealth {
     app: "lilchess",
     version,
     apiVersion,
+    minClientApiVersion,
     features: {
       guests: features.guests,
       registration: features.registration,
       demo: features.demo === true,
+      accountDeletion: features.accountDeletion === true,
     },
   };
 }
@@ -229,6 +292,11 @@ export function describeConnectionFailure(
     return "This device blocked unencrypted HTTP. Use HTTPS, or configure platform-approved HTTP access for this trusted local network. The app did not retry using another scheme.";
   }
   return `Could not reach ${address.serverUrl}. Check the address, network connection, firewall, and server status.`;
+}
+
+/** "This server (LilChess 1.2.3)" when the version is usable, "This server" otherwise. */
+function describeServer(version: unknown): string {
+  return typeof version === "string" && SEMVER.test(version) ? `This server (LilChess ${version})` : "This server";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

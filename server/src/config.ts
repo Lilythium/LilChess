@@ -36,7 +36,7 @@ const Env = z.object({
   // Optional: a Discord channel webhook. Users who give their Discord ID get notifications as @mentions there.
   DISCORD_WEBHOOK_URL: z.string().optional(),
   // Optional: verified https links (Android App Links, iOS universal links) into the LilChess mobile app.
-  // Leave empty to keep the /.well-known association files off. See docs/mobile-phase-7-platform.md.
+  // Leave empty to keep the /.well-known association files off. See docs/mobile-server-requirements.md.
   MOBILE_ANDROID_PACKAGE: z.string().default("io.github.lilythium.lilchess"),
   MOBILE_ANDROID_CERT_SHA256: z.string().optional(), // comma-separated signing-certificate SHA-256 fingerprints
   MOBILE_IOS_APP_ID: z.string().optional(), // comma-separated "TEAMID.bundle.id" values

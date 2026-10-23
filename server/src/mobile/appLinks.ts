@@ -9,7 +9,7 @@ import { config, type MobileLinkConfig } from "../config.js";
  *
  * Both are generated from environment settings and are absent (404) until the operator sets them, so a default
  * install advertises nothing. An https invite link only ever names a server and a target: the app still confirms the
- * server and the server still decides whether the invite is valid (docs/mobile-phase-7-platform.md).
+ * server and the server still decides whether the invite is valid (docs/mobile-server-requirements.md).
  *
  * They must be registered as explicit routes: @fastify/static ignores dotfiles, and the SPA fallback would otherwise
  * answer these paths with index.html and a 200, which both platforms treat as a failed verification.

@@ -263,10 +263,12 @@ For public deployments, place LilChess behind a reverse proxy such as nginx or C
 Example:
 
 ```env
-BASE_URL=[https://chess.example.com](https://chess.example.com)
+BASE_URL=https://chess.example.com
 ```
 
-The reverse proxy must support WebSocket connections for live games.
+The reverse proxy must support WebSocket connections for live games. If you want people to use the mobile app with your
+server, see `docs/mobile-server-requirements.md` for proxy examples and the full list of requirements, and
+`docs/mobile-compatibility.md` for which server versions the app supports.
 
 ### Restoring a backup
 

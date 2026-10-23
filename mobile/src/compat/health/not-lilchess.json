@@ -1,0 +1,8 @@
+{
+  "_note": "Some other application that happens to expose /api/health with an apiVersion.",
+  "ok": true,
+  "app": "something-else",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "features": { "guests": true, "registration": "open" }
+}

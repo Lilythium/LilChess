@@ -1,0 +1,9 @@
+{
+  "_note": "A hypothetical later server that added endpoints (apiVersion 2) but still serves apps at level 1. The app must keep working.",
+  "ok": true,
+  "app": "lilchess",
+  "version": "2.0.0",
+  "apiVersion": 2,
+  "minClientApiVersion": 1,
+  "features": { "guests": true, "registration": "closed", "demo": false, "accountDeletion": true, "someFutureFeature": true }
+}

@@ -1,0 +1,8 @@
+{
+  "_note": "The first mobile-compatible servers (Phase 2): identity, version, apiVersion and features.guests/registration only.",
+  "ok": true,
+  "app": "lilchess",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "features": { "guests": true, "registration": "open" }
+}

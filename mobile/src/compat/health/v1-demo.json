@@ -1,0 +1,8 @@
+{
+  "_note": "A Phase 8 demo server: adds features.demo, still no minClientApiVersion or accountDeletion.",
+  "ok": true,
+  "app": "lilchess",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "features": { "guests": true, "registration": "open", "demo": true }
+}

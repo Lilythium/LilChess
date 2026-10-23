@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_API_VERSION,
   MIN_API_VERSION,
+  ServerSelectionError,
   describeConnectionFailure,
+  featureUnavailableMessage,
   normalizeServerAddress,
+  unavailableFeatures,
   validateHealthResponse,
 } from "./serverSelection.js";
 
@@ -12,7 +15,8 @@ const validHealth = {
   app: "lilchess",
   version: "1.2.3",
   apiVersion: 1,
-  features: { guests: true, registration: "invite", demo: false },
+  minClientApiVersion: 1,
+  features: { guests: true, registration: "invite", demo: false, accountDeletion: true },
 };
 
 describe("normalizeServerAddress", () => {
@@ -61,6 +65,14 @@ describe("validateHealthResponse", () => {
     expect(MAX_API_VERSION).toBe(1);
   });
 
+  it("treats a missing accountDeletion flag (older servers) as false", () => {
+    const { accountDeletion: _omit, ...legacyFeatures } = validHealth.features;
+    const health = validateHealthResponse({ ...validHealth, features: legacyFeatures });
+    expect(health.features.accountDeletion).toBe(false);
+    expect(() => validateHealthResponse({ ...validHealth, features: { ...validHealth.features, accountDeletion: "yes" } }))
+      .toThrow(/feature-compatibility/);
+  });
+
   it("treats a missing demo flag (older servers) as false and accepts demo servers", () => {
     const { demo: _omit, ...legacyFeatures } = validHealth.features;
     expect(validateHealthResponse({ ...validHealth, features: legacyFeatures }).features.demo).toBe(false);
@@ -74,7 +86,7 @@ describe("validateHealthResponse", () => {
   });
 
   it("does not accept { ok: true } as proof of compatibility", () => {
-    expect(() => validateHealthResponse({ ok: true })).toThrow(/does not advertise a mobile-compatible API version/);
+    expect(() => validateHealthResponse({ ok: true })).toThrow(/does not report an API version/);
   });
 
   it("reports a server that identifies as another application", () => {
@@ -82,17 +94,66 @@ describe("validateHealthResponse", () => {
       .toThrow(/did not identify itself as a LilChess server/);
   });
 
-  it("rejects a server that needs an older or newer API contract", () => {
-    expect(() => validateHealthResponse({ ...validHealth, apiVersion: 0 }))
-      .toThrow(/Update the server/);
-    expect(() => validateHealthResponse({ ...validHealth, apiVersion: 2 }))
-      .toThrow(/Update the mobile app/);
+  it("tells the person to update the server when it is too old", () => {
+    const attempt = () => validateHealthResponse({ ...validHealth, apiVersion: 0, minClientApiVersion: undefined });
+    expect(attempt).toThrow(/This server \(LilChess 1\.2\.3\) is too old for this app/);
+    expect(attempt).toThrow(/administrator to update LilChess/);
+    try {
+      attempt();
+    } catch (error) {
+      expect((error as ServerSelectionError).action).toBe("update-server");
+    }
+  });
+
+  it("tells the person to update the app when the server no longer serves this app's API level", () => {
+    const attempt = () => validateHealthResponse({ ...validHealth, apiVersion: MAX_API_VERSION + 2, minClientApiVersion: MAX_API_VERSION + 2 });
+    expect(attempt).toThrow(/needs a newer version of this app/);
+    expect(attempt).toThrow(/Update LilChess Mobile from the app store/);
+    try {
+      attempt();
+    } catch (error) {
+      expect((error as ServerSelectionError).action).toBe("update-app");
+    }
+  });
+
+  it("accepts a newer server that still serves this app's API level", () => {
+    const health = validateHealthResponse({ ...validHealth, apiVersion: MAX_API_VERSION + 1, minClientApiVersion: MIN_API_VERSION });
+    expect(health.apiVersion).toBe(MAX_API_VERSION + 1);
+    expect(health.minClientApiVersion).toBe(MIN_API_VERSION);
+  });
+
+  it("falls back to the old rule when a server omits minClientApiVersion", () => {
+    const { minClientApiVersion: _omit, ...legacy } = validHealth;
+    expect(validateHealthResponse(legacy).minClientApiVersion).toBe(1);
+    expect(() => validateHealthResponse({ ...legacy, apiVersion: MAX_API_VERSION + 1 })).toThrow(/needs a newer version of this app/);
+  });
+
+  it.each([0, -1, 1.5, "1", null, 2])("rejects an invalid minClientApiVersion %s", (value) => {
+    expect(() => validateHealthResponse({ ...validHealth, minClientApiVersion: value })).toThrow(/invalid API compatibility range/);
+  });
+
+  it("does not mention a version it cannot trust", () => {
+    expect(() => validateHealthResponse({ ...validHealth, version: 5, apiVersion: 0, minClientApiVersion: undefined }))
+      .toThrow(/^This server is too old/);
   });
 
   it("rejects malformed JSON and incomplete feature information", () => {
     expect(() => validateHealthResponse("not json")).toThrow(/invalid JSON/);
     expect(() => validateHealthResponse({ ...validHealth, features: { guests: "yes" } }))
       .toThrow(/invalid feature-compatibility information/);
+  });
+});
+
+describe("unavailableFeatures", () => {
+  it("is empty for a current server", () => {
+    expect(unavailableFeatures(validateHealthResponse(validHealth))).toEqual({});
+  });
+
+  it("explains what is missing, and what to do, for a server that predates a feature", () => {
+    const { accountDeletion: _omit, ...legacyFeatures } = validHealth.features;
+    const missing = unavailableFeatures(validateHealthResponse({ ...validHealth, features: legacyFeatures }));
+    expect(missing).toEqual({ accountDeletion: featureUnavailableMessage("accountDeletion") });
+    expect(missing.accountDeletion).toMatch(/administrator to update LilChess/);
   });
 });
 

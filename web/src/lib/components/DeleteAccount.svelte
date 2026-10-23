@@ -1,11 +1,15 @@
 <script lang="ts">
   import { api } from "../api";
   import { auth, logout } from "../auth.svelte";
+  import { connectedServer } from "../platform";
 
   // Permanent, so it takes two deliberate steps: open the form, then confirm (with the password for a registered
   // account; a guest has none, so the signed-in session is the confirmation). What the server keeps and removes is
   // documented in server/src/auth/deletion.ts.
   const isGuest = $derived(auth.user?.is_guest === 1);
+  // In the browser the server is the one that served this page. In the app it can be older than the app, and then
+  // the app says so instead of offering a request that would fail (docs/mobile-compatibility.md).
+  const unavailable = connectedServer()?.unavailable?.accountDeletion ?? null;
 
   let open = $state(false);
   let password = $state("");
@@ -41,7 +45,9 @@
 
 <div class="panel">
   <h2>Delete account</h2>
-  {#if !open}
+  {#if unavailable}
+    <p class="muted">{unavailable}</p>
+  {:else if !open}
     <p class="muted">
       Permanently delete this {isGuest ? "guest " : ""}account. You can't get it back.
     </p>

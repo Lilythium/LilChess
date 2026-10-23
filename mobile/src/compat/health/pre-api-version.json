@@ -1,0 +1,4 @@
+{
+  "_note": "A server (or proxy) that only answers { ok: true }. Not proof of anything.",
+  "ok": true
+}

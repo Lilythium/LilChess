@@ -13,6 +13,7 @@
   import { nativeCopy, nativeShare } from "../../../mobile/src/nativePlatform.js";
   import {
     SERVER_URL_STORAGE_KEY,
+    unavailableFeatures,
     type LilChessHealth,
     type NormalizedServerAddress,
   } from "../../../mobile/src/serverSelection.js";
@@ -155,7 +156,7 @@
       publicOrigin: url,
       copyText: nativeCopy,
       share: nativeShare,
-      server: { url, version: health.version, switchServer: changeServer },
+      server: { url, version: health.version, switchServer: changeServer, unavailable: unavailableFeatures(health) },
     });
     setLogoutHandler(signOut);
     setSignedInUser(session.user as User);

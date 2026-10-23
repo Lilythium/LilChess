@@ -21,11 +21,12 @@ import { importedRoutes } from "./imported/routes.js";
 import { simulRoutes } from "./simuls/routes.js";
 import { appLinkRoutes } from "./mobile/appLinks.js";
 import { demoRoutes } from "./demo/routes.js";
+import { MIN_CLIENT_API_VERSION, SERVER_API_VERSION } from "./compat.js";
 
 // Keep the health version tied to the root package version used for server releases. This path
 // resolves to the repository root from both server/src during development and server/dist at runtime.
 const rootPackage = JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
-const SERVER_API_VERSION = 1; // See docs/mobile-phase-0-review.md for the compatibility policy.
+// The API contract (SERVER_API_VERSION, MIN_CLIENT_API_VERSION) and its change rules: server/src/compat.ts and docs/mobile-compatibility.md.
 
 type TrustProxy = boolean | string | ((address: string, hop: number) => boolean);
 
@@ -84,10 +85,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     app: "lilchess",
     version: rootPackage.version,
     apiVersion: SERVER_API_VERSION,
+    minClientApiVersion: MIN_CLIENT_API_VERSION,
     features: {
       guests: config.allowGuests,
       registration: config.registration,
       demo: config.demoMode,
+      accountDeletion: true, // POST /api/me/delete exists. Servers that predate it omit the flag.
     },
   }));
 
