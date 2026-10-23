@@ -1,4 +1,4 @@
-# Mobile demo server (Phase 8)
+# Mobile demo server
 
 A public LilChess server that app-store reviewers and first-time users can try without deploying anything or being
 given credentials. It is a normal LilChess server with `DEMO_MODE=true`.
