@@ -1,7 +1,6 @@
 import { getDb } from "../connection.js";
 import {
   applyMove,
-  sanForNextMove,
   resign,
   offerDraw,
   acceptDraw,
@@ -29,17 +28,30 @@ import { simulIdForGame } from "../../simuls/lookup.js";
 
 export { insertGame } from "./insertGame.js";
 
+function currentMoveUcis(gameId: string): string[] {
+  return getDb().prepare(`
+    SELECT m.uci FROM active_moves a
+    JOIN moves m ON m.id = a.move_id
+    WHERE a.game_id = ?
+    ORDER BY a.ply ASC
+  `).pluck().all(gameId) as string[];
+}
+
+function currentMoveSans(gameId: string): string[] {
+  return getDb().prepare(`
+    SELECT m.san FROM active_moves a
+    JOIN moves m ON m.id = a.move_id
+    WHERE a.game_id = ?
+    ORDER BY a.ply ASC
+  `).pluck().all(gameId) as string[];
+}
+
 function currentMoveRows(gameId: string): { uci: string; san: string }[] {
   return getDb().prepare(`
-    SELECT m.uci, m.san
-    FROM moves m
-    JOIN games g ON g.id = m.game_id
-    WHERE m.game_id = ? AND m.ply <= g.ply
-      AND m.id = (
-        SELECT MAX(previous.id) FROM moves previous
-        WHERE previous.game_id = m.game_id AND previous.ply = m.ply
-      )
-    ORDER BY m.ply ASC
+    SELECT m.uci, m.san FROM active_moves a
+    JOIN moves m ON m.id = a.move_id
+    WHERE a.game_id = ?
+    ORDER BY a.ply ASC
   `).all(gameId) as { uci: string; san: string }[];
 }
 
@@ -53,7 +65,7 @@ export function getGame(id: string): GameState | undefined {
   const db = getDb();
   const row = db.prepare(`SELECT * FROM games WHERE id = ?`).get(id) as any;
   if (!row) return undefined;
-  return rowToGameState(row, currentMoveRows(id).map((move) => move.uci));
+  return rowToGameState(row, currentMoveUcis(id));
 }
 
 // Everything the analysis page needs and nothing else: two indexed reads, no replay,
@@ -73,12 +85,12 @@ export function getGameForAnalysis(id: string) {
     | { variant: string; initialFen: string; status: string; result: string | null; termination: string | null; white: string; black: string }
     | undefined;
   if (!game) return undefined;
-  const moves = currentMoveRows(id).map((move) => move.uci);
+  const moves = currentMoveUcis(id);
   return { ...game, moves };
 }
 
 export function getMoveSans(gameId: string): string[] {
-  return currentMoveRows(gameId).map((move) => move.san);
+  return currentMoveSans(gameId);
 }
 
 export function getGameWithSans(id: string): { game: GameState; sans: string[] } | undefined {
@@ -95,9 +107,10 @@ function updateGameState(
   game: GameState,
   actorId: number | null = null,
   suppressTournamentForfeit = false,
+  currentFen?: string,
 ): void {
   const row = gameStateToRow(game);
-  const fen = fenAfterMoves(game.initialFen, game.moves, game.variant);
+  const fen = currentFen ?? fenAfterMoves(game.initialFen, game.moves, game.variant);
   if (fen === null) throw new Error(`game ${id}: moves do not replay from initial_fen`);
   getDb()
     .prepare(
@@ -132,6 +145,10 @@ function appendMove(gameId: string, ply: number, uci: string, san: string, playe
   getDb()
     .prepare(`INSERT INTO moves (game_id, ply, uci, san, played_at) VALUES (?, ?, ?, ?, ?)`)
     .run(gameId, ply, uci, san, playedAt);
+}
+
+function deactivateMovesAfter(gameId: string, ply: number): void {
+  getDb().prepare(`DELETE FROM active_moves WHERE game_id = ? AND ply > ?`).run(gameId, ply);
 }
 
 export function headToHead(meId: number, themId: number) {
@@ -217,7 +234,7 @@ function applyMoveCore(id: string, uci: string, now: number) {
   let san: string | null = null;
   
   if (movePlayed && state.termination !== "timeout") {
-    san = sanForNextMove(before, uci);
+    san = result.san ?? null;
     if (!san) {
       throw new Error(`no SAN for ${uci} in game ${id} at ply ${before.ply}`);
     }
@@ -226,7 +243,7 @@ function applyMoveCore(id: string, uci: string, now: number) {
     assertMoveRows(id, state.ply);
   }
   
-  updateGameState(id, state);
+  updateGameState(id, state, null, false, result.fen);
 
   return { ...result, state, san, movePlayed };
 }
@@ -434,6 +451,7 @@ export function acceptTakebackAndPersist(gameId: string, userId: number) {
     userId,
     (game, color) => acceptTakeback(game, color, Date.now()),
     (state) => {
+      deactivateMovesAfter(gameId, state.ply);
       assertMoveRows(gameId, state.ply);
     },
   );
@@ -484,9 +502,9 @@ export function claimTimeoutAndPersist(gameId: string, now: number) {
 // games.ply and the active move line are written in one transaction. Retracted rows stay in history.
 function assertMoveRows(gameId: string, ply: number): void {
   const row = getDb()
-    .prepare(`SELECT COUNT(DISTINCT ply) AS n, COALESCE(MAX(ply), 0) AS top
-              FROM moves WHERE game_id = ? AND ply <= ?`)
-    .get(gameId, ply) as { n: number; top: number };
+    .prepare(`SELECT COUNT(*) AS n, COALESCE(MAX(ply), 0) AS top
+              FROM active_moves WHERE game_id = ?`)
+    .get(gameId) as { n: number; top: number };
   if (row.n !== ply || row.top !== ply) {
     throw new Error(`game ${gameId}: ${row.n} move rows (max ply ${row.top}) but ply is ${ply}`);
   }

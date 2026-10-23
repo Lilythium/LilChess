@@ -30,11 +30,10 @@ export function recordOpeningGame(gameId: string): boolean {
   return db.transaction(() => {
     if (db.prepare(`INSERT OR IGNORE INTO opening_games (game_id) VALUES (?)`).run(gameId).changes === 0) return false;
     const moves = db.prepare(`
-      SELECT m.uci FROM moves m
-      WHERE m.game_id = ? AND m.ply <= ?
-        AND m.id = (SELECT MAX(previous.id) FROM moves previous
-                    WHERE previous.game_id = m.game_id AND previous.ply = m.ply)
-      ORDER BY m.ply
+      SELECT m.uci FROM active_moves a
+      JOIN moves m ON m.id = a.move_id
+      WHERE a.game_id = ? AND a.ply <= ?
+      ORDER BY a.ply
     `).all(gameId, Math.min(game.ply, OPENING_MAX_PLY)) as { uci: string }[];
     const column = game.result === "1-0" ? "white" : game.result === "0-1" ? "black" : "draws";
     const bump = db.prepare(`
@@ -114,12 +113,10 @@ export interface OpeningGame {
 function indexOpeningPositions(gameId: string, variant: Variant, initialFen: string): void {
   const db = getDb();
   const moves = db.prepare(`
-    SELECT m.uci FROM moves m
-    JOIN games g ON g.id = m.game_id
-    WHERE m.game_id = ? AND m.ply <= ? AND m.ply <= g.ply
-      AND m.id = (SELECT MAX(previous.id) FROM moves previous
-                  WHERE previous.game_id = m.game_id AND previous.ply = m.ply)
-    ORDER BY m.ply
+    SELECT m.uci FROM active_moves a
+    JOIN moves m ON m.id = a.move_id
+    WHERE a.game_id = ? AND a.ply <= ?
+    ORDER BY a.ply
   `).all(gameId, OPENING_MAX_PLY) as { uci: string }[];
   const insert = db.prepare(`INSERT OR IGNORE INTO opening_positions (variant, position_key, game_id) VALUES (?, ?, ?)`);
   const pos = positionFromFen(initialFen, variant);
