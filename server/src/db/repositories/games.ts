@@ -29,6 +29,20 @@ import { simulIdForGame } from "../../simuls/lookup.js";
 
 export { insertGame } from "./insertGame.js";
 
+function currentMoveRows(gameId: string): { uci: string; san: string }[] {
+  return getDb().prepare(`
+    SELECT m.uci, m.san
+    FROM moves m
+    JOIN games g ON g.id = m.game_id
+    WHERE m.game_id = ? AND m.ply <= g.ply
+      AND m.id = (
+        SELECT MAX(previous.id) FROM moves previous
+        WHERE previous.game_id = m.game_id AND previous.ply = m.ply
+      )
+    ORDER BY m.ply ASC
+  `).all(gameId) as { uci: string; san: string }[];
+}
+
 function afterCommit(): void {
   notifyDeadlineChanged();
   flushTournamentEvents();
@@ -39,10 +53,7 @@ export function getGame(id: string): GameState | undefined {
   const db = getDb();
   const row = db.prepare(`SELECT * FROM games WHERE id = ?`).get(id) as any;
   if (!row) return undefined;
-  const moves = db
-    .prepare(`SELECT uci FROM moves WHERE game_id = ? ORDER BY ply ASC`)
-    .all(id) as { uci: string }[];
-  return rowToGameState(row, moves.map((m) => m.uci));
+  return rowToGameState(row, currentMoveRows(id).map((move) => move.uci));
 }
 
 // Everything the analysis page needs and nothing else: two indexed reads, no replay,
@@ -62,25 +73,20 @@ export function getGameForAnalysis(id: string) {
     | { variant: string; initialFen: string; status: string; result: string | null; termination: string | null; white: string; black: string }
     | undefined;
   if (!game) return undefined;
-  const moves = db.prepare(`SELECT uci FROM moves WHERE game_id = ? ORDER BY ply ASC`).pluck().all(id) as string[];
+  const moves = currentMoveRows(id).map((move) => move.uci);
   return { ...game, moves };
 }
 
 export function getMoveSans(gameId: string): string[] {
-  return getDb()
-    .prepare(`SELECT san FROM moves WHERE game_id = ? ORDER BY ply ASC`)
-    .all(gameId)
-    .map((r: any) => r.san);
+  return currentMoveRows(gameId).map((move) => move.san);
 }
 
 export function getGameWithSans(id: string): { game: GameState; sans: string[] } | undefined {
   const db = getDb();
   const row = db.prepare(`SELECT * FROM games WHERE id = ?`).get(id) as any;
   if (!row) return undefined;
-  const moves = db
-    .prepare(`SELECT uci, san FROM moves WHERE game_id = ? ORDER BY ply ASC`)
-    .all(id) as { uci: string; san: string }[];
-  return { game: rowToGameState(row, moves.map((m) => m.uci)), sans: moves.map((m) => m.san) };
+  const moves = currentMoveRows(id);
+  return { game: rowToGameState(row, moves.map((move) => move.uci)), sans: moves.map((move) => move.san) };
 }
 
 // Single choke point for writing game state: the stored position always matches the moves
@@ -122,14 +128,10 @@ function abortFaultId(gameId: string, game: GameState, actorId: number | null): 
   return game.turn === "white" ? p.whiteId : p.blackId;
 }
 
-function appendMove(gameId: string, ply: number, uci: string, san: string): void {
+function appendMove(gameId: string, ply: number, uci: string, san: string, playedAt: number): void {
   getDb()
-    .prepare(`INSERT INTO moves (game_id, ply, uci, san) VALUES (?, ?, ?, ?)`)
-    .run(gameId, ply, uci, san);
-}
-
-function deleteMovesAfter(gameId: string, ply: number): void {
-  getDb().prepare(`DELETE FROM moves WHERE game_id = ? AND ply > ?`).run(gameId, ply);
+    .prepare(`INSERT INTO moves (game_id, ply, uci, san, played_at) VALUES (?, ?, ?, ?, ?)`)
+    .run(gameId, ply, uci, san, playedAt);
 }
 
 export function headToHead(meId: number, themId: number) {
@@ -220,7 +222,7 @@ function applyMoveCore(id: string, uci: string, now: number) {
       throw new Error(`no SAN for ${uci} in game ${id} at ply ${before.ply}`);
     }
     // Never write a ply without its moves row. Throwing rolls back the surrounding transaction.
-    appendMove(id, state.ply, uci, san);
+    appendMove(id, state.ply, uci, san, now);
     assertMoveRows(id, state.ply);
   }
   
@@ -432,7 +434,6 @@ export function acceptTakebackAndPersist(gameId: string, userId: number) {
     userId,
     (game, color) => acceptTakeback(game, color, Date.now()),
     (state) => {
-      deleteMovesAfter(gameId, state.ply);
       assertMoveRows(gameId, state.ply);
     },
   );
@@ -480,12 +481,12 @@ export function claimTimeoutAndPersist(gameId: string, now: number) {
   return outcome;
 }
 
-// games.ply and the moves table are written in one transaction. If a bug ever breaks that,
-// fail (and roll back) loudly instead of storing a game whose rows disagree with its ply.
+// games.ply and the active move line are written in one transaction. Retracted rows stay in history.
 function assertMoveRows(gameId: string, ply: number): void {
   const row = getDb()
-    .prepare(`SELECT COUNT(*) AS n, COALESCE(MAX(ply), 0) AS top FROM moves WHERE game_id = ?`)
-    .get(gameId) as { n: number; top: number };
+    .prepare(`SELECT COUNT(DISTINCT ply) AS n, COALESCE(MAX(ply), 0) AS top
+              FROM moves WHERE game_id = ? AND ply <= ?`)
+    .get(gameId, ply) as { n: number; top: number };
   if (row.n !== ply || row.top !== ply) {
     throw new Error(`game ${gameId}: ${row.n} move rows (max ply ${row.top}) but ply is ${ply}`);
   }

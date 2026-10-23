@@ -43,6 +43,7 @@ describe("migrate", () => {
     const after = db.prepare(`SELECT fen, last_move FROM games`).get() as { fen: string; last_move: string };
     expect(after.fen).toMatch(/^rnbqkbnr\/pppppppp\/8\/8\/4P3\/8\/PPPP1PPP\/RNBQKBNR b KQkq/);
     expect(after.last_move).toBe("e2e4");
+    expect(db.prepare(`SELECT played_at FROM moves WHERE game_id = 'g1'`).get()).toEqual({ played_at: 5 });
     expect(backfillPositions(db)).toBe(0);
     expect(db.prepare(`SELECT COUNT(*) AS n FROM moves`).get()).toEqual({ n: 1 });
   });

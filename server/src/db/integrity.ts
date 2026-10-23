@@ -25,11 +25,13 @@ export function checkIntegrity(db: Database.Database, opts: { deep?: boolean } =
     return issues; // the checks below need the current columns
   }
 
-  // moves 1..ply must exist exactly once (PK guarantees no duplicates, so count + max is enough)
+  // The newest row at each ply is active; older rows are preserved takeback history.
   const mismatched = db.prepare(`
-    SELECT g.id, g.ply, COUNT(m.ply) AS n, COALESCE(MAX(m.ply), 0) AS top
-    FROM games g LEFT JOIN moves m ON m.game_id = g.id
-    GROUP BY g.id HAVING n <> g.ply OR top <> g.ply
+    SELECT g.id, g.ply,
+      (SELECT COUNT(DISTINCT m.ply) FROM moves m WHERE m.game_id = g.id AND m.ply <= g.ply) AS n,
+      COALESCE((SELECT MAX(m.ply) FROM moves m WHERE m.game_id = g.id AND m.ply <= g.ply), 0) AS top
+    FROM games g
+    WHERE n <> g.ply OR top <> g.ply
   `).all() as { id: string; ply: number; n: number; top: number }[];
   
   for (const g of mismatched) add("ply", `game ${g.id}: ply ${g.ply} but ${g.n} move rows (max ply ${g.top})`);
@@ -71,11 +73,17 @@ export function checkIntegrity(db: Database.Database, opts: { deep?: boolean } =
   }
 
   if (opts.deep) {
-    const games = db.prepare(`SELECT id, variant, initial_fen, fen, last_move FROM games`).all() as
-      { id: string; variant: Variant; initial_fen: string; fen: string | null; last_move: string | null }[];
-    const movesFor = db.prepare(`SELECT uci FROM moves WHERE game_id = ? ORDER BY ply`);
+    const games = db.prepare(`SELECT id, variant, initial_fen, fen, last_move, ply FROM games`).all() as
+      { id: string; variant: Variant; initial_fen: string; fen: string | null; last_move: string | null; ply: number }[];
+    const movesFor = db.prepare(`
+      SELECT m.uci FROM moves m
+      WHERE m.game_id = ? AND m.ply <= ?
+        AND m.id = (SELECT MAX(previous.id) FROM moves previous
+                    WHERE previous.game_id = m.game_id AND previous.ply = m.ply)
+      ORDER BY m.ply
+    `);
     for (const g of games) {
-      const moves = (movesFor.all(g.id) as { uci: string }[]).map((m) => m.uci);
+      const moves = (movesFor.all(g.id, g.ply) as { uci: string }[]).map((m) => m.uci);
       const fen = fenAfterMoves(g.initial_fen, moves, g.variant);
       if (fen === null) add("replay", `game ${g.id}: moves do not replay from the initial position`);
       else if (fen !== g.fen) add("fen", `game ${g.id}: stored position differs from the replayed one`);
