@@ -25,13 +25,13 @@ export function checkIntegrity(db: Database.Database, opts: { deep?: boolean } =
     return issues; // the checks below need the current columns
   }
 
-  // The newest row at each ply is active; older rows are preserved takeback history.
+  // active_moves contains the current line; older rows remain in moves as takeback history.
   const mismatched = db.prepare(`
     SELECT g.id, g.ply,
-      (SELECT COUNT(DISTINCT m.ply) FROM moves m WHERE m.game_id = g.id AND m.ply <= g.ply) AS n,
-      COALESCE((SELECT MAX(m.ply) FROM moves m WHERE m.game_id = g.id AND m.ply <= g.ply), 0) AS top
-    FROM games g
-    WHERE n <> g.ply OR top <> g.ply
+      COUNT(a.ply) AS n, COALESCE(MAX(a.ply), 0) AS top
+    FROM games g LEFT JOIN active_moves a ON a.game_id = g.id
+    GROUP BY g.id
+    HAVING COUNT(a.ply) <> g.ply OR COALESCE(MAX(a.ply), 0) <> g.ply
   `).all() as { id: string; ply: number; n: number; top: number }[];
   
   for (const g of mismatched) add("ply", `game ${g.id}: ply ${g.ply} but ${g.n} move rows (max ply ${g.top})`);
@@ -76,14 +76,12 @@ export function checkIntegrity(db: Database.Database, opts: { deep?: boolean } =
     const games = db.prepare(`SELECT id, variant, initial_fen, fen, last_move, ply FROM games`).all() as
       { id: string; variant: Variant; initial_fen: string; fen: string | null; last_move: string | null; ply: number }[];
     const movesFor = db.prepare(`
-      SELECT m.uci FROM moves m
-      WHERE m.game_id = ? AND m.ply <= ?
-        AND m.id = (SELECT MAX(previous.id) FROM moves previous
-                    WHERE previous.game_id = m.game_id AND previous.ply = m.ply)
-      ORDER BY m.ply
+      SELECT m.uci FROM active_moves a
+      JOIN moves m ON m.id = a.move_id
+      WHERE a.game_id = ? ORDER BY a.ply
     `);
     for (const g of games) {
-      const moves = (movesFor.all(g.id, g.ply) as { uci: string }[]).map((m) => m.uci);
+      const moves = (movesFor.all(g.id) as { uci: string }[]).map((m) => m.uci);
       const fen = fenAfterMoves(g.initial_fen, moves, g.variant);
       if (fen === null) add("replay", `game ${g.id}: moves do not replay from the initial position`);
       else if (fen !== g.fen) add("fen", `game ${g.id}: stored position differs from the replayed one`);

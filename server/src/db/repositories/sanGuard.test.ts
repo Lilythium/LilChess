@@ -1,12 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@lilchess/shared", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@lilchess/shared")>();
-  return { ...actual, sanForNextMove: vi.fn(actual.sanForNextMove) };
+vi.mock("chessops/san", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("chessops/san")>();
+  return { ...actual, makeSan: vi.fn(actual.makeSan) };
 });
 
-import { createGame, sanForNextMove } from "@lilchess/shared";
+import { makeSan } from "chessops/san";
+import { createGame } from "@lilchess/shared";
 import { buildApp } from "../../app.js";
 import { registerUser, startGame } from "../../testing/helpers.js";
 import { closeDb, getDb, openDb } from "../connection.js";
@@ -23,12 +24,12 @@ describe("a move that can't produce SAN (repository)", () => {
   });
   afterEach(() => {
     closeDb();
-    vi.mocked(sanForNextMove).mockClear();
+    vi.mocked(makeSan).mockClear();
   });
 
   it("throws and leaves ply, moves and the game row untouched", () => {
     insertGame("g1", 1, 2, createGame({ clock: CLOCK, now: 0 }));
-    vi.mocked(sanForNextMove).mockReturnValueOnce(null);
+    vi.mocked(makeSan).mockReturnValueOnce(null as unknown as string);
 
     expect(() => applyMoveAndPersist("g1", "e2e4", 1_000)).toThrow(/no SAN/);
     const g = getGame("g1")!;
@@ -47,7 +48,7 @@ describe("a move that can't produce SAN (repository)", () => {
     const res = applyMoveAndPersist("g2", "g1f3", 1_000);
     expect(res.ok).toBe(true);
     expect(getGame("g2")?.termination).toBe("timeout");
-    expect(sanForNextMove).not.toHaveBeenCalled();
+    expect(makeSan).not.toHaveBeenCalled();
   });
 });
 
@@ -61,7 +62,7 @@ describe("a move that can't produce SAN (HTTP)", () => {
   afterEach(async () => {
     await app.close();
     closeDb();
-    vi.mocked(sanForNextMove).mockClear();
+    vi.mocked(makeSan).mockClear();
   });
 
   it("500s, persists nothing, and an identical retry succeeds", async () => {
@@ -76,7 +77,7 @@ describe("a move that can't produce SAN (HTTP)", () => {
         payload: { ply: 0, uci: "e2e4" },
       });
 
-    vi.mocked(sanForNextMove).mockReturnValueOnce(null);
+    vi.mocked(makeSan).mockReturnValueOnce(null as unknown as string);
     const failed = await move();
     expect(failed.statusCode).toBe(500);
     expect(failed.json()).toEqual({ error: "Internal server error" });

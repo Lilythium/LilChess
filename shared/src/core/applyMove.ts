@@ -1,14 +1,18 @@
+import { makeSan } from "chessops/san";
 import { parseUci } from "chessops/util";
 import { expireGame } from "./actions.js";
 import { advanceClock, inFirstMoveWindow } from "./clock.js";import { checkGameEnd } from "./gameEnd.js";import { positionKey, replay } from "./replay.js";
+import { fenOf } from "./position.js";
 import { opponent } from "./types.js";
 import type { ActionResult, GameState } from "./types.js";
+
+type ApplyMoveResult = ActionResult & { san?: string; fen?: string };
 
 export function applyMove(
   game: GameState,
   uci: string,
   now: number,
-): ActionResult {
+): ApplyMoveResult {
   if (game.status !== "started") {
     return { ok: false, error: "game_not_active" };
   }
@@ -35,9 +39,11 @@ export function applyMove(
     return { ok: false, error: "illegal_move" };
   }
 
+  const san = makeSan(position, move);
   const mover = game.turn;
 
   position.play(move);
+  const fen = fenOf(position);
 
   const clock = advanceClock(
     game.clock,
@@ -55,6 +61,8 @@ export function applyMove(
 
   return {
     ok: true,
+    san,
+    fen,
     state: {
       ...game,
       moves: newMoves,

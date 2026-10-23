@@ -8,16 +8,14 @@ export function backfillPositions(db: Database.Database): number {
   if (rows.length === 0) return 0;
 
   const movesFor = db.prepare(`
-    SELECT m.uci FROM moves m
-    WHERE m.game_id = ? AND m.ply <= ?
-      AND m.id = (SELECT MAX(previous.id) FROM moves previous
-                  WHERE previous.game_id = m.game_id AND previous.ply = m.ply)
-    ORDER BY m.ply
+    SELECT m.uci FROM active_moves a
+    JOIN moves m ON m.id = a.move_id
+    WHERE a.game_id = ? ORDER BY a.ply
   `);
   const update = db.prepare(`UPDATE games SET fen = ?, last_move = ? WHERE id = ?`);
   db.transaction(() => {
     for (const r of rows) {
-      const moves = (movesFor.all(r.id, r.ply) as { uci: string }[]).map((m) => m.uci);
+      const moves = (movesFor.all(r.id) as { uci: string }[]).map((m) => m.uci);
       update.run(fenAfterMoves(r.initial_fen, moves, r.variant) ?? r.initial_fen, moves.at(-1) ?? null, r.id);
     }
   })();
