@@ -128,6 +128,8 @@ describe("takebacks", () => {
     expect(g.turn).toBe("white");
     expect(g.takebackOfferedBy).toBeUndefined();
     expect(getMoveSans("tb1")).toEqual([]);
+    expect(getDb().prepare(`SELECT ply, uci FROM moves WHERE game_id = 'tb1'`).all())
+      .toEqual([{ ply: 1, uci: "e2e4" }]);
   });
 
   it("lets the game continue with a different move afterwards", () => {
@@ -139,6 +141,11 @@ describe("takebacks", () => {
     expect(res.ok).toBe(true);
     expect(getGame("tb1")?.moves).toEqual(["d2d4"]);
     expect(getMoveSans("tb1")).toEqual(["d4"]);
+    expect(getDb().prepare(`SELECT ply, uci, played_at FROM moves WHERE game_id = 'tb1' ORDER BY id`).all())
+      .toEqual([
+        { ply: 1, uci: "e2e4", played_at: 1_000 },
+        { ply: 1, uci: "d2d4", played_at: 2_000 },
+      ]);
   });
 
   it("refuses an offer before the requester has moved", () => {

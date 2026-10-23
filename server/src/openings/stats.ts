@@ -12,6 +12,7 @@ interface FinishedGameRow {
   id: string;
   variant: Variant;
   initial_fen: string;
+  ply: number;
   result: "1-0" | "0-1" | "1/2-1/2";
 }
 
@@ -22,13 +23,19 @@ interface FinishedGameRow {
 export function recordOpeningGame(gameId: string): boolean {
   const db = getDb();
   const game = db
-    .prepare(`SELECT id, variant, initial_fen, result FROM games WHERE id = ? AND status = 'finished' AND result IS NOT NULL`)
+    .prepare(`SELECT id, variant, initial_fen, ply, result FROM games WHERE id = ? AND status = 'finished' AND result IS NOT NULL`)
     .get(gameId) as FinishedGameRow | undefined;
   if (!game) return false;
 
   return db.transaction(() => {
     if (db.prepare(`INSERT OR IGNORE INTO opening_games (game_id) VALUES (?)`).run(gameId).changes === 0) return false;
-    const moves = (db.prepare(`SELECT uci FROM moves WHERE game_id = ? AND ply <= ? ORDER BY ply`).all(gameId, OPENING_MAX_PLY) as { uci: string }[]);
+    const moves = db.prepare(`
+      SELECT m.uci FROM moves m
+      WHERE m.game_id = ? AND m.ply <= ?
+        AND m.id = (SELECT MAX(previous.id) FROM moves previous
+                    WHERE previous.game_id = m.game_id AND previous.ply = m.ply)
+      ORDER BY m.ply
+    `).all(gameId, Math.min(game.ply, OPENING_MAX_PLY)) as { uci: string }[];
     const column = game.result === "1-0" ? "white" : game.result === "0-1" ? "black" : "draws";
     const bump = db.prepare(`
       INSERT INTO opening_moves (variant, position_key, uci, ${column}) VALUES (?, ?, ?, 1)
@@ -106,8 +113,14 @@ export interface OpeningGame {
 
 function indexOpeningPositions(gameId: string, variant: Variant, initialFen: string): void {
   const db = getDb();
-  const moves = db.prepare(`SELECT uci FROM moves WHERE game_id = ? AND ply <= ? ORDER BY ply`)
-    .all(gameId, OPENING_MAX_PLY) as { uci: string }[];
+  const moves = db.prepare(`
+    SELECT m.uci FROM moves m
+    JOIN games g ON g.id = m.game_id
+    WHERE m.game_id = ? AND m.ply <= ? AND m.ply <= g.ply
+      AND m.id = (SELECT MAX(previous.id) FROM moves previous
+                  WHERE previous.game_id = m.game_id AND previous.ply = m.ply)
+    ORDER BY m.ply
+  `).all(gameId, OPENING_MAX_PLY) as { uci: string }[];
   const insert = db.prepare(`INSERT OR IGNORE INTO opening_positions (variant, position_key, game_id) VALUES (?, ?, ?)`);
   const pos = positionFromFen(initialFen, variant);
   insert.run(variant, positionKey(pos), gameId);
