@@ -11,6 +11,8 @@ import {
   acceptTakeback,
   declineTakeback,
   fenAfterMoves,
+  SNAPSHOT_INTERVAL,
+  type ReplaySeed,
   type GameState,
   type Color,
   type ActionResult,
@@ -53,6 +55,27 @@ function currentMoveRows(gameId: string): { uci: string; san: string }[] {
     WHERE a.game_id = ?
     ORDER BY a.ply ASC
   `).all(gameId) as { uci: string; san: string }[];
+}
+
+// Nearest valid checkpoint at or before `ply`. The join to active_moves drops checkpoints whose move
+// has been retracted, so a stale row can never seed a replay.
+function loadSeed(gameId: string, ply: number): ReplaySeed | undefined {
+  if (ply < SNAPSHOT_INTERVAL) return undefined;
+  const row = getDb()
+    .prepare(
+      `SELECT s.ply, s.fen, s.keys FROM game_snapshots s
+       JOIN active_moves a ON a.game_id = s.game_id AND a.ply = s.ply AND a.move_id = s.move_id
+       WHERE s.game_id = ? AND s.ply <= ?
+       ORDER BY s.ply DESC LIMIT 1`,
+    )
+    .get(gameId, ply) as { ply: number; fen: string; keys: string } | undefined;
+  return row ? { ply: row.ply, fen: row.fen, keys: row.keys.split("\n") } : undefined;
+}
+
+function saveSnapshot(gameId: string, moveId: number, seed: ReplaySeed): void {
+  getDb()
+    .prepare(`INSERT OR REPLACE INTO game_snapshots (game_id, ply, move_id, fen, keys) VALUES (?, ?, ?, ?, ?)`)
+    .run(gameId, seed.ply, moveId, seed.fen, seed.keys.join("\n"));
 }
 
 function afterCommit(): void {
@@ -110,7 +133,7 @@ function updateGameState(
   currentFen?: string,
 ): void {
   const row = gameStateToRow(game);
-  const fen = currentFen ?? fenAfterMoves(game.initialFen, game.moves, game.variant);
+  const fen = currentFen ?? fenAfterMoves(game.initialFen, game.moves, game.variant, loadSeed(id, game.ply));
   if (fen === null) throw new Error(`game ${id}: moves do not replay from initial_fen`);
   getDb()
     .prepare(
@@ -141,14 +164,16 @@ function abortFaultId(gameId: string, game: GameState, actorId: number | null): 
   return game.turn === "white" ? p.whiteId : p.blackId;
 }
 
-function appendMove(gameId: string, ply: number, uci: string, san: string, playedAt: number): void {
-  getDb()
+function appendMove(gameId: string, ply: number, uci: string, san: string, playedAt: number): number {
+  const info = getDb()
     .prepare(`INSERT INTO moves (game_id, ply, uci, san, played_at) VALUES (?, ?, ?, ?, ?)`)
     .run(gameId, ply, uci, san, playedAt);
+  return Number(info.lastInsertRowid);
 }
 
 function deactivateMovesAfter(gameId: string, ply: number): void {
   getDb().prepare(`DELETE FROM active_moves WHERE game_id = ? AND ply > ?`).run(gameId, ply);
+  getDb().prepare(`DELETE FROM game_snapshots WHERE game_id = ? AND ply > ?`).run(gameId, ply);
 }
 
 export function headToHead(meId: number, themId: number) {
@@ -224,7 +249,7 @@ function applyMoveCore(id: string, uci: string, now: number) {
 
   const noOpeningAbort = before.clock.mode === "live" && before.ply < 2 && isTournamentSimul2Game(id);
   const gameForMove = noOpeningAbort ? { ...before, deadlineAt: Number.MAX_SAFE_INTEGER } : before;
-  const result = applyMove(gameForMove, uci, now);
+  const result = applyMove(gameForMove, uci, now, loadSeed(id, before.ply));
   if (!result.ok) return result;
   const state = noOpeningAbort && result.state.status === "started" && result.state.ply < 2
     ? { ...result.state, deadlineAt: Number.MAX_SAFE_INTEGER }
@@ -239,7 +264,8 @@ function applyMoveCore(id: string, uci: string, now: number) {
       throw new Error(`no SAN for ${uci} in game ${id} at ply ${before.ply}`);
     }
     // Never write a ply without its moves row. Throwing rolls back the surrounding transaction.
-    appendMove(id, state.ply, uci, san, now);
+    const moveId = appendMove(id, state.ply, uci, san, now);
+    if (result.snapshot) saveSnapshot(id, moveId, result.snapshot);
     assertMoveRows(id, state.ply);
   }
   

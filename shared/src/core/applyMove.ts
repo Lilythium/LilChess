@@ -1,17 +1,21 @@
 import { makeSan } from "chessops/san";
 import { parseUci } from "chessops/util";
 import { expireGame } from "./actions.js";
-import { advanceClock, inFirstMoveWindow } from "./clock.js";import { checkGameEnd } from "./gameEnd.js";import { positionKey, replay } from "./replay.js";
+import { advanceClock, inFirstMoveWindow } from "./clock.js";
+import { checkGameEnd } from "./gameEnd.js";
+import { keyFromFen, makeSeed, replay, SNAPSHOT_INTERVAL, type ReplaySeed } from "./replay.js";
 import { fenOf } from "./position.js";
 import { opponent } from "./types.js";
 import type { ActionResult, GameState } from "./types.js";
 
-type ApplyMoveResult = ActionResult & { san?: string; fen?: string };
+// `snapshot` is set when this move lands on a checkpoint ply and the game goes on: the caller should store it.
+type ApplyMoveResult = ActionResult & { san?: string; fen?: string; snapshot?: ReplaySeed };
 
 export function applyMove(
   game: GameState,
   uci: string,
   now: number,
+  seed?: ReplaySeed, // optional checkpoint at or before the current ply; saves replaying from the start
 ): ApplyMoveResult {
   if (game.status !== "started") {
     return { ok: false, error: "game_not_active" };
@@ -27,7 +31,7 @@ export function applyMove(
     return { ok: false, error: "unparseable_move" };
   }
 
-  const replayed = replay(game);
+  const replayed = replay(game, seed);
 
   if (!replayed.ok) {
     return { ok: false, error: replayed.error };
@@ -44,6 +48,7 @@ export function applyMove(
 
   position.play(move);
   const fen = fenOf(position);
+  positionKeys.push(keyFromFen(fen, position));
 
   const clock = advanceClock(
     game.clock,
@@ -55,14 +60,18 @@ export function applyMove(
     game.ply,
   );
 
-  const allKeys = [...positionKeys, positionKey(position)];
-  const endCheck = checkGameEnd(position, mover, allKeys);
+  const endCheck = checkGameEnd(position, mover, positionKeys);
   const newMoves = [...game.moves, uci];
+  const snapshot =
+    !endCheck.ended && newMoves.length % SNAPSHOT_INTERVAL === 0
+      ? makeSeed(fen, position.halfmoves, newMoves.length, positionKeys)
+      : undefined;
 
   return {
     ok: true,
     san,
     fen,
+    snapshot,
     state: {
       ...game,
       moves: newMoves,

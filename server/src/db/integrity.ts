@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { fenAfterMoves, VARIANTS, type Variant } from "@lilchess/shared";
+import { fensForMoves, VARIANTS, type Variant } from "@lilchess/shared";
 import { latestVersion } from "./migrate.js";
 
 export interface IntegrityIssue {
@@ -80,12 +80,24 @@ export function checkIntegrity(db: Database.Database, opts: { deep?: boolean } =
       JOIN moves m ON m.id = a.move_id
       WHERE a.game_id = ? ORDER BY a.ply
     `);
+    // Only checkpoints still tied to a live move; retracted ones are ignored by the loader.
+    const snapshotsFor = db.prepare(`
+      SELECT s.ply, s.fen FROM game_snapshots s
+      JOIN active_moves a ON a.game_id = s.game_id AND a.ply = s.ply AND a.move_id = s.move_id
+      WHERE s.game_id = ?
+    `);
     for (const g of games) {
       const moves = (movesFor.all(g.id) as { uci: string }[]).map((m) => m.uci);
-      const fen = fenAfterMoves(g.initial_fen, moves, g.variant);
+      const fens = fensForMoves(g.initial_fen, moves, g.variant);
+      const fen = fens?.at(-1) ?? null;
       if (fen === null) add("replay", `game ${g.id}: moves do not replay from the initial position`);
       else if (fen !== g.fen) add("fen", `game ${g.id}: stored position differs from the replayed one`);
       if ((moves.at(-1) ?? null) !== g.last_move) add("last_move", `game ${g.id}: last_move does not match the moves`);
+      if (fens) {
+        for (const s of snapshotsFor.all(g.id) as { ply: number; fen: string }[]) {
+          if (fens[s.ply] !== s.fen) add("snapshot", `game ${g.id}: checkpoint at ply ${s.ply} differs from the replayed position`);
+        }
+      }
     }
   }
   return issues;
