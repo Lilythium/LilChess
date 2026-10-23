@@ -109,10 +109,21 @@ describe("demo server", () => {
   it("plays a game: the bot answers every move and the guest can finish it", async () => {
     const { auth, gameId, botIsWhite } = await begin();
     const botColor = botIsWhite ? "white" : "black";
-    for (let i = 0; i < 6; i++) {
-      runDemoBotTick(LATER());
+    if (!botIsWhite) {
       const state = getGame(gameId)!;
-      expect(state.turn).not.toBe(botColor); // the bot has answered, so it is the guest's turn
+      const fen = fenAfterMoves(state.initialFen, state.moves, state.variant)!;
+      const opening = await app.inject({
+        method: "POST", url: `/api/games/${gameId}/move`, headers: auth, payload: { ply: state.ply, uci: chooseBotMove(fen, "standard")! },
+      });
+      expect(opening.statusCode).toBe(200);
+    }
+    for (let i = 0; i < 6; i++) {
+      const tick = runDemoBotTick(LATER());
+      const state = getGame(gameId)!;
+      expect(
+        tick.moves,
+        `Expected the demo bot to move. botColor=${botColor}, turn=${state.turn}, ply=${state.ply}, turnStartedAt=${state.turnStartedAt}`,
+      ).toBeGreaterThan(0);
       const fen = fenAfterMoves(state.initialFen, state.moves, state.variant)!;
       const res = await app.inject({
         method: "POST", url: `/api/games/${gameId}/move`, headers: auth, payload: { ply: state.ply, uci: chooseBotMove(fen, "standard")! },
