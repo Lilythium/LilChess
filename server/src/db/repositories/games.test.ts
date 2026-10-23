@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createGame } from "@lilchess/shared";
+import { makeUci, squareRank } from "chessops/util";
+import { applyMove, createGame, fenAfterMoves, positionFromFen } from "@lilchess/shared";
 import { openDb, closeDb, getDb } from "../connection.js";
+import { backfillSnapshots } from "../backfill.js";
+import { checkIntegrity } from "../integrity.js";
 import {
   acceptTakebackAndPersist,
   applyMoveAndPersist,
@@ -160,5 +163,114 @@ describe("takebacks", () => {
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.error).toBe("not_a_participant");
+  });
+});
+describe("position snapshots", () => {
+  const clock = { mode: "live" as const, initialMs: 3 * 3_600_000, incrementMs: 0 };
+  // A deterministic pseudo-random game that is still running after `n` plies (a shuffle would end by repetition).
+  const LONG_GAME_PLIES = 130;
+  let longGame: string[] | undefined;
+  const movesFor = (n: number): string[] => (longGame ??= buildLongGame(LONG_GAME_PLIES)).slice(0, n);
+
+  function buildLongGame(n: number): string[] {
+    for (let seed = 1; seed < 200; seed++) {
+      let a = seed;
+      const rnd = () => {
+        a = (a + 0x6d2b79f5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+      let g = createGame({ clock, now: 0 });
+      const out: string[] = [];
+      while (g.status === "started" && out.length < n) {
+        const pos = positionFromFen(fenAfterMoves(g.initialFen, g.moves)!);
+        const all: string[] = [];
+        for (const [from, dests] of pos.allDests()) {
+          const pawn = pos.board.get(from)?.role === "pawn";
+          for (const to of dests) {
+            const last = squareRank(to) === 0 || squareRank(to) === 7;
+            all.push(makeUci({ from, to, promotion: pawn && last ? "queen" : undefined }));
+          }
+        }
+        if (!all.length) break;
+        const uci = all[Math.floor(rnd() * all.length)]!;
+        const r = applyMove(g, uci, 1_000 + out.length);
+        if (!r.ok) break;
+        out.push(uci);
+        g = r.state;
+      }
+      if (out.length === n && g.status === "started") return out;
+    }
+    throw new Error("no long game found");
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_500); // keeps the takeback deadline check from firing
+    openDb(":memory:");
+    getDb().prepare(`INSERT INTO users (id, username, password_hash, created_at) VALUES (1,'a','x',0),(2,'b','x',0)`).run();
+    insertGame("g1", 1, 2, createGame({ clock, now: 0 }));
+  });
+  afterEach(() => {
+    closeDb();
+    vi.useRealTimers();
+  });
+
+  const snapshotPlies = () =>
+    (getDb().prepare(`SELECT ply FROM game_snapshots WHERE game_id='g1' ORDER BY ply`).pluck().all() as number[]);
+
+  function playTo(ply: number) {
+    for (const [i, uci] of movesFor(ply).entries()) {
+      const r = applyMoveAndPersist("g1", uci, 1_000 + i);
+      if (!r.ok) throw new Error(`${uci}: ${r.error}`);
+    }
+  }
+
+  it("stores a checkpoint every 50 plies", () => {
+    playTo(120);
+    expect(snapshotPlies()).toEqual([50, 100]);
+  });
+
+  it("keeps the stored position equal to a full replay after the checkpoint is used", () => {
+    playTo(130);
+    const g = getGame("g1")!;
+    const stored = getDb().prepare(`SELECT fen FROM games WHERE id='g1'`).pluck().get();
+    expect(stored).toBe(fenAfterMoves(g.initialFen, g.moves, g.variant));
+  });
+
+  it("drops checkpoints a takeback retracts and ignores any left stale", () => {
+    playTo(101);
+    expect(snapshotPlies()).toEqual([50, 100]);
+    // White just played ply 101, so black offers the takeback and white accepts, retracting back to ply 99.
+    expect(offerTakebackAndPersist("g1", 2).ok).toBe(true);
+    expect(acceptTakebackAndPersist("g1", 1).ok).toBe(true);
+    expect(getGame("g1")!.ply).toBe(99);
+    expect(snapshotPlies()).toEqual([50]);
+  });
+
+  it("falls back to a full replay when a checkpoint no longer matches its move row", () => {
+    playTo(60);
+    // Point the checkpoint at a different (real) move row and wreck its position: it must be ignored, not trusted.
+    getDb().prepare(`UPDATE game_snapshots SET move_id = move_id - 1, fen = '8/8/8/8/8/8/8/K6k w - - 0 1', keys = 'x' WHERE game_id='g1'`).run();
+    const r = applyMoveAndPersist("g1", movesFor(61)[60]!, 100_000);
+    expect(r.ok).toBe(true);
+    const g = getGame("g1")!;
+    expect(getDb().prepare(`SELECT fen FROM games WHERE id='g1'`).pluck().get()).toBe(fenAfterMoves(g.initialFen, g.moves, g.variant));
+  });
+
+  it("reports a checkpoint that disagrees with the replayed position in the deep integrity check", () => {
+    playTo(60);
+    getDb().prepare(`UPDATE game_snapshots SET fen = '8/8/8/8/8/8/8/K6k w - - 0 1' WHERE game_id='g1'`).run();
+    expect(checkIntegrity(getDb(), { deep: true }).some((i) => i.detail.includes("checkpoint at ply 50"))).toBe(true);
+  });
+
+  it("backfills checkpoints for a long game that has none", () => {
+    playTo(120);
+    getDb().prepare(`DELETE FROM game_snapshots`).run();
+    expect(backfillSnapshots(getDb())).toBe(1);
+    expect(snapshotPlies()).toEqual([50, 100]);
+    expect(backfillSnapshots(getDb())).toBe(0);
+    expect(checkIntegrity(getDb(), { deep: true })).toEqual([]);
   });
 });
