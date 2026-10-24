@@ -183,6 +183,18 @@ ok: true,
 games: getLiveGames(),
 }));
 
+// The viewer's score against the other player; null for spectators.
+function viewerHeadToHead(
+  players: ReturnType<typeof getGamePlayers>,
+  me: number,
+): { wins: number; draws: number; losses: number } | null {
+  if (!players) return null;
+  const them = players.whiteId === me ? players.blackId : players.blackId === me ? players.whiteId : null;
+  if (them === null) return null;
+  const r = headToHead(me, them) as { wins: number | null; draws: number | null; losses: number | null } | undefined;
+  return { wins: r?.wins ?? 0, draws: r?.draws ?? 0, losses: r?.losses ?? 0 };
+}
+
 app.get("/api/games/:id", { preHandler: requireAuth }, async (req, reply) => {
 const params = parse(IdParams, req.params, reply);
 if (!params) return reply;
@@ -196,26 +208,7 @@ if (!loaded) return reply.code(404).send({ error: "Game not found" });
 const { game, sans } = loaded;
 
 const players = getGamePlayers(id);
-let h2h: { wins: number; draws: number; losses: number } | null = null;
-
-if (players) {
-  const me = req.user!.id;
-  const them =
-    players.whiteId === me
-      ? players.blackId
-      : players.blackId === me
-        ? players.whiteId
-        : null;
-
-  if (them !== null) {
-    const r = headToHead(me, them) as any;
-    h2h = {
-      wins: r?.wins ?? 0,
-      draws: r?.draws ?? 0,
-      losses: r?.losses ?? 0,
-    };
-  }
-}
+const h2h = viewerHeadToHead(players, req.user!.id);
 
 return {
   ok: true,
@@ -229,6 +222,25 @@ return {
 };
 
 
+});
+
+// What a game_over event cannot carry because it differs per viewer or changed after the game: current ratings, the
+// viewer's head-to-head score and the tournament-simul board list. A few hundred bytes, against the whole game
+// (every move and SAN) from GET /api/games/:id. Additive: older servers answer 404 and clients resync instead.
+app.get("/api/games/:id/summary", { preHandler: requireAuth }, async (req, reply) => {
+  const params = parse(IdParams, req.params, reply);
+  if (!params) return reply;
+
+  const players = getGamePlayers(params.id);
+  if (!players) return reply.code(404).send({ error: "Game not found" });
+
+  return {
+    ok: true,
+    players,
+    h2h: viewerHeadToHead(players, req.user!.id),
+    tournamentSimul: getTournamentSimulForGame(params.id, req.user!.id),
+    serverNow: Date.now(),
+  };
 });
 
 app.get("/api/games/:id/tournament-simul", { preHandler: requireAuth }, async (req, reply) => {

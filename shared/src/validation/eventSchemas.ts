@@ -25,6 +25,7 @@ const TakebackEvent = z.object({
 const GameOverEvent = z.object({
   type: z.literal("game_over"), gameId, status: z.enum(["finished", "aborted"]),
   result: GameResult.optional(), termination: Termination.optional(),
+  ply: z.number().int().min(0).optional(), whiteMs: ms.optional(), blackMs: ms.optional(),
 });
 
 // Sent only to the socket that caused it (bad_json, ply_mismatch, ...).

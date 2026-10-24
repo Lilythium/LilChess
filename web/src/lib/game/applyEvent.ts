@@ -38,13 +38,34 @@ export function applyGameEvent(view: EventTarget, event: GameEvent): EventOutcom
     case "takeback_offer":
       game.takebackOfferedBy = event.by ?? undefined;
       return "applied";
-    case "takeback":
+    case "takeback": {
+      // The event carries the new ply, side to move and clocks; everything else is a truncation of what we hold.
+      if (event.ply > game.ply) return "resync"; // we are behind, so a truncation would be meaningless
+      game.moves.length = event.ply;
+      game.ply = event.ply;
+      game.turn = event.turn;
+      game.whiteMs = event.whiteMs;
+      game.blackMs = event.blackMs;
+      game.deadlineAt = event.deadlineAt;
+      game.drawOfferedBy = undefined;
       game.takebackOfferedBy = undefined;
-      return "resync"; // moves, SANs and clocks all changed
-    case "game_over":
+      for (const key of Object.keys(view.sanByPly)) {
+        if (Number(key) > event.ply) delete view.sanByPly[Number(key)];
+      }
+      return "applied";
+    }
+    case "game_over": {
+      // A server that predates the final ply and clocks sends neither: resync. So do we if we missed a move.
+      if (event.ply === undefined || event.whiteMs === undefined || event.blackMs === undefined) return "resync";
+      if (event.ply !== game.ply) return "resync";
       game.status = event.status;
       game.result = event.result;
       game.termination = event.termination;
-      return "resync"; // pick up final clocks and the updated H2H
+      game.whiteMs = event.whiteMs;
+      game.blackMs = event.blackMs;
+      game.drawOfferedBy = undefined;
+      game.takebackOfferedBy = undefined;
+      return "applied";
+    }
   }
 }

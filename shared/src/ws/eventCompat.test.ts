@@ -16,6 +16,12 @@ const game = {
   takeback_offer: { type: "takeback_offer", gameId: "g1", by: "black" },
   takeback: { type: "takeback", gameId: "g1", ply: 0, turn: "white", whiteMs: 300000, blackMs: 300000, deadlineAt: 1767225600000 },
   game_over: { type: "game_over", gameId: "g1", status: "finished", result: "1-0", termination: "checkmate" },
+  // Servers from the delta-events release add the final ply and clocks. The recording above (no extra fields) stays:
+  // older servers still send it, and the client must keep handling it by resyncing.
+  game_over_with_final_state: {
+    type: "game_over", gameId: "g1", status: "finished", result: "1-0", termination: "resignation",
+    ply: 31, whiteMs: 12000, blackMs: 34000,
+  },
   game_aborted: { type: "game_over", gameId: "g1", status: "aborted" },
   error: { type: "error", error: "ply_mismatch" },
 };
