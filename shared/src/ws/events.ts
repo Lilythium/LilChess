@@ -45,6 +45,11 @@ export type GameEvent =
       status: "finished" | "aborted";
       result?: GameResult;      // absent for aborted games
       termination?: Termination;
+      // Final position and clocks, so a client can close the game without refetching it. Optional: servers that
+      // predate them omit them and clients fall back to a REST resync.
+      ply?: number;
+      whiteMs?: number;
+      blackMs?: number;
     };
 
 export type ClientMessage = { type: "move"; ply: number; uci: string };

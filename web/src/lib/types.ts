@@ -45,6 +45,10 @@ export interface GameResponse {
   simul: SimulInfo | null; tournamentSimul: TournamentSimulInfo | null;
 }
 
+export interface GameSummaryResponse {
+  ok: true; players: Players; h2h: H2H | null; tournamentSimul: TournamentSimulInfo | null; serverNow: number;
+}
+
 export interface GameRow {
   id: string; white_id: number; black_id: number; white_name: string; black_name: string;
   mode: "live" | "correspondence"; initial_ms: number | null; increment_ms: number | null;

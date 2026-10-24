@@ -1,5 +1,5 @@
 import type { GameEvent, GameState } from "@lilchess/shared";
-import type { GameResponse, H2H, Players, SimulInfo, TournamentSimulInfo } from "../types";
+import type { GameResponse, GameSummaryResponse, H2H, Players, SimulInfo, TournamentSimulInfo } from "../types";
 import { api } from "../api";
 import { applyGameEvent } from "./applyEvent";
 import { playMoveSound, playSound } from "../audio/audio";
@@ -69,6 +69,21 @@ export function createGameStore(gameId: string) {
     return runner.run();
   }
 
+  // After game_over the event closes the game itself; this fetches only what an event cannot carry (ratings, the
+  // viewer's H2H, the tournament-simul boards). If it fails, e.g. an older server without the endpoint, the full
+  // resync takes over, so the end state is the same either way.
+  async function refreshSummary(): Promise<void> {
+    try {
+      const body = await api<GameSummaryResponse>(`/api/games/${gameId}/summary`);
+      view.players = body.players;
+      view.h2h = body.h2h;
+      view.tournamentSimul = body.tournamentSimul;
+      view.serverOffset = body.serverNow - Date.now();
+    } catch {
+      void resync();
+    }
+  }
+
   async function resyncTournamentSimul(): Promise<void> {
     try {
       const body = await api<{ tournamentSimul: TournamentSimulInfo | null }>(
@@ -121,6 +136,15 @@ export function createGameStore(gameId: string) {
 
     if (outcome === "applied" && event.type === "clock") {
       checkLowTimeWarning();
+    }
+
+    if (outcome === "applied" && (event.type === "takeback" || event.type === "game_over")) {
+      // A resync already in flight may have been answered from before this event.
+      runner.markDirty();
+    }
+
+    if (outcome === "applied" && event.type === "game_over") {
+      void refreshSummary();
     }
 
     if (outcome === "resync") {

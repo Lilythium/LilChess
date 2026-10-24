@@ -25,6 +25,7 @@ import {
   type ReplaySeed,
   type ReplayContext,
   type GameState,
+  type GameEvent,
   type Color,
   type ActionResult,
 } from "@lilchess/shared";
@@ -318,15 +319,24 @@ function applyMoveCore(id: string, uci: string, now: number) {
   return { ...result, state, san, movePlayed, cachedFen: result.fen, cachedPositionKeys };
 }
 
-function broadcastGameOver(gameId: string, state: GameState): void {
-  if (state.status === "started") return;
-  broadcastGameEvent(gameId, {
+/** The closing event carries the final ply and clocks, so clients can finish the game from the event alone. */
+function gameOverEvent(gameId: string, state: GameState): GameEvent {
+  if (state.status === "started") throw new Error("gameOverEvent called for a running game");
+  return {
     type: "game_over",
     gameId,
     status: state.status,
     result: state.result,
     termination: state.termination,
-  });
+    ply: state.ply,
+    whiteMs: state.whiteMs,
+    blackMs: state.blackMs,
+  };
+}
+
+function broadcastGameOver(gameId: string, state: GameState): void {
+  if (state.status === "started") return;
+  broadcastGameEvent(gameId, gameOverEvent(gameId, state));
 }
 
 function broadcastMoveOutcome(
@@ -428,13 +438,7 @@ function actAndPersist(
 export function resignAndPersist(gameId: string, userId: number) {
   const r = actAndPersist(gameId, userId, resign);
   if (r.ok) {
-    broadcastGameEvent(gameId, {
-      type: "game_over",
-      gameId,
-      status: "finished",
-      result: r.state.result,
-      termination: r.state.termination,
-    });
+    broadcastGameEvent(gameId, gameOverEvent(gameId, r.state));
     notifyGameOver(gameId, r.state, userId);
   }
   return r;
@@ -451,13 +455,7 @@ export function offerDrawAndPersist(gameId: string, userId: number) {
 export function acceptDrawAndPersist(gameId: string, userId: number) {
   const r = actAndPersist(gameId, userId, acceptDraw);
   if (r.ok) {
-    broadcastGameEvent(gameId, {
-      type: "game_over",
-      gameId,
-      status: "finished",
-      result: r.state.result,
-      termination: r.state.termination,
-    });
+    broadcastGameEvent(gameId, gameOverEvent(gameId, r.state));
     notifyGameOver(gameId, r.state, userId);
   }
   return r;
@@ -474,12 +472,7 @@ export function declineDrawAndPersist(gameId: string, userId: number) {
 export function abortAndPersist(gameId: string, userId: number) {
   const r = actAndPersist(gameId, userId, (game) => abort(game));
   if (r.ok) {
-    broadcastGameEvent(gameId, {
-      type: "game_over",
-      gameId,
-      status: "aborted",
-      termination: r.state.termination,
-    });
+    broadcastGameEvent(gameId, gameOverEvent(gameId, r.state));
   }
   return r;
 }
