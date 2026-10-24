@@ -3,7 +3,7 @@ import { parseUci } from "chessops/util";
 import { expireGame } from "./actions.js";
 import { advanceClock, inFirstMoveWindow } from "./clock.js";
 import { checkGameEnd } from "./gameEnd.js";
-import { keyFromFen, makeSeed, replay, SNAPSHOT_INTERVAL, type ReplaySeed } from "./replay.js";
+import { keyFromFen, makeSeed, replay, SNAPSHOT_INTERVAL, type ReplayContext, type ReplaySeed } from "./replay.js";
 import { fenOf } from "./position.js";
 import { opponent } from "./types.js";
 import type { ActionResult, GameState } from "./types.js";
@@ -16,6 +16,8 @@ export function applyMove(
   uci: string,
   now: number,
   seed?: ReplaySeed, // optional checkpoint at or before the current ply; saves replaying from the start
+  context?: ReplayContext, // optional prepared in-memory position; the caller must pass a private copy
+  onPositionKeys?: (positionKeys: string[]) => void, // receives bounded keys for the next move
 ): ApplyMoveResult {
   if (game.status !== "started") {
     return { ok: false, error: "game_not_active" };
@@ -31,7 +33,7 @@ export function applyMove(
     return { ok: false, error: "unparseable_move" };
   }
 
-  const replayed = replay(game, seed);
+  const replayed = context ? { ok: true as const, ...context } : replay(game, seed);
 
   if (!replayed.ok) {
     return { ok: false, error: replayed.error };
@@ -49,6 +51,8 @@ export function applyMove(
   position.play(move);
   const fen = fenOf(position);
   positionKeys.push(keyFromFen(fen, position));
+  // Only positions since the last pawn move or capture can matter for repetition.
+  onPositionKeys?.(makeSeed(fen, position.halfmoves, game.moves.length + 1, positionKeys).keys);
 
   const clock = advanceClock(
     game.clock,

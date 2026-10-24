@@ -4,6 +4,7 @@ import { applyMove, createGame, fenAfterMoves, positionFromFen } from "@lilchess
 import { openDb, closeDb, getDb } from "../connection.js";
 import { backfillSnapshots } from "../backfill.js";
 import { checkIntegrity } from "../integrity.js";
+import { clearActiveGameCache, getActiveGameCacheStats } from "../../game/activeGameCache.js";
 import {
   acceptTakebackAndPersist,
   applyMoveAndPersist,
@@ -253,6 +254,7 @@ describe("position snapshots", () => {
     playTo(60);
     // Point the checkpoint at a different (real) move row and wreck its position: it must be ignored, not trusted.
     getDb().prepare(`UPDATE game_snapshots SET move_id = move_id - 1, fen = '8/8/8/8/8/8/8/K6k w - - 0 1', keys = 'x' WHERE game_id='g1'`).run();
+    clearActiveGameCache();
     const r = applyMoveAndPersist("g1", movesFor(61)[60]!, 100_000);
     expect(r.ok).toBe(true);
     const g = getGame("g1")!;
@@ -272,5 +274,46 @@ describe("position snapshots", () => {
     expect(snapshotPlies()).toEqual([50, 100]);
     expect(backfillSnapshots(getDb())).toBe(0);
     expect(checkIntegrity(getDb(), { deep: true })).toEqual([]);
+  });
+});
+
+describe("active live-game cache", () => {
+  beforeEach(() => {
+    openDb(":memory:");
+    const db = getDb();
+    db.prepare(`INSERT INTO users (id, username, password_hash, created_at) VALUES (1, 'alice', 'x', 0)`).run();
+    db.prepare(`INSERT INTO users (id, username, password_hash, created_at) VALUES (2, 'bob', 'x', 0)`).run();
+    insertGame("cached-live", 1, 2, createGame({
+      clock: { mode: "live", initialMs: 60_000, incrementMs: 0 },
+      now: 0,
+    }));
+  });
+
+  afterEach(() => closeDb());
+
+  it("reuses live state while keeping returned state copies isolated", () => {
+    const first = getGame("cached-live")!;
+    expect(getActiveGameCacheStats().size).toBe(1);
+
+    // A caller must not be able to mutate the object held by the cache.
+    first.moves.push("e2e4");
+    expect(getGame("cached-live")?.moves).toEqual([]);
+
+    const move = applyMoveAndPersist("cached-live", "e2e4", 1_000);
+    expect(move.ok).toBe(true);
+    expect(getGame("cached-live")?.moves).toEqual(["e2e4"]);
+    expect(getGame("cached-live")?.ply).toBe(1);
+    expect(getActiveGameCacheStats().hits).toBeGreaterThan(0);
+    expect(getActiveGameCacheStats().size).toBe(1);
+  });
+
+  it("removes a game from cache after its terminal state commits", () => {
+    getGame("cached-live");
+    expect(getActiveGameCacheStats().size).toBe(1);
+
+    const timeout = claimTimeoutAndPersist("cached-live", 31_000);
+    expect(timeout.ok).toBe(true);
+    expect(getActiveGameCacheStats().size).toBe(0);
+    expect(getGame("cached-live")?.status).toBe("aborted");
   });
 });
