@@ -11,7 +11,11 @@ export function openDb(path: string): Database.Database {
   clearActiveGameCache();
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   db = new Database(path);
+  // WAL lets readers proceed while a writer commits. NORMAL keeps commits fast while
+  // preserving database consistency; the latest commits can be lost on power/OS failure.
   db.pragma("journal_mode = WAL");
+  db.pragma("synchronous = NORMAL");
+  db.pragma("mmap_size = 0");
   db.pragma("foreign_keys = ON"); // off by default in SQLite
   migrate(db);
   backfillPositions(db);
