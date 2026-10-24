@@ -1,21 +1,28 @@
 <script lang="ts">
   let { onLoad }: {
     /** Returns an error message, or null on success (optionally with a note to show). */
-    onLoad: (text: string) => { error?: string; note?: string };
+    onLoad: (text: string) => Promise<{ error?: string; note?: string }>;
   } = $props();
 
   let open = $state(false);
   let text = $state("");
   let error = $state<string | null>(null);
   let note = $state<string | null>(null);
+  let busy = $state(false);
 
-  function load() {
-    const result = onLoad(text);
-    error = result.error ?? null;
-    note = result.note ?? null;
-    if (!result.error) {
-      text = "";
-      open = false;
+  async function load() {
+    if (busy) return;
+    busy = true;
+    try {
+      const result = await onLoad(text);
+      error = result.error ?? null;
+      note = result.note ?? null;
+      if (!result.error) {
+        text = "";
+        open = false;
+      }
+    } finally {
+      busy = false;
     }
   }
 
@@ -41,7 +48,7 @@
       aria-label="PGN or FEN"
     ></textarea>
     <div class="row">
-      <button type="button" class="primary" disabled={!text.trim()} onclick={load}>Load</button>
+      <button type="button" class="primary" disabled={!text.trim() || busy} onclick={load}>{busy ? "Loading…" : "Load"}</button>
       <label class="file">
         <input type="file" accept=".pgn,.txt,text/plain" onchange={pickFile} />
         <span>Choose file</span>

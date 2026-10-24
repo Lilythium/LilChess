@@ -69,4 +69,56 @@ describe("PositionTimeline", () => {
     expect(tl.sans).toEqual(["a8=Q"]);
     expect(tl.squares[1]).toEqual(["a7", "a8"]);
   });
+
+  describe("snapshot and restore", () => {
+    const moves = ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5"];
+
+    it("restores to the same timeline without replaying", () => {
+      const built = new PositionTimeline(START_FEN);
+      built.sync(moves);
+      const restored = PositionTimeline.restore(START_FEN, "standard", JSON.parse(JSON.stringify(built.snapshot())));
+
+      expect(restored.moves).toEqual(built.moves);
+      expect(restored.fens).toEqual(built.fens);
+      expect(restored.sans).toEqual(built.sans);
+      expect(restored.squares).toEqual(built.squares);
+    });
+
+    it("keeps working after a restore: extends, truncates and branches", () => {
+      const built = new PositionTimeline(START_FEN);
+      built.sync(moves);
+      const restored = PositionTimeline.restore(START_FEN, "standard", built.snapshot());
+
+      expect(restored.sync([...moves, "a7a6"])).toBe(true);
+      expect(restored.sans.at(-1)).toBe("a6");
+      expect(restored.sync(["e2e4", "c7c5"])).toBe(true);
+      expect(restored.sans).toEqual(["e4", "c5"]);
+    });
+
+    it("copies: changing the restored timeline leaves the snapshot alone", () => {
+      const built = new PositionTimeline(START_FEN);
+      built.sync(moves);
+      const snapshot = built.snapshot();
+      const restored = PositionTimeline.restore(START_FEN, "standard", snapshot);
+      restored.sync(["e2e4"]);
+
+      expect(snapshot.moves).toEqual(moves);
+      expect(snapshot.fens).toHaveLength(moves.length + 1);
+    });
+
+    it("rejects a snapshot whose arrays disagree", () => {
+      const built = new PositionTimeline(START_FEN);
+      built.sync(moves);
+      const snapshot = built.snapshot();
+      snapshot.sans.pop();
+      expect(() => PositionTimeline.restore(START_FEN, "standard", snapshot)).toThrow("invalid_timeline_snapshot");
+    });
+
+    it("round-trips a variant with extra FEN state", () => {
+      const built = new PositionTimeline(START_FEN, "threecheck");
+      built.sync(moves);
+      const restored = PositionTimeline.restore(START_FEN, "threecheck", built.snapshot());
+      expect(restored.fens).toEqual(built.fens);
+    });
+  });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { START_FEN } from "@lilchess/shared";
-import { commonPrefix, playOnLine } from "./line";
+import { commonPrefix, playOnLine, sanAfter } from "./line";
 
 describe("commonPrefix", () => {
   it("counts shared leading moves", () => {
@@ -47,5 +47,23 @@ describe("playOnLine in variants", () => {
 
   it("appends a drop at the end of the line", () => {
     expect(playOnLine([], 0, "P@e4", fen, "crazyhouse")).toEqual(["P@e4"]);
+  });
+});
+
+describe("sanAfter", () => {
+  it("names a move from one position", () => {
+    expect(sanAfter(START_FEN, "e2e4")).toBe("e4");
+    expect(sanAfter("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1", "g8f6")).toBe("Nf6");
+  });
+
+  it("marks captures and checks", () => {
+    const fen = "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2";
+    expect(sanAfter(fen, "e4d5")).toBe("exd5");
+  });
+
+  it("is null for an illegal or unreadable move and for a bad FEN, never a throw", () => {
+    expect(sanAfter(START_FEN, "e2e5")).toBeNull();
+    expect(sanAfter(START_FEN, "zz")).toBeNull();
+    expect(sanAfter("garbage", "e2e4")).toBeNull();
   });
 });
