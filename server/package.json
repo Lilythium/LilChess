@@ -10,7 +10,8 @@
     "demo:reset": "tsx src/scripts/reset-demo.ts",
     "purge-legacy-imports": "tsx src/scripts/purge-legacy-imports.ts",
     "bench": "tsx src/scripts/bench-replay.ts",
-    "bench:ram": "tsx src/scripts/bench-ram.ts"
+    "bench:ram": "tsx src/scripts/bench-ram.ts",
+    "bench:sqlite-file": "tsx src/scripts/bench-sqlite-file.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.3",

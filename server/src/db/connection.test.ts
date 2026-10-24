@@ -12,12 +12,12 @@ afterEach(() => {
   dir = undefined;
 });
 
-it("configures WAL and the intended SQLite performance pragmas for a file database", () => {
+it("configures WAL, NORMAL synchronous mode, and disables mmap for a file database", () => {
   dir = mkdtempSync(join(tmpdir(), "lilchess-sqlite-tuning-"));
   const db = openDb(join(dir, "lilchess.db"));
 
   expect(db.pragma("journal_mode", { simple: true })).toBe("wal");
   // SQLite reports synchronous=NORMAL as numeric value 1.
   expect(db.pragma("synchronous", { simple: true })).toBe(1);
-  expect(db.pragma("mmap_size", { simple: true })).toBe(64 * 1024 * 1024);
+  expect(db.pragma("mmap_size", { simple: true })).toBe(0);
 });
