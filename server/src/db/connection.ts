@@ -11,7 +11,13 @@ export function openDb(path: string): Database.Database {
   clearActiveGameCache();
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   db = new Database(path);
+  // WAL lets readers proceed while a writer commits. NORMAL keeps commits fast while
+  // preserving database consistency; the latest commits can be lost on power/OS failure.
   db.pragma("journal_mode = WAL");
+  db.pragma("synchronous = NORMAL");
+  // Cap memory-mapped reads at 64 MiB. SQLite maps pages on demand; this is not an
+  // eager 64 MiB allocation. Keep this value measurable/tunable with the DB benchmark.
+  db.pragma("mmap_size = 67108864");
   db.pragma("foreign_keys = ON"); // off by default in SQLite
   migrate(db);
   backfillPositions(db);
