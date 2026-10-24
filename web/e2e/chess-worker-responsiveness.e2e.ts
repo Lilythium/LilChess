@@ -25,9 +25,22 @@ test("measure chess worker main-thread responsiveness", async ({ page }) => {
       { length: 1000 },
       (_, i) => cycle[i % cycle.length]!,
     );
+    function makePgn(plies: number): string {
+      return [
+        '[Event "Responsiveness benchmark"]',
+        "",
+        ...Array.from(
+          { length: plies / 4 },
+          (_, i) => `${i * 2 + 1}. Nf3 Nf6 ${i * 2 + 2}. Ng1 Ng8`,
+        ),
+        "*",
+      ].join("\n");
+    }
+
+    const pgn = makePgn(moves.length);
 
     const intervalMs = 2;
-    const repetitions = 6;
+    const rounds = 6;
 
     function percentile(values: number[], p: number): number {
       const sorted = [...values].sort((a, b) => a - b);
@@ -38,7 +51,35 @@ test("measure chess worker main-thread responsiveness", async ({ page }) => {
       );
     }
 
-    async function run(useWorker: boolean) {
+    const workflows = [
+      {
+        name: "large-pgn-import",
+        warmup: (client: ReturnType<typeof createChessWorkerClient>) =>
+          client.parseInput(makePgn(40)),
+        execute: async (client: ReturnType<typeof createChessWorkerClient>) => {
+          const result = await client.parseInput(pgn);
+          if (!result.parsed.ok || !result.timeline) {
+            throw new Error("Large PGN import failed");
+          }
+          return result;
+        },
+      },
+      {
+        name: "long-game-analysis",
+        warmup: (client: ReturnType<typeof createChessWorkerClient>) =>
+          client.timeline(START_FEN, "standard", moves.slice(0, 40)),
+        execute: async (client: ReturnType<typeof createChessWorkerClient>) => {
+          const timeline = await client.timeline(START_FEN, "standard", moves);
+          if (!timeline) throw new Error("Long-game analysis failed");
+          return timeline;
+        },
+      },
+    ];
+
+    async function runSample(
+      useWorker: boolean,
+      workflow: (typeof workflows)[number],
+    ) {
       const client = createChessWorkerClient({
         idleMs: 60_000,
         ...(useWorker ? {} : { createWorker: () => null }),
@@ -57,7 +98,7 @@ test("measure chess worker main-thread responsiveness", async ({ page }) => {
 
       try {
         // Warm up module loading and the worker before recording samples.
-        await client.timeline(START_FEN, "standard", moves.slice(0, 40));
+        await workflow.warmup(client);
 
         taskTimes.length = 0;
         timerDelays.length = 0;
@@ -76,23 +117,15 @@ test("measure chess worker main-thread responsiveness", async ({ page }) => {
         timerStart = performance.now();
 
         const measuredStart = performance.now();
-
-        for (let i = 0; i < repetitions; i += 1) {
-          const started = performance.now();
-          const timeline = await client.timeline(
-            START_FEN,
-            "standard",
-            moves,
-          );
-
-          taskTimes.push(performance.now() - started);
-
-          if (!timeline) {
-            throw new Error("Timeline generation failed");
-          }
-        }
+        const started = performance.now();
+        const result = await workflow.execute(client);
+        taskTimes.push(performance.now() - started);
+        if (!result) throw new Error(`${workflow.name} failed`);
 
         const elapsedMs = performance.now() - measuredStart;
+        await new Promise<void>((resolve) =>
+          window.setTimeout(resolve, intervalMs * 2),
+        );
 
         return {
           mode: useWorker ? "worker" : "inline-fallback",
@@ -109,6 +142,8 @@ test("measure chess worker main-thread responsiveness", async ({ page }) => {
           },
           timerSamples: timerDelays.length,
           elapsedMs,
+          taskMsValues: taskTimes,
+          timerDelayValues: timerDelays,
         };
       } finally {
         window.clearInterval(timer);
@@ -116,21 +151,58 @@ test("measure chess worker main-thread responsiveness", async ({ page }) => {
       }
     }
 
-    // Measure each mode once. Repeat the test itself to check consistency.
-    const worker = await run(true);
-    const inlineFallback = await run(false);
+    async function runWorkflow(workflow: (typeof workflows)[number]) {
+      const samples: Record<string, Awaited<ReturnType<typeof runSample>>[]> = {
+        worker: [],
+        "inline-fallback": [],
+      };
 
-    return { worker, inlineFallback };
+      for (let round = 0; round < rounds; round += 1) {
+        const order = round % 2 === 0 ? [true, false] : [false, true];
+        for (const useWorker of order) {
+          const sample = await runSample(useWorker, workflow);
+          samples[sample.mode]!.push(sample);
+        }
+      }
+
+      return Object.entries(samples).map(([mode, modeSamples]) => {
+        const taskTimes = modeSamples.flatMap((sample) => sample.taskMsValues);
+        const timerDelays = modeSamples.flatMap((sample) => sample.timerDelayValues);
+        return {
+          workflow: workflow.name,
+          mode,
+          taskMs: {
+            p50: percentile(taskTimes, 0.5),
+            p95: percentile(taskTimes, 0.95),
+            max: Math.max(...taskTimes),
+          },
+          timerDelayMs: {
+            p50: percentile(timerDelays, 0.5),
+            p95: percentile(timerDelays, 0.95),
+            p99: percentile(timerDelays, 0.99),
+            max: Math.max(0, ...timerDelays),
+          },
+          timerSamples: timerDelays.length,
+          elapsedMs: modeSamples.reduce((total, sample) => total + sample.elapsedMs, 0),
+        };
+      });
+    }
+
+    const results = [];
+    for (const workflow of workflows) {
+      results.push(...(await runWorkflow(workflow)));
+    }
+
+    return results;
   });
-
-  const samples = [result.worker, result.inlineFallback];
 
   console.log(
     "\nChess worker responsiveness benchmark (milliseconds; lower is better)",
   );
 
   console.table(
-    samples.map((sample) => ({
+    result.map((sample) => ({
+      workflow: sample.workflow,
       mode: sample.mode,
       task_p50_ms: sample.taskMs.p50.toFixed(2),
       task_p95_ms: sample.taskMs.p95.toFixed(2),
@@ -144,8 +216,12 @@ test("measure chess worker main-thread responsiveness", async ({ page }) => {
     })),
   );
 
-  expect(result.worker.mode).toBe("worker");
-  expect(result.inlineFallback.mode).toBe("inline-fallback");
-  expect(result.worker.timerSamples).toBeGreaterThan(0);
-  expect(result.inlineFallback.timerSamples).toBeGreaterThan(0);
+  expect(result).toHaveLength(4);
+  expect(result.map((sample) => `${sample.workflow}:${sample.mode}`).sort()).toEqual([
+    "large-pgn-import:inline-fallback",
+    "large-pgn-import:worker",
+    "long-game-analysis:inline-fallback",
+    "long-game-analysis:worker",
+  ]);
+  expect(result.every((sample) => sample.timerSamples > 0)).toBe(true);
 });
