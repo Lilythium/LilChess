@@ -1,6 +1,14 @@
 import { getDb } from "../connection.js";
 import {
+  getCachedActiveGame,
+  getCachedActiveGameParticipants,
+  getCachedFenForMoves,
+  refreshActiveGameAfterWrite,
+  rememberActiveGame,
+} from "../../game/activeGameCache.js";
+import {
   applyMove,
+  fenOf,
   resign,
   offerDraw,
   acceptDraw,
@@ -11,8 +19,11 @@ import {
   acceptTakeback,
   declineTakeback,
   fenAfterMoves,
+  positionFromFen,
+  replay,
   SNAPSHOT_INTERVAL,
   type ReplaySeed,
+  type ReplayContext,
   type GameState,
   type Color,
   type ActionResult,
@@ -85,10 +96,24 @@ function afterCommit(): void {
 }
 
 export function getGame(id: string): GameState | undefined {
+  const cached = getCachedActiveGame(id);
+  if (cached) return cached.state;
+
   const db = getDb();
   const row = db.prepare(`SELECT * FROM games WHERE id = ?`).get(id) as any;
   if (!row) return undefined;
-  return rowToGameState(row, currentMoveUcis(id));
+  const game = rowToGameState(row, currentMoveUcis(id));
+
+  if (game.clock.mode === "live" && game.status === "started" && game.ply === game.moves.length) {
+    const rebuilt = replay(game, loadSeed(id, game.ply));
+    // Only cache a position reconstructed from the active move line and consistent with the stored
+    // FEN. A cache miss must never make an inconsistent DB row look trustworthy.
+    if (rebuilt.ok && fenOf(rebuilt.position) === row.fen) {
+      rememberActiveGame(id, row.white_id, row.black_id, game, row.fen, rebuilt.positionKeys);
+    }
+  }
+
+  return game;
 }
 
 // Everything the analysis page needs and nothing else: two indexed reads, no replay,
@@ -133,7 +158,7 @@ function updateGameState(
   currentFen?: string,
 ): void {
   const row = gameStateToRow(game);
-  const fen = currentFen ?? fenAfterMoves(game.initialFen, game.moves, game.variant, loadSeed(id, game.ply));
+  const fen = currentFen ?? getCachedFenForMoves(id, game.moves) ?? fenAfterMoves(game.initialFen, game.moves, game.variant, loadSeed(id, game.ply));
   if (fen === null) throw new Error(`game ${id}: moves do not replay from initial_fen`);
   getDb()
     .prepare(
@@ -223,6 +248,9 @@ type NotFound = { ok: false; error: "not_found" };
 type NotAParticipant = { ok: false; error: "not_a_participant" };
 
 export function getParticipants(id: string): { whiteId: number; blackId: number; ply: number } | undefined {
+  const cached = getCachedActiveGameParticipants(id);
+  if (cached) return cached;
+
   const row = getDb()
     .prepare(`SELECT white_id, black_id, ply FROM games WHERE id = ?`)
     .get(id) as { white_id: number; black_id: number; ply: number } | undefined;
@@ -244,12 +272,28 @@ function isTournamentSimul2Game(gameId: string): boolean {
 }
 
 function applyMoveCore(id: string, uci: string, now: number) {
-  const before = getGame(id);
+  const cachedAtStart = getCachedActiveGame(id);
+  const before = cachedAtStart?.state ?? getGame(id);
   if (!before) return { ok: false as const, error: "not_found" as const };
 
   const noOpeningAbort = before.clock.mode === "live" && before.ply < 2 && isTournamentSimul2Game(id);
   const gameForMove = noOpeningAbort ? { ...before, deadlineAt: Number.MAX_SAFE_INTEGER } : before;
-  const result = applyMove(gameForMove, uci, now, loadSeed(id, before.ply));
+  const cached = cachedAtStart ?? getCachedActiveGame(id);
+  const hasSameLine = cached !== undefined && cached.state.ply === before.ply &&
+    cached.state.moves.length === before.moves.length &&
+    cached.state.moves.at(-1) === before.moves.at(-1);
+  const context: ReplayContext | undefined = cached && hasSameLine
+    ? { position: positionFromFen(cached.fen, before.variant), positionKeys: [...cached.positionKeys] }
+    : undefined;
+  let cachedPositionKeys: string[] | undefined;
+  const result = applyMove(
+    gameForMove,
+    uci,
+    now,
+    context ? undefined : loadSeed(id, before.ply),
+    context,
+    (keys) => { cachedPositionKeys = keys; },
+  );
   if (!result.ok) return result;
   const state = noOpeningAbort && result.state.status === "started" && result.state.ply < 2
     ? { ...result.state, deadlineAt: Number.MAX_SAFE_INTEGER }
@@ -271,7 +315,7 @@ function applyMoveCore(id: string, uci: string, now: number) {
   
   updateGameState(id, state, null, false, result.fen);
 
-  return { ...result, state, san, movePlayed };
+  return { ...result, state, san, movePlayed, cachedFen: result.fen, cachedPositionKeys };
 }
 
 function broadcastGameOver(gameId: string, state: GameState): void {
@@ -320,6 +364,7 @@ function broadcastMoveOutcome(
 
 export function applyMoveAndPersist(id: string, uci: string, now: number) {
   const outcome = getDb().transaction(() => applyMoveCore(id, uci, now)).immediate();
+  if (outcome.ok) refreshActiveGameAfterWrite(id, outcome.state, outcome.cachedFen, outcome.cachedPositionKeys);
   if (outcome.ok && (outcome.movePlayed || outcome.state.status !== "started")) afterCommit();
   if (outcome.ok) broadcastMoveOutcome(id, uci, outcome.state, outcome.san, outcome.movePlayed);
   return outcome;
@@ -341,6 +386,7 @@ export function submitMove(
     }
     return applyMoveCore(gameId, uci, Date.now());
   }).immediate();
+  if (outcome.ok) refreshActiveGameAfterWrite(gameId, outcome.state, outcome.cachedFen, outcome.cachedPositionKeys);
 
   if (outcome.ok && (outcome.movePlayed || outcome.state.status !== "started")) afterCommit();
   if (outcome.ok) {
@@ -371,6 +417,7 @@ function actAndPersist(
     }
     return result;
   }).immediate();
+  if (result.ok) refreshActiveGameAfterWrite(gameId, result.state);
   if (result.ok) flushSimulEvents(); 
   if (result.ok && result.state.status !== "started") notifyDeadlineChanged();
 
@@ -454,6 +501,7 @@ export function terminateGameAsAdmin(gameId: string) {
     return { ok: true as const, state };
   }).immediate();
 
+  if (outcome.ok) refreshActiveGameAfterWrite(gameId, outcome.state);
   if (outcome.ok) {
     afterCommit();
     broadcastGameOver(gameId, outcome.state);
@@ -516,6 +564,7 @@ export function claimTimeoutAndPersist(gameId: string, now: number) {
     return result;
   }).immediate();
 
+  if (outcome.ok) refreshActiveGameAfterWrite(gameId, outcome.state);
   if (outcome.ok) {
     notifyDeadlineChanged();
     broadcastGameOver(gameId, outcome.state);

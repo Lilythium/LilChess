@@ -7,6 +7,12 @@ import type { GameState } from "./types.js";
 // this many plies of work, however long the game has run.
 export const SNAPSHOT_INTERVAL = 50;
 
+/** A prepared, in-memory replay position for applying the next move without replaying history. */
+export interface ReplayContext {
+  position: Position;
+  positionKeys: string[];
+}
+
 // A saved position partway through a game. `keys` holds the repetition keys of the stretch of
 // positions that can still recur (everything since the last capture or pawn move), oldest first,
 // ending with the key of `fen` itself.

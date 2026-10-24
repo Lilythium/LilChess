@@ -3,10 +3,12 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { migrate } from "./migrate.js";
 import { backfillPositions, backfillSnapshots } from "./backfill.js";
+import { clearActiveGameCache } from "../game/activeGameCache.js";
 
 let db: Database.Database | undefined;
 
 export function openDb(path: string): Database.Database {
+  clearActiveGameCache();
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   db = new Database(path);
   db.pragma("journal_mode = WAL");
@@ -24,6 +26,7 @@ export function getDb(): Database.Database {
 
 export function closeDb(): void {
   if (!db) return;
+  clearActiveGameCache();
   try {
     db.pragma("wal_checkpoint(TRUNCATE)"); // fold the WAL into the main file before closing
   } catch {
