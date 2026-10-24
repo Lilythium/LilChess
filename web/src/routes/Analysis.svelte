@@ -2,20 +2,20 @@
   import { onMount } from "svelte";
   import {
     PositionTimeline, START_FEN, classifyGame, formatScore, gameAccuracy, summariseVerdicts, terminalScore,
-    type Color, type MoveClass,
+    type Color, type MoveClass, type TimelineSnapshot,
   } from "@lilchess/shared";
   import { api } from "../lib/api";
   import { auth } from "../lib/auth.svelte";
   import type { AnalysisResponse } from "../lib/types";
   import { browserCache } from "../lib/analysis/cache";
-  import { parseAnalysisInput } from "../lib/analysis/importText";
+  import { chessWorker } from "../lib/chess/chessWorkerClient";
   import { gameCacheKey, type LoadedGame } from "../lib/analysis/loadedGame";
   import { displayName } from "../lib/format";
   import { engineSupports } from "../lib/game/variantUi";
   import { VARIANT_LABELS } from "@lilchess/shared";
   import { selectPly, stepView, type NavAction } from "../lib/game/history";
   import { playMoveSound } from "../lib/audio/audio";
-  import { commonPrefix, playOnLine } from "../lib/analysis/line";
+  import { commonPrefix, playOnLine, sanAfter } from "../lib/analysis/line";
   import { createAnalysisSession } from "../lib/analysis/analysisSession.svelte";
   import AnalysisBoard from "../lib/components/AnalysisBoard.svelte";
   import AnalysisPanel from "../lib/components/AnalysisPanel.svelte";
@@ -50,16 +50,9 @@
   const engineOk = $derived(engineSupports(variant));
   const gameMoves = $derived(loaded?.moves ?? []);
 
-  // Every position of the game, built once. The full-game run and the move marks use it.
-  const gameTimeline = $derived.by(() => {
-    if (!loaded) return null;
-    try {
-      const tl = new PositionTimeline(loaded.initialFen, loaded.variant);
-      return tl.sync(loaded.moves) ? tl : null;
-    } catch {
-      return null;
-    }
-  });
+  // Every position of the game, built once in a Web Worker when the game is opened. The full-game run and the
+  // move marks use it. Null when the game can't be played through (an illegal move in the record).
+  let gameTimeline = $state.raw<{ fens: string[]; moves: string[] } | null>(null);
 
   // ---- the line on the board: starts as the game, becomes a sideline when the user plays on ----
   let line = $state<string[]>([]);
@@ -134,9 +127,19 @@
     return () => clearTimeout(timer);
   });
 
-  // Opens a game on the board and restores its saved analysis, if this browser has one.
-  function openGame(game: LoadedGame) {
+  // Opens a game on the board and restores its saved analysis, if this browser has one. Working out every position
+  // of a long game (and, for pasted text, parsing it) happens in the chess worker, so the page stays responsive;
+  // the board shows the new game once its positions are ready.
+  let openToken = 0;
+  async function openGame(game: LoadedGame, prebuilt?: TimelineSnapshot | null) {
+    const token = ++openToken;
     session.resetFull(); // also stops any run still going for the previous game
+    const snapshot = prebuilt !== undefined ? prebuilt : await chessWorker.timeline(game.initialFen, game.variant, game.moves);
+    if (token !== openToken) return; // a newer game was opened while this one was being prepared
+
+    gameTimeline = snapshot ? { fens: snapshot.fens, moves: snapshot.moves } : null;
+    // Hand the line the positions the worker already built, so showing the game replays nothing on this thread.
+    lineTimeline = snapshot ? PositionTimeline.restore(game.initialFen, game.variant, snapshot) : null;
     loaded = game;
     line = [...game.moves];
     viewPly = null;
@@ -157,20 +160,23 @@
     if (loaded && gameCacheKey(cacheId, loaded) === key) cache.save(key, ranAt, s.full.evals);
   }
 
-  function loadText(text: string): { error?: string; note?: string } {
-    const parsed = parseAnalysisInput(text);
+  async function loadText(text: string): Promise<{ error?: string; note?: string }> {
+    let result;
+    try {
+      result = await chessWorker.parseInput(text);
+    } catch {
+      return { error: "Couldn't read that text. Try again." };
+    }
+    const { parsed, timeline } = result;
     if (!parsed.ok) return { error: parsed.error };
-    openGame(parsed.game);
+    await openGame(parsed.game, timeline);
     return parsed.gamesFound > 1 ? { note: `Loaded the first of ${parsed.gamesFound} games.` } : {};
   }
 
   function playMove(uci: string) {
     const next = playOnLine(line, ply, uci, viewFen, variant);
-    const soundTimeline = new PositionTimeline(initialFen, variant);
-    if (soundTimeline.sync(next)) {
-      const san = soundTimeline.sans[ply];
-      if (san) playMoveSound(san);
-    }
+    const san = sanAfter(viewFen, uci, variant); // one position, not a replay of the whole line
+    if (san) playMoveSound(san);
     if (next !== line) line = next;
     viewPly = selectPly(ply + 1, next.length);
   }

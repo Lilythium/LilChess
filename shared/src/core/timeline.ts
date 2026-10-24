@@ -3,6 +3,14 @@ import { makeSquare, parseUci, squareFile } from "chessops/util";
 import { fenOf, positionFromFen } from "./position.js";
 import type { Variant } from "./types.js";
 
+/** A timeline as plain data: arrays of strings, so it survives structured clone (postMessage) and JSON. */
+export interface TimelineSnapshot {
+  moves: string[];
+  fens: string[];
+  sans: string[];
+  squares: ([string, string] | null)[];
+}
+
 /**
  * Every position of a game, built once and extended incrementally.
  *
@@ -25,6 +33,35 @@ export class PositionTimeline {
 
   get length(): number {
     return this.moves.length;
+  }
+
+  /** Copies of the arrays, safe to hand to another thread or keep while this timeline keeps changing. */
+  snapshot(): TimelineSnapshot {
+    return {
+      moves: [...this.moves],
+      fens: [...this.fens],
+      sans: [...this.sans],
+      squares: this.squares.map((pair) => (pair ? [pair[0], pair[1]] : null)),
+    };
+  }
+
+  /**
+   * Rebuilds a timeline from a snapshot made elsewhere (a Web Worker) without replaying a move. The snapshot is
+   * copied, and later `sync` calls extend or truncate this timeline as usual. Throws on inconsistent lengths.
+   */
+  static restore(initialFen: string, variant: Variant, data: TimelineSnapshot): PositionTimeline {
+    const n = data.moves.length;
+    if (data.fens.length !== n + 1 || data.sans.length !== n || data.squares.length !== n + 1) {
+      throw new Error("invalid_timeline_snapshot");
+    }
+    const tl = new PositionTimeline(initialFen, variant);
+    tl.moves.push(...data.moves);
+    tl.fens.length = 0;
+    tl.fens.push(...data.fens);
+    tl.sans.push(...data.sans);
+    tl.squares.length = 0;
+    for (const pair of data.squares) tl.squares.push(pair ? [pair[0], pair[1]] : null);
+    return tl;
   }
 
   /** Brings the timeline in line with `moves`. Returns false if a move is illegal; the timeline then stops before it. */

@@ -14,6 +14,8 @@ const keepHost: NonNullable<ProxyOptions["configure"]> = (proxy) => {
 
 export default defineConfig({
   plugins: [svelte()],
+  // The chess worker is a module worker (it imports shared code and chessops), so it is bundled as ES modules.
+  worker: { format: "es" },
   server: {
     host: true,
     allowedHosts: ["lilithlaptop"],

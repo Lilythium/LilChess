@@ -7,8 +7,9 @@
   import { makeFen } from "chessops/fen";
   import type { Role } from "chessops/types";
   import { opposite, parseSquare, parseUci, squareRank } from "chessops/util";
-  import { replay, type Color, type GameState } from "@lilchess/shared";
+  import type { Color, GameState } from "@lilchess/shared";
   import { boardMode } from "../game/boardMode";
+  import { createBoardPositions } from "../game/boardPositions";
   import { gameAtPly } from "../game/history";
   import { dropSquares, dropUci, hasStrips, promotionRoles, type PromotionRole } from "../game/variantUi";
   import PromotionDialog from "./PromotionDialog.svelte";
@@ -26,10 +27,9 @@
 
   // ---- variants: Crazyhouse pockets / Three-check counters sit in strips above and below the board ----
   const shown = $derived(gameAtPly(game, viewPly));
-  const shownPosition = $derived.by(() => {
-    const r = replay(shown);
-    return r.ok ? r.position : null;
-  });
+  // One timeline of the game, extended a move at a time, instead of replaying it from move 1 on every change.
+  const positions = createBoardPositions();
+  const shownPosition = $derived(positions.at(game, shown.moves.length));
   const boardOrientation = $derived<Color>(orientation ?? myColor ?? "white");
   const strips = $derived(hasStrips(game.variant) && shownPosition !== null);
   const mode = $derived(boardMode(game, myColor, shown === game));
@@ -45,12 +45,12 @@
   function setDropMode(role: Role | null) {
     dropRole = role;
     if (!cg) return;
-    const pos = replay(game);
-    if (role && myColor && pos.ok) {
+    const pos = positions.at(game, game.moves.length);
+    if (role && myColor && pos) {
       cg.selectSquare(null); // forget any selected piece
       setCg({
         dropmode: { active: true, piece: { role, color: myColor } },
-        highlight: { custom: new Map(dropSquares(pos.position, role).map((sq) => [sq as Key, "move-dest"])) },
+        highlight: { custom: new Map(dropSquares(pos, role).map((sq) => [sq as Key, "move-dest"])) },
       });
     } else {
       setCg({ dropmode: { active: false }, highlight: { custom: new Map() } });
@@ -63,8 +63,8 @@
 
   // Mark where `role` may be dropped (the same dots a selected piece shows for its moves), or clear the marks.
   function showDropSquares(role: Role | null) {
-    const r = replay(game);
-    const squares = role && r.ok ? dropSquares(r.position, role) : [];
+    const pos = positions.at(game, game.moves.length);
+    const squares = role && pos ? dropSquares(pos, role) : [];
     setCg({ highlight: { custom: new Map(squares.map((sq) => [sq as Key, "move-dest"])) } });
   }
 
@@ -80,10 +80,10 @@
   // Chessground reports a dropped piece; only a legal drop is sent on, anything else snaps back.
   function handleDrop(role: Role, key: Key) {
     setDropMode(null);
-    const r = replay(game);
+    const pos = positions.at(game, game.moves.length);
     const uci = dropUci(role, key);
     const move = parseUci(uci);
-    if (r.ok && move && r.position.isLegal(move)) onMove(uci);
+    if (pos && move && pos.isLegal(move)) onMove(uci);
     else onCancel();
   }
 
@@ -126,10 +126,10 @@
   });
 
   function handleAfter(orig: Key, dest: Key, meta?: MoveMetadata) {
-    const r = replay(game);
-    if (!r.ok) return;
+    const pos = positions.at(game, game.moves.length);
+    if (!pos) return;
     const from = parseSquare(orig)!;
-    const isPawn = r.position.board.get(from)?.role === "pawn";
+    const isPawn = pos.board.get(from)?.role === "pawn";
     const rank = squareRank(parseSquare(dest)!);
     if (isPawn && (rank === 0 || rank === 7)) {
       if (meta?.premove) onMove(orig + dest + "q"); // premoved promotions auto-queen

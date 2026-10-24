@@ -19,7 +19,8 @@
     "pretest": "npm run build -w shared",
     "test": "vitest run",
     "lint": "eslint .",
-    "check:leaks": "node scripts/check-token-leaks.mjs"
+    "check:leaks": "node scripts/check-token-leaks.mjs",
+    "bench:chess-main-thread": "npm run build -w shared && tsx scripts/bench-chess-main-thread.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

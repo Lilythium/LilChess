@@ -1,4 +1,6 @@
-import { sameMove, type Variant } from "@lilchess/shared";
+import { makeSan } from "chessops/san";
+import { parseUci } from "chessops/util";
+import { positionFromFen, sameMove, type Variant } from "@lilchess/shared";
 
 /** How many leading plies two move lists share. */
 export function commonPrefix(a: string[], b: string[]): number {
@@ -16,4 +18,15 @@ export function playOnLine(line: string[], atPly: number, uci: string, fenAtPly:
   const existing = line[atPly];
   if (existing !== undefined && sameMove(fenAtPly, existing, uci, variant)) return line;
   return [...line.slice(0, atPly), uci];
+}
+
+/** SAN of `uci` played from `fen`, or null if it is not legal there. One position, however long the line is. */
+export function sanAfter(fen: string, uci: string, variant: Variant = "standard"): string | null {
+  try {
+    const pos = positionFromFen(fen, variant);
+    const move = parseUci(uci);
+    return move && pos.isLegal(move) ? makeSan(pos, move) : null;
+  } catch {
+    return null;
+  }
 }
