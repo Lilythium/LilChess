@@ -1,0 +1,74 @@
+name: Android release bundle
+
+# Builds the signed Android App Bundle (.aab) for Google Play.
+#   - Push a tag named mobile-v<versionName>-<buildNumber>, e.g. mobile-v1.0.0-1, matching mobile/version.json
+#   - or run it by hand from the Actions tab (no tag checks)
+# Upload the resulting .aab to Play Console yourself; this workflow never touches Play credentials.
+on:
+  push:
+    tags:
+      - "mobile-v*"
+  workflow_dispatch:
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # all tags, so the versionCode-only-increases check can see earlier releases
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v6
+      - run: npm ci --ignore-scripts
+
+      - name: Tag matches mobile/version.json and buildNumber increased
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        run: npm run release:check-tag -w mobile -- "$GITHUB_REF_NAME"
+
+      - run: npm run sync -w mobile
+
+      - name: Decode the upload keystore
+        env:
+          UPLOAD_KEYSTORE_B64: ${{ secrets.LILCHESS_UPLOAD_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$UPLOAD_KEYSTORE_B64" ]; then
+            echo "Secret LILCHESS_UPLOAD_KEYSTORE_B64 is not set. See docs/mobile-play-setup.md." >&2
+            exit 1
+          fi
+          echo "$UPLOAD_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/lilchess-upload.jks"
+          echo "LILCHESS_UPLOAD_KEYSTORE=$RUNNER_TEMP/lilchess-upload.jks" >> "$GITHUB_ENV"
+
+      - name: Build the signed App Bundle
+        working-directory: mobile/android
+        env:
+          LILCHESS_UPLOAD_STORE_PASSWORD: ${{ secrets.LILCHESS_UPLOAD_STORE_PASSWORD }}
+          LILCHESS_UPLOAD_KEY_ALIAS: ${{ secrets.LILCHESS_UPLOAD_KEY_ALIAS }}
+          LILCHESS_UPLOAD_KEY_PASSWORD: ${{ secrets.LILCHESS_UPLOAD_KEY_PASSWORD }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew bundleRelease
+
+      - name: Show the signing certificate (compare with the upload key fingerprint in Play Console)
+        run: keytool -printcert -jarfile mobile/android/app/build/outputs/bundle/release/app-release.aab | grep -E "Owner|SHA256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lilchess-release-aab
+          path: mobile/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove the decoded keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/lilchess-upload.jks"
