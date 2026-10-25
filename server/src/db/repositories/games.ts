@@ -3,6 +3,7 @@ import {
   getCachedActiveGame,
   getCachedActiveGameParticipants,
   getCachedFenForMoves,
+  getCachedPositionCopy,
   refreshActiveGameAfterWrite,
   rememberActiveGame,
 } from "../../game/activeGameCache.js";
@@ -110,7 +111,7 @@ export function getGame(id: string): GameState | undefined {
     // Only cache a position reconstructed from the active move line and consistent with the stored
     // FEN. A cache miss must never make an inconsistent DB row look trustworthy.
     if (rebuilt.ok && fenOf(rebuilt.position) === row.fen) {
-      rememberActiveGame(id, row.white_id, row.black_id, game, row.fen, rebuilt.positionKeys);
+      rememberActiveGame(id, row.white_id, row.black_id, game, row.fen, rebuilt.positionKeys, rebuilt.position);
     }
   }
 
@@ -283,8 +284,9 @@ function applyMoveCore(id: string, uci: string, now: number) {
   const hasSameLine = cached !== undefined && cached.state.ply === before.ply &&
     cached.state.moves.length === before.moves.length &&
     cached.state.moves.at(-1) === before.moves.at(-1);
+  // `cached` is already a private copy, and so is the cloned position: applyMove mutates both.
   const context: ReplayContext | undefined = cached && hasSameLine
-    ? { position: positionFromFen(cached.fen, before.variant), positionKeys: [...cached.positionKeys] }
+    ? { position: getCachedPositionCopy(id) ?? positionFromFen(cached.fen, before.variant), positionKeys: cached.positionKeys }
     : undefined;
   let cachedPositionKeys: string[] | undefined;
   const result = applyMove(
@@ -311,12 +313,16 @@ function applyMoveCore(id: string, uci: string, now: number) {
     // Never write a ply without its moves row. Throwing rolls back the surrounding transaction.
     const moveId = appendMove(id, state.ply, uci, san, now);
     if (result.snapshot) saveSnapshot(id, moveId, result.snapshot);
-    assertMoveRows(id, state.ply);
+    // The trigger keeps active_moves dense, so the cheap "top ply" check is enough per move; the full
+    // count runs at every checkpoint ply (and on takeback), which bounds how long a gap could hide.
+    assertMoveRows(id, state.ply, state.ply % SNAPSHOT_INTERVAL === 0);
   }
   
   updateGameState(id, state, null, false, result.fen);
 
-  return { ...result, state, san, movePlayed, cachedFen: result.fen, cachedPositionKeys };
+  // applyMove played the move on `context.position` in place, so it is now the position after the move.
+  const cachedPosition = movePlayed ? context?.position : undefined;
+  return { ...result, state, san, movePlayed, cachedFen: result.fen, cachedPositionKeys, cachedPosition };
 }
 
 /** The closing event carries the final ply and clocks, so clients can finish the game from the event alone. */
@@ -374,7 +380,7 @@ function broadcastMoveOutcome(
 
 export function applyMoveAndPersist(id: string, uci: string, now: number) {
   const outcome = getDb().transaction(() => applyMoveCore(id, uci, now)).immediate();
-  if (outcome.ok) refreshActiveGameAfterWrite(id, outcome.state, outcome.cachedFen, outcome.cachedPositionKeys);
+  if (outcome.ok) refreshActiveGameAfterWrite(id, outcome.state, outcome.cachedFen, outcome.cachedPositionKeys, outcome.cachedPosition);
   if (outcome.ok && (outcome.movePlayed || outcome.state.status !== "started")) afterCommit();
   if (outcome.ok) broadcastMoveOutcome(id, uci, outcome.state, outcome.san, outcome.movePlayed);
   return outcome;
@@ -396,7 +402,7 @@ export function submitMove(
     }
     return applyMoveCore(gameId, uci, Date.now());
   }).immediate();
-  if (outcome.ok) refreshActiveGameAfterWrite(gameId, outcome.state, outcome.cachedFen, outcome.cachedPositionKeys);
+  if (outcome.ok) refreshActiveGameAfterWrite(gameId, outcome.state, outcome.cachedFen, outcome.cachedPositionKeys, outcome.cachedPosition);
 
   if (outcome.ok && (outcome.movePlayed || outcome.state.status !== "started")) afterCommit();
   if (outcome.ok) {
@@ -568,7 +574,15 @@ export function claimTimeoutAndPersist(gameId: string, now: number) {
 }
 
 // games.ply and the active move line are written in one transaction. Retracted rows stay in history.
-function assertMoveRows(gameId: string, ply: number): void {
+function assertMoveRows(gameId: string, ply: number, full = true): void {
+  if (!full) {
+    const top = getDb()
+      .prepare(`SELECT ply FROM active_moves WHERE game_id = ? ORDER BY ply DESC LIMIT 1`)
+      .pluck()
+      .get(gameId) as number | undefined;
+    if ((top ?? 0) !== ply) throw new Error(`game ${gameId}: top move row is ${top ?? 0} but ply is ${ply}`);
+    return;
+  }
   const row = getDb()
     .prepare(`SELECT COUNT(*) AS n, COALESCE(MAX(ply), 0) AS top
               FROM active_moves WHERE game_id = ?`)

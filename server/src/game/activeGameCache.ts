@@ -1,3 +1,4 @@
+import type { Position } from "chessops/chess";
 import type { GameState } from "@lilchess/shared";
 
 // One Node process owns this cache. SQLite remains the durable source of truth and every move
@@ -10,6 +11,9 @@ interface ActiveGameEntry {
   blackId: number;
   fen: string;
   positionKeys: string[];
+  // The live chessops position for `fen`, so a move can clone it instead of parsing the FEN again.
+  // Never handed out directly: callers get a clone, because applying a move mutates a position.
+  position?: Position;
 }
 
 const entries = new Map<string, ActiveGameEntry>();
@@ -43,7 +47,7 @@ function evictOverflow(): void {
   }
 }
 
-export function getCachedActiveGame(gameId: string): ActiveGameEntry | undefined {
+export function getCachedActiveGame(gameId: string): Omit<ActiveGameEntry, "position"> | undefined {
   const entry = entries.get(gameId);
   if (!entry) {
     misses++;
@@ -52,10 +56,17 @@ export function getCachedActiveGame(gameId: string): ActiveGameEntry | undefined
   hits++;
   touch(gameId, entry);
   return {
-    ...entry,
     state: cloneState(entry.state),
+    whiteId: entry.whiteId,
+    blackId: entry.blackId,
+    fen: entry.fen,
     positionKeys: [...entry.positionKeys],
   };
+}
+
+/** A private copy of the cached position (safe to play a move on), or undefined if none is held. */
+export function getCachedPositionCopy(gameId: string): Position | undefined {
+  return entries.get(gameId)?.position?.clone();
 }
 
 export function getCachedActiveGameParticipants(
@@ -78,6 +89,7 @@ export function rememberActiveGame(
   state: GameState,
   fen: string,
   positionKeys: string[],
+  position?: Position, // ownership passes to the cache; the caller must not touch it afterwards
 ): void {
   if (!isCacheable(state) || !fen || positionKeys.length === 0) {
     entries.delete(gameId);
@@ -90,6 +102,7 @@ export function rememberActiveGame(
     blackId,
     fen,
     positionKeys: [...positionKeys],
+    position,
   });
   evictOverflow();
 }
@@ -108,6 +121,7 @@ export function refreshActiveGameAfterWrite(
   state: GameState,
   fen?: string,
   positionKeys?: string[],
+  position?: Position, // the position after the move; ownership passes to the cache
 ): void {
   const entry = entries.get(gameId);
   if (!entry) return;
@@ -134,6 +148,7 @@ export function refreshActiveGameAfterWrite(
   if (fen !== undefined && positionKeys && positionKeys.length > 0) {
     entry.fen = fen;
     entry.positionKeys = [...positionKeys];
+    entry.position = position; // absent -> the next move falls back to parsing the FEN
   }
   touch(gameId, entry);
 }

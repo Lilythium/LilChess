@@ -240,6 +240,53 @@ describe("position snapshots", () => {
     expect(stored).toBe(fenAfterMoves(g.initialFen, g.moves, g.variant));
   });
 
+  it("plays the same game with a cached position as with a cold replay every move", () => {
+    const moves = movesFor(130);
+    const play = (id: string, cold: boolean) => {
+      for (const [i, uci] of moves.entries()) {
+        if (cold) clearActiveGameCache(); // forces a rebuild from SQLite (checkpoint + replay) each move
+        const r = applyMoveAndPersist(id, uci, 1_000 + i);
+        if (!r.ok) throw new Error(`${id} ${uci}: ${r.error}`);
+      }
+    };
+
+    play("g1", false);
+    insertGame("g2", 1, 2, createGame({ clock, now: 0 }));
+    play("g2", true);
+
+    expect(getMoveSans("g1")).toEqual(getMoveSans("g2"));
+    const fenOfGame = (id: string) => getDb().prepare(`SELECT fen FROM games WHERE id = ?`).pluck().get(id);
+    expect(fenOfGame("g1")).toBe(fenOfGame("g2"));
+    expect(getGame("g1")).toEqual(getGame("g2"));
+  });
+
+  it("keeps the cached position intact when a move is rejected", () => {
+    const [m1, m2, m3] = movesFor(3) as [string, string, string];
+    expect(applyMoveAndPersist("g1", m1, 1_000).ok).toBe(true);
+    expect(applyMoveAndPersist("g1", "a1a8", 1_001).ok).toBe(false); // illegal from the cached position
+    expect(applyMoveAndPersist("g1", m1, 1_002).ok).toBe(false); // the wrong side's move, now stale
+    // The cached position must still be the one after m1, so the real second move is accepted.
+    expect(applyMoveAndPersist("g1", m2, 1_003).ok).toBe(true);
+    expect(applyMoveAndPersist("g1", m3, 1_004).ok).toBe(true);
+    const g = getGame("g1")!;
+    expect(getDb().prepare(`SELECT fen FROM games WHERE id='g1'`).pluck().get())
+      .toBe(fenAfterMoves(g.initialFen, g.moves, g.variant));
+  });
+
+  it("still notices a gap in the move rows by the next checkpoint ply", () => {
+    playTo(20);
+    // Simulate corruption: lose one row in the middle of the line.
+    getDb().prepare(`DELETE FROM active_moves WHERE game_id = 'g1' AND ply = 10`).run();
+
+    // Plies that are not checkpoints only check the top row, so these still go through...
+    const moves = movesFor(50);
+    for (let i = 20; i < 49; i++) {
+      expect(applyMoveAndPersist("g1", moves[i]!, 1_000 + i).ok).toBe(true);
+    }
+    // ...but the full count at the checkpoint ply (50) refuses to commit on top of a damaged history.
+    expect(() => applyMoveAndPersist("g1", moves[49]!, 1_049)).toThrow(/move rows/);
+  });
+
   it("drops checkpoints a takeback retracts and ignores any left stale", () => {
     playTo(101);
     expect(snapshotPlies()).toEqual([50, 100]);
