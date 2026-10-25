@@ -4,6 +4,7 @@
   import { auth } from "../lib/auth.svelte";
   import { createGameStore } from "../lib/game/gameStore.svelte";
   import { connectGameSocket, type SocketStatus } from "../lib/ws/gameSocket";
+  import { createSocketMoveSender } from "../lib/game/moveTransport";
   import ConnectionBanner from "../lib/components/ConnectionBanner.svelte";
   import Board from "../lib/components/Board.svelte";
   import NameCard from "../lib/components/NameCard.svelte";
@@ -38,6 +39,14 @@
   let resetKey = $state(0);
   let socketStatus = $state<SocketStatus>("connecting");
   let socketHandle: ReturnType<typeof connectGameSocket> | null = null;
+
+  // Moves go out over the open game socket; HTTP is the fallback. A refused or unconfirmed move is resolved
+  // from fresh server state and the board is put back, exactly as a failed HTTP move is.
+  const moveSender = createSocketMoveSender({
+    send: (msg) => socketHandle?.send(msg) ?? false,
+    getPly: () => view.game?.ply,
+    onRejected: () => void store.resync().finally(() => resetKey++),
+  });
   function readAutoAdvance(): boolean {
     try { return localStorage.getItem("simul.autoAdvance") !== "0"; } catch { return true; }
   }
@@ -133,12 +142,14 @@
       onEvent: store.applyEvent,
       onResyncNeeded: () => void store.resync(),
       onStatusChange: (s) => (socketStatus = s),
+      onServerError: () => moveSender.serverError(),
     });
 
     socketHandle = sock;
 
     return () => {
       socketHandle = null;
+      moveSender.dispose();
       sock.close();
     };
   });
@@ -195,6 +206,9 @@
 
   async function sendMove(uci: string) {
     if (!view.game) return;
+    // The socket is already open and authenticated, so a move needs no new request. The simul host path
+    // stays on HTTP because it advances to the next board once the server has accepted the move.
+    if (!view.tournamentSimul && moveSender.trySend(view.game.ply, uci)) return;
     const board = view.tournamentSimul?.boards.find((candidate) => candidate.gameId === id);
     const gameTurn = view.game.turn;
     const advanceEnabled = autoAdvance;

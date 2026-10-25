@@ -6,6 +6,8 @@ import { ClientMessageSchema } from "../validation.js";
 import { RateWindow } from "../security/rateWindow.js";
 import { logger } from "../logger.js";
 
+const MESSAGES_PER_WINDOW = 100;
+
 const log = logger.child({ mod: "ws" });
 type TrackedSocket = WebSocket & { isAlive?: boolean };
 
@@ -26,8 +28,10 @@ export function handleGameConnection(
 
   subscribe(gameId, socket);
 
-  // per-socket flood control: 20 messages / 10s is far above real play
-  const limiter = new RateWindow(10_000, 20);
+  // Per-socket flood control. Moves arrive over this socket, and a bullet scramble with premoves can
+  // legitimately send several a second, so allow 10/s sustained (the same ceiling the HTTP move route has
+  // per IP); anything beyond that is a flood and the socket is closed.
+  const limiter = new RateWindow(10_000, MESSAGES_PER_WINDOW);
 
   socket.on("message", (raw, isBinary) => {
     if (isBinary) return;
