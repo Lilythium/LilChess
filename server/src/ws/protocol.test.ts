@@ -117,6 +117,23 @@ describe("message handling", () => {
   });
 });
 
+describe("flood control", () => {
+  it("allows a burst of premove-speed traffic but closes the socket past 100 messages in 10s", async () => {
+    const { alice, gameId } = await twoPlayerGame();
+    const ws = open(gameId, alice);
+    await opened(ws);
+    const closed = closedWith(ws);
+
+    for (let i = 0; i < 100; i++) ws.send("{not json");
+    // Still open after exactly the allowance: a bullet scramble must never trip this.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(ws.readyState).toBe(ws.OPEN);
+
+    ws.send("{not json"); // the 101st
+    expect(await closed).toBe(1008);
+  });
+});
+
 describe("upgrade origin check", () => {
   it("rejects an upgrade from a foreign origin even with a valid session", async () => {
     const { alice, gameId } = await twoPlayerGame();
