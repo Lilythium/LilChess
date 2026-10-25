@@ -31,6 +31,17 @@ describe("release version", () => {
   });
 });
 
+describe("F-Droid compatibility", () => {
+  it("has no Google Play Services / Firebase build plugin in the Android project", () => {
+    for (const file of ["mobile/android/build.gradle", "mobile/android/app/build.gradle"]) {
+      const gradle = read(file);
+      expect(gradle).not.toMatch(/com\.google\.gms/);
+      expect(gradle).not.toMatch(/google-services/);
+      expect(gradle).not.toMatch(/firebase/i);
+    }
+  });
+});
+
 describe("release hygiene", () => {
   it("keeps signing material and release credentials out of git", () => {
     const ignore = read("mobile/.gitignore");

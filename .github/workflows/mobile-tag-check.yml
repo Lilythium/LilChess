@@ -1,0 +1,22 @@
+name: Mobile release tag check
+
+# F-Droid finds new releases from git tags, so a tag must always match mobile/version.json
+# and the Android versionCode (buildNumber) must only ever increase.
+# Release tags look like mobile-v<versionName>-<buildNumber>, e.g. mobile-v1.0.0-1.
+on:
+  push:
+    tags:
+      - "mobile-v*"
+
+jobs:
+  check-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # all tags, so earlier releases are visible
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Tag matches mobile/version.json and buildNumber increased
+        run: node mobile/scripts/check-release-tag.mjs "$GITHUB_REF_NAME"
