@@ -1,7 +1,37 @@
 # Store listing and review instructions (draft)
 
-Text and checklists for the Apple App Store and Google Play listings. Nothing here promises approval: review outcomes and
+Text and checklists for the Apple App Store, Google Play and F-Droid listings. Nothing here promises approval: review outcomes and
 requirements change, so check the current guidelines when you submit.
+
+## F-Droid
+
+F-Droid publishes the text and images that are committed in the repository, from the tagged commit. The files are the
+source of truth for that listing; this document is the source for the stores that need pasted text.
+
+| Listing field | File (`fastlane/metadata/android/en-US/`) | Limit |
+|---|---|---|
+| Name | `title.txt` | 30 characters |
+| Summary | `short_description.txt` | 80 characters |
+| Description | `full_description.txt` | 4000 characters, only the tags `b big blockquote br cite em i li ol small strike strong sub sup tt u ul` |
+| What's new | `changelogs/<versionCode>.txt` | 500 bytes, file named after `buildNumber`, no padding |
+| Icon | `images/icon.png` | 512 x 512 PNG |
+| Screenshots | `images/phoneScreenshots/1.png`, `2.png`, ... | PNG or JPEG; shown in file-name order |
+
+Rules the checker enforces (`node mobile/scripts/check-fastlane.mjs`, part of `npm test`; `--release` is run by the tag
+workflow): limits above; the description says the app needs self-hosted servers, offers the demo, has no analytics, refuses
+plain HTTP and links to `docs/mobile-privacy.md`; it does not promise tournaments on the demo and does not name other chess
+services. A tag is refused while the description still holds `REPLACE_WITH_DEMO_ADDRESS` or fewer than two screenshots exist.
+
+Before the first tag:
+
+1. Put the real https demo address into `full_description.txt` (same address as `VITE_LILCHESS_DEMO_URL`).
+2. Capture the screenshots listed below on the demo server, and save them as `images/phoneScreenshots/1.png` and so on. They
+   must show only your own UI and demo data: no other product's logo or name, nothing that suggests an official service.
+3. Each release adds `changelogs/<new buildNumber>.txt`. Keep the description in step with `docs/mobile-compatibility.md`.
+
+Anti-features: none declared. The app contains no ads, tracking or non-free dependencies as far as the repository shows,
+and it depends on LilChess servers, which are free software (GPL-3.0), not on a non-free network service. Re-check the
+anti-feature list at https://f-droid.org/docs/Anti-Features/ when submitting, and declare honestly anything that has changed.
 
 ## Short description (Google Play, 80 characters)
 

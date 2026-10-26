@@ -12,7 +12,7 @@ requirements change.
 | Free-software license | GPL-3.0 (`LICENSE`) |
 | No Google Play Services / Firebase | Done: the `com.google.gms` plugin was removed from both Gradle files, and `mobile/src/releaseConfig.test.ts` fails if it comes back |
 | No prebuilt binaries | Pipeline written (see "Stockfish from source"). **Not yet proven**: needs the NNUE net committed and one build with emscripten 3.1.7 |
-| Fastlane store metadata in the repo | Not started |
+| Fastlane store metadata in the repo | Text, icon and changelog committed and checked in CI. **Still needed from you:** the real demo address and phone screenshots (see `docs/mobile-store-listing.md`, "F-Droid") |
 | `fdroiddata` metadata file and merge request | Not started |
 
 ## Stockfish from source

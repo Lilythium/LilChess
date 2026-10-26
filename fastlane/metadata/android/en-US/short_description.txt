@@ -1,0 +1,1 @@
+Chess client for self-hosted LilChess servers, with a free demo to try.
