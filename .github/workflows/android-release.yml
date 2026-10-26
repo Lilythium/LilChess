@@ -62,7 +62,7 @@ jobs:
       - name: Show the signing certificate (compare with the upload key fingerprint in Play Console)
         run: keytool -printcert -jarfile mobile/android/app/build/outputs/bundle/release/app-release.aab | grep -E "Owner|SHA256"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: lilchess-release-aab
           path: mobile/android/app/build/outputs/bundle/release/app-release.aab
