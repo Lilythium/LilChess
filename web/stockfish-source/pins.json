@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/nmrugg/stockfish.js.git",
+  "tag": "v18.0.8",
+  "commit": "93c994592dcf3b4b21052ab925e9b534df9c0918",
+  "emscripten": "3.1.7",
+  "buildFlags": ["--single-threaded", "--lite"],
+  "outputBase": "stockfish-18-lite-single",
+  "net": {
+    "file": "nn-9067e33176e8.nnue",
+    "sha256Prefix": "9067e33176e8",
+    "url": "https://tests.stockfishchess.org/api/nn/nn-9067e33176e8.nnue"
+  }
+}

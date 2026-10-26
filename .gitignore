@@ -155,6 +155,8 @@ white.txt
 
 # Stockfish WASM is copied from node_modules by web/scripts/copy-stockfish.mjs
 web/public/stockfish/
+# Engine compiled from pinned source by web/scripts/build-stockfish.mjs (the pinned net in web/stockfish-source/nets IS committed)
+web/stockfish-build/
 
 # Test runner output (Playwright and reporters). Never commit generated results.
 test-results/
