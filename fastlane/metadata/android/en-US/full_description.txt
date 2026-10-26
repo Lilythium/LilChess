@@ -1,0 +1,27 @@
+LilChess Mobile is the Android app for LilChess, a lightweight, self-hosted chess server. It is a client: you play on a LilChess server that you choose, not on a central service.
+
+<b>You need a LilChess server.</b> To try the app without setting anything up, use the demo server at REPLACE_WITH_DEMO_ADDRESS and tap "Play a demo game". You play a practice game against a simple bot as a temporary guest, with no account and no credentials. Demo guests and their games are deleted automatically (currently after 24 hours). Or run your own server: it is free software, see the project page.
+
+<b>What you can do</b>, on a server that has the feature enabled:
+<ul>
+<li>Live and correspondence games</li>
+<li>Open challenges, and invite links that open straight in the app</li>
+<li>Standard chess, Chess960, Crazyhouse, Three-check and Antichess</li>
+<li>Ratings, profiles, game history and PGN export</li>
+<li>Analysis with Stockfish, running on your device</li>
+<li>Tournaments and simuls, if your server offers them</li>
+</ul>
+
+<b>The demo server is limited.</b> Demo guests cannot create challenges, play rated games or join tournaments and simuls. Servers must meet the requirements on the project page to work with the app.
+
+<b>Privacy</b>
+<ul>
+<li>No ads, no analytics, no tracking and no crash reporting in the app.</li>
+<li>Passwords are never stored on your device. The sign-in session for each server is kept in Android's secure storage.</li>
+<li>The server you connect to receives your account and game data. It is run by its operator, who sets its own policy and retention.</li>
+<li>Connections must use HTTPS: servers on plain HTTP are refused.</li>
+<li>If the server supports it, you can delete your account in Settings.</li>
+</ul>
+Details: https://github.com/Lilythium/LilChess/blob/main/docs/mobile-privacy.md
+
+LilChess is an independent project and is not affiliated with any other chess service or website.

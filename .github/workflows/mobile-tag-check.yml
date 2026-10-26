@@ -20,3 +20,5 @@ jobs:
           node-version: 22
       - name: Tag matches mobile/version.json and buildNumber increased
         run: node mobile/scripts/check-release-tag.mjs "$GITHUB_REF_NAME"
+      - name: F-Droid metadata is complete (no placeholders, screenshots present, changelog for this versionCode)
+        run: node mobile/scripts/check-fastlane.mjs --release

@@ -1,7 +1,9 @@
 # LilChess Mobile: privacy disclosure (draft)
 
-Source material for the store privacy forms (Apple "App Privacy", Google Play "Data safety") and for the privacy policy
-page the stores require. It describes what the code in this repository does today. **It is not legal advice**: have the
+Source material for the store privacy forms (Apple "App Privacy", Google Play "Data safety"), for the privacy policy
+page the stores require, and for the F-Droid listing, which links straight to this file
+(`fastlane/metadata/android/en-US/full_description.txt`). F-Droid has no privacy form: what this page says is what users
+see, so the listing text must never say less than it does. It describes what the code in this repository does today. **It is not legal advice**: have the
 final policy reviewed, fill in the `[bracketed]` items, and re-check it whenever the app or server changes.
 
 ## Who holds what
@@ -48,6 +50,25 @@ Demo server specifics: demo guests and their games against the practice bot are 
 Data is sent over HTTPS. Android release builds refuse plain-HTTP servers. iOS allows plain HTTP only to local-network addresses, and
 debug builds allow it for development. The app labels any HTTP connection as unencrypted.
 
+## Deleting an account
+
+Settings has a delete-account control when the server reports `accountDeletion` (the server exposes `POST /api/me/delete`;
+older servers do not, and the app then says so). A registered user must enter their password; a guest's signed-in session
+is the confirmation. Deletion is permanent and is refused while the person has a game in progress, a running tournament,
+or an open tournament or simul they host (administrators must first have their administrator access removed).
+
+What happens (`server/src/auth/deletion.ts`):
+
+- **Removed:** sessions, open challenges, password-reset tokens, notification settings and log, ratings and rating history,
+  imported games, a seat in tournaments that have not started, and unaccepted simul invitations. The username can be
+  registered again.
+- **Kept, anonymised:** the user row stays as a tombstone (`deleted_xxxxxxxx`, shown as "Deleted user") with the name,
+  password hash, email and Discord ID removed, and it can never sign in. Finished games, moves and tournament results stay,
+  because other players' history points at them.
+
+Say this plainly wherever deletion is described: games played against other people remain, without the person's name.
+Self-hosted operators can change their own retention, so the app can only vouch for servers running this code.
+
 ## Answers for the store forms
 
 Apple App Privacy / Google Data safety. Treat the **demo server** as the developer's own collection, since the developer
@@ -62,18 +83,19 @@ runs it; self-hosted servers are the operators' collection.
 | Location, contacts, photos, health, financial, browsing history | No | n/a | n/a |
 | Advertising, analytics, tracking | No | n/a | n/a |
 
-Encryption in transit: yes (HTTPS). Data deletion: see the open item below.
+Encryption in transit: yes (HTTPS). Data deletion: in-app account deletion (next section).
 
 ## Open items before submission
 
-1. **In-app account deletion does not exist yet.** The server has no endpoint for a registered user to delete their own
-   account (only administrators can remove users). Apple's App Review Guidelines (5.1.1(v)) require apps that let people
-   create an account to also let them delete it inside the app, and Google Play has a comparable account-deletion
-   requirement. Decide what deletion means for the person's games (delete, or anonymize so opponents keep their history),
-   build `DELETE /api/me` (re-authenticate, revoke sessions) plus a Settings control, then update this document.
-   Guest and demo sessions are removed by the demo cleanup and need no control. Check the current store rules when you submit.
-2. Publish a privacy policy at a stable HTTPS URL that matches this document, and put the URL in both store listings.
-3. Fill in the log-retention and contact placeholders above.
+1. ~~In-app account deletion~~ Done: see "Deleting an account". For the Apple and Google forms, check the current store rules
+   when you submit (Apple 5.1.1(v) and Google's account-deletion requirement). F-Droid has no equivalent requirement.
+2. The privacy policy URL for the stores must be stable HTTPS and match this document. For F-Droid the listing links to this
+   file on the `main` branch of the repository; keep the file path stable (the metadata test checks that it exists).
+3. Fill in the log-retention and contact placeholders above (`[N days]`, `[24 hours]`, `[decide]`, `[contact]`). They are
+   deliberately not filled in by the code: only the demo operator knows them. The F-Droid listing says "currently after 24
+   hours" for demo data, so keep that sentence in step with `DEMO_RETENTION_HOURS`.
 4. Self-hosted servers: say in the policy that their operators are separate controllers.
 5. Re-check the Xcode privacy report on the release archive (Product > Archive > Distribute > the privacy report) for
    anything a plugin or dependency declares that is not in this document.
+6. F-Droid: re-run `npm run check:leaks` and re-read the dependency list for analytics or crash SDKs before each tag. Any
+   such SDK needs this document updated first, and F-Droid would flag it as an anti-feature anyway.
