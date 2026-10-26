@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "build:stockfish": "node scripts/build-stockfish.mjs",
     "predev": "node scripts/copy-stockfish.mjs",
     "dev": "vite",
     "prebuild": "node scripts/copy-stockfish.mjs",

@@ -1,5 +1,8 @@
 // Runs the real Stockfish 18 lite WASM build under Node (the same binary the browser
 // worker loads), so a wrong UCI assumption fails here instead of in someone's browser.
+// By default that is the prebuilt engine from the `stockfish` npm package. To run the same tests against the engine
+// compiled from pinned source (F-Droid builds), point LILCHESS_STOCKFISH_ENGINE at its .js file:
+//   LILCHESS_STOCKFISH_ENGINE=$PWD/web/stockfish-build/out/stockfish-18-lite-single.js npx vitest run web/src/lib/analysis/engine.integration.test.ts
 //
 // Node-only quirks, which do NOT apply to the browser Worker:
 //  - the Node wrapper can only be instantiated once per process, so all tests share one engine;
@@ -16,11 +19,11 @@ import { gameCacheKey } from "./loadedGame";
 const require = createRequire(import.meta.url);
 
 async function nodeTransport(): Promise<EngineTransport> {
-  const init = require("stockfish") as (variant: string) => Promise<{
+  const init = require("stockfish") as (variantOrPath: string) => Promise<{
     sendCommand(cmd: string): void;
     listener: (line: string) => void;
   }>;
-  const raw = await init("lite-single");
+  const raw = await init(process.env.LILCHESS_STOCKFISH_ENGINE ?? "lite-single");
   let listener: (line: string) => void = () => {};
   raw.listener = (line) => listener(String(line));
   return {

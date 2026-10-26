@@ -20,6 +20,7 @@ export default [
       "web/dist/**",
       "web/dist-native/**",
       "web/public/stockfish/**",
+      "web/stockfish-build/**",
       "mobile/android/**",
       "mobile/ios/**",
       "quick-check.mjs",
